@@ -96,13 +96,28 @@ final class PlayerViewModel {
     var currentTrack: TrackItem?
     var currentMetadata: TrackMetadata?
     let toolbarSpectrum = ToolbarSpectrumModel()
-    var spectrumGradientStartColor = NSColor.secondaryLabelColor {
+    var spectrumGradientStartColor = NSColor(
+        calibratedRed: 0.000000,
+        green: 0.976805,
+        blue: 0.000000,
+        alpha: 1.000000
+    ) {
         didSet { toolbarSpectrum.gradientStartColor = spectrumGradientStartColor }
     }
-    var spectrumGradientEndColor = NSColor.white {
+    var spectrumGradientEndColor = NSColor(
+        calibratedRed: 0.016804,
+        green: 0.198351,
+        blue: 1.000000,
+        alpha: 1.000000
+    ) {
         didSet { toolbarSpectrum.gradientEndColor = spectrumGradientEndColor }
     }
-    var spectrumPeakColor = NSColor.white {
+    var spectrumPeakColor = NSColor(
+        calibratedRed: 1.000000,
+        green: 0.149131,
+        blue: 0.000000,
+        alpha: 1.000000
+    ) {
         didSet { toolbarSpectrum.peakColor = spectrumPeakColor }
     }
     var playlistFollowsCursor = false
