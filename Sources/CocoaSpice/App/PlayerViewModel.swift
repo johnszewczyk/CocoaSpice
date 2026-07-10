@@ -65,6 +65,7 @@ final class PlayerViewModel {
             handleSidebarSearchChanged()
         }
     }
+    var databaseSidebarFontSize: CGFloat = 11
     var playlistSearchText: String = "" {
         didSet {
             scheduleVisiblePlaylistRefresh()
@@ -739,7 +740,8 @@ final class PlayerViewModel {
             spectrumGradientEndColor: spectrumGradientEndColor,
             spectrumPeakColor: spectrumPeakColor,
             sidebarDoubleClickActionRawValue: sidebarDoubleClickAction.rawValue,
-            lastAudioExportDirectoryPath: lastAudioExportDirectoryURL?.path
+            lastAudioExportDirectoryPath: lastAudioExportDirectoryURL?.path,
+            databaseSidebarFontSize: databaseSidebarFontSize
         )
     }
 
@@ -1617,6 +1619,9 @@ final class PlayerViewModel {
         }
         if let lastAudioExportDirectoryPath = preferences.lastAudioExportDirectoryPath {
             lastAudioExportDirectoryURL = URL(fileURLWithPath: lastAudioExportDirectoryPath, isDirectory: true).standardizedFileURL
+        }
+        if let storedSidebarFontSize = preferences.databaseSidebarFontSize {
+            databaseSidebarFontSize = min(max(CGFloat(storedSidebarFontSize), 10), 16)
         }
         if let storedSortColumn = preferences.playlistSortColumnRawValue.flatMap(PlaylistSortColumn.init(rawValue:)) {
             playlistSortColumn = storedSortColumn

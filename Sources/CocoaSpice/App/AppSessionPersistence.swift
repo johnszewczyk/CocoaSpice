@@ -23,6 +23,7 @@ enum AppDefaultsKey {
     static let playlistColumnOrder = "CocoaSpice.playlistColumnOrder"
     static let playlistColumnVisibility = "CocoaSpice.playlistColumnVisibility"
     static let playlistColumnWidths = "CocoaSpice.playlistColumnWidths"
+    static let databaseSidebarFontSize = "CocoaSpice.databaseSidebarFontSize"
 }
 
 struct RestoredPlaybackPreferences {
@@ -36,6 +37,7 @@ struct RestoredPlaybackPreferences {
     let lastAudioExportDirectoryPath: String?
     let playlistSortColumnRawValue: String?
     let playlistSortDirectionRawValue: String?
+    let databaseSidebarFontSize: Double?
 }
 
 struct RestoredSessionState {
@@ -63,7 +65,7 @@ enum AppSessionPersistence {
             "sidebarDoubleClickAction", "playlistFollowsCursor", "lastAudioExportDirectoryPath",
             "playlistSortColumn", "playlistSortDirection", "persistedPlaylistPaths",
             "persistedSelectedTrackPath", "persistedCurrentTrackPath", "playlistColumnOrder",
-            "playlistColumnVisibility", "playlistColumnWidths"
+            "playlistColumnVisibility", "playlistColumnWidths", "databaseSidebarFontSize"
         ]
 
         for suffix in keys {
@@ -92,7 +94,8 @@ enum AppSessionPersistence {
             sidebarDoubleClickActionRawValue: defaults.string(forKey: AppDefaultsKey.sidebarDoubleClickAction),
             lastAudioExportDirectoryPath: defaults.string(forKey: AppDefaultsKey.lastAudioExportDirectoryPath),
             playlistSortColumnRawValue: defaults.string(forKey: AppDefaultsKey.playlistSortColumn),
-            playlistSortDirectionRawValue: defaults.string(forKey: AppDefaultsKey.playlistSortDirection)
+            playlistSortDirectionRawValue: defaults.string(forKey: AppDefaultsKey.playlistSortDirection),
+            databaseSidebarFontSize: defaults.object(forKey: AppDefaultsKey.databaseSidebarFontSize) as? Double
         )
     }
 
@@ -126,6 +129,7 @@ enum AppSessionPersistence {
         spectrumPeakColor: NSColor,
         sidebarDoubleClickActionRawValue: String,
         lastAudioExportDirectoryPath: String?,
+        databaseSidebarFontSize: CGFloat,
         defaults: UserDefaults = .standard
     ) {
         defaults.set(longPlayEnabled, forKey: AppDefaultsKey.longPlayEnabled)
@@ -136,6 +140,7 @@ enum AppSessionPersistence {
         defaults.set(serializedColor(spectrumPeakColor), forKey: AppDefaultsKey.spectrumPeakColor)
         defaults.set(sidebarDoubleClickActionRawValue, forKey: AppDefaultsKey.sidebarDoubleClickAction)
         defaults.set(lastAudioExportDirectoryPath, forKey: AppDefaultsKey.lastAudioExportDirectoryPath)
+        defaults.set(Double(databaseSidebarFontSize), forKey: AppDefaultsKey.databaseSidebarFontSize)
     }
 
     static func savePlaylistSortState(

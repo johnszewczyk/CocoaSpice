@@ -225,7 +225,7 @@ private struct DatabaseGameListView: NSViewRepresentable {
     func makeNSView(context: Context) -> NSScrollView {
         let tableView = DatabaseGameNativeTableView(frame: .zero)
         tableView.headerView = nil
-        tableView.rowHeight = 16
+        tableView.rowHeight = model.databaseSidebarFontSize + 5
         tableView.intercellSpacing = NSSize(width: 0, height: 0)
         tableView.focusRingType = .none
         tableView.selectionHighlightStyle = .regular
@@ -329,6 +329,7 @@ private struct DatabaseGameListView: NSViewRepresentable {
             }()
 
             cell.textField?.stringValue = item.displayName
+            cell.textField?.font = .systemFont(ofSize: model.databaseSidebarFontSize)
             cell.textField?.textColor = .secondaryLabelColor
             return cell
         }

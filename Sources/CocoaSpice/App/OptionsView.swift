@@ -4,9 +4,9 @@ import SwiftUI
 struct OptionsView: View {
     @Bindable var model: PlayerViewModel
     @State private var longPlayTimeText = ""
-    @State private var selection: Section = .playback
+    @State private var selection: OptionsSection = .playback
 
-    private enum Section: String, CaseIterable, Identifiable {
+    private enum OptionsSection: String, CaseIterable, Identifiable {
         case playback = "Playback"
         case interface = "Interface"
         case database = "Database"
@@ -27,9 +27,13 @@ struct OptionsView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(Section.allCases, selection: $selection) { section in
-                Label(section.rawValue, systemImage: section.systemImage)
-                    .tag(section)
+            List(selection: $selection) {
+                Section("Components") {
+                    ForEach(OptionsSection.allCases) { section in
+                        Label(section.rawValue, systemImage: section.systemImage)
+                            .tag(section)
+                    }
+                }
             }
             .listStyle(.sidebar)
             .navigationTitle("Options")
@@ -76,7 +80,7 @@ struct OptionsView: View {
                 }
             }
         }
-        .frame(minWidth: 640, minHeight: 480)
+        .frame(width: 900, height: 600)
         .onAppear {
             longPlayTimeText = Self.formatTime(model.manualPreFadeSeconds)
         }
@@ -149,6 +153,20 @@ struct OptionsView: View {
                             .foregroundStyle(.white)
                     }
                 }
+            }
+
+            sectionCard(title: "Sidebar") {
+                Picker("Database text size", selection: $model.databaseSidebarFontSize) {
+                    ForEach([10.0, 11.0, 12.0, 13.0, 14.0, 16.0], id: \.self) { size in
+                        Text("(Int(size)) pt")
+                            .tag(CGFloat(size))
+                    }
+                }
+                .pickerStyle(.menu)
+
+                Text("Controls the game list text in the main database sidebar.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
             }
         }
     }
