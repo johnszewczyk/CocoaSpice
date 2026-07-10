@@ -1,7 +1,7 @@
 import AppKit
 import Foundation
 import Testing
-@testable import SPCBoy
+@testable import CocoaSpice
 
 @Test func supportedExtensionsIncludeLinkedLibGMETypes() {
     #expect(SPCFileScanner.supportedExtensions.contains("ay"))
@@ -222,7 +222,7 @@ import Testing
 }
 
 @Test func playbackPreferencesRestoreOnlyUnifiedKeys() {
-    let suiteName = "SPCBoyTests.\(UUID().uuidString)"
+    let suiteName = "CocoaSpiceTests.\(UUID().uuidString)"
     guard let defaults = UserDefaults(suiteName: suiteName) else {
         Issue.record("Failed to create isolated UserDefaults suite")
         return
@@ -230,8 +230,8 @@ import Testing
     defaults.removePersistentDomain(forName: suiteName)
     defer { defaults.removePersistentDomain(forName: suiteName) }
 
-    defaults.set(true, forKey: "SPCBoy.generalLongPlayEnabled")
-    defaults.set(321, forKey: "SPCBoy.generalManualPreFadeSeconds")
+    defaults.set(true, forKey: "CocoaSpice.generalLongPlayEnabled")
+    defaults.set(321, forKey: "CocoaSpice.generalManualPreFadeSeconds")
 
     let legacyOnlyPreferences = AppSessionPersistence.restorePlaybackPreferences(defaults: defaults)
     #expect(!legacyOnlyPreferences.longPlayEnabled)

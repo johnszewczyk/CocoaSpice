@@ -24,8 +24,8 @@
 
 ## Files
 
-- [DatabaseSidebarPresentation.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/DatabaseSidebarPresentation.swift)
-- [MainView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/MainView.swift)
-- [NativeSearchField.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/NativeSearchField.swift)
-- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlayerViewModel.swift)
-- [LibraryDatabase.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/LibraryDatabase.swift)
+- [DatabaseSidebarPresentation.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarPresentation.swift)
+- [MainView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
+- [NativeSearchField.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/NativeSearchField.swift)
+- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
+- [LibraryDatabase.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase.swift)

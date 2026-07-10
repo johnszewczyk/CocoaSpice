@@ -29,9 +29,9 @@
 
 ## Files
 
-- [DatabaseSidebarPresentation.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/DatabaseSidebarPresentation.swift)
-- [LibraryDatabase.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/LibraryDatabase.swift)
-- [LibraryModels.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/LibraryModels.swift)
-- [MainView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/MainView.swift)
-- [PlaylistQueueLoader.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlaylistQueueLoader.swift)
-- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlayerViewModel.swift)
+- [DatabaseSidebarPresentation.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarPresentation.swift)
+- [LibraryDatabase.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase.swift)
+- [LibraryModels.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryModels.swift)
+- [MainView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
+- [PlaylistQueueLoader.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaylistQueueLoader.swift)
+- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)

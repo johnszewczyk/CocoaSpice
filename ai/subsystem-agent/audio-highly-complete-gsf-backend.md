@@ -32,8 +32,8 @@
 
 ## Files
 
-- [GMEFormatSupport.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/GMEFormatSupport.swift)
-- [PlaybackDecoderRouting.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlaybackDecoderRouting.swift)
+- [GMEFormatSupport.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/GMEFormatSupport.swift)
+- [PlaybackDecoderRouting.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackDecoderRouting.swift)
 - [highlycomplete_bridge.h](/Users/john/Documents/Code/CocoaSpice/Sources/CHighlyComplete/include/highlycomplete_bridge.h)
 - [highlycomplete_bridge.cpp](/Users/john/Documents/Code/CocoaSpice/Sources/CHighlyComplete/highlycomplete_bridge.cpp)
 - [scripts/build-mgba.sh](/Users/john/Documents/Code/CocoaSpice/scripts/build-mgba.sh)

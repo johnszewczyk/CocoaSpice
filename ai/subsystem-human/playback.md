@@ -20,5 +20,5 @@
 
 ## Files
 
-- [SPCPlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/SPCPlaybackEngine.swift)
-- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlayerViewModel.swift)
+- [SPCPlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/SPCPlaybackEngine.swift)
+- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)

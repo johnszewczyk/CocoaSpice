@@ -22,8 +22,8 @@
 
 ## Files
 
-- [SPCPlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/SPCPlaybackEngine.swift)
-- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlayerViewModel.swift)
-- [ZipArchiveSupport.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/ZipArchiveSupport.swift)
-- [SPCFileScanner.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/SPCFileScanner.swift)
-- [OptionsView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/OptionsView.swift)
+- [SPCPlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/SPCPlaybackEngine.swift)
+- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
+- [ZipArchiveSupport.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/ZipArchiveSupport.swift)
+- [SPCFileScanner.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/SPCFileScanner.swift)
+- [OptionsView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/OptionsView.swift)

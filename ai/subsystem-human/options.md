@@ -16,4 +16,4 @@
 
 ## Files
 
-- [OptionsView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/OptionsView.swift)
+- [OptionsView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/OptionsView.swift)

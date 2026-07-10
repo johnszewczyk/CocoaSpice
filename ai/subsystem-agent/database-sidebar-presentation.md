@@ -23,7 +23,7 @@
 
 ## Files
 
-- [DatabaseSidebarPresentation.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/DatabaseSidebarPresentation.swift)
-- [MainView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/MainView.swift)
-- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlayerViewModel.swift)
-- [LibraryModels.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/LibraryModels.swift)
+- [DatabaseSidebarPresentation.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarPresentation.swift)
+- [MainView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
+- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
+- [LibraryModels.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryModels.swift)

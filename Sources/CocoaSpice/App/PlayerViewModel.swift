@@ -1174,7 +1174,7 @@ final class PlayerViewModel {
         if let currentMetadata, !currentMetadata.song.isEmpty {
             return currentMetadata.song
         }
-        return currentTrack?.displayName ?? "SPCBoy"
+        return currentTrack?.displayName ?? "CocoaSpice"
     }
 
     var currentGameTitle: String {

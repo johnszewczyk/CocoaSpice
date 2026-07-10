@@ -23,6 +23,6 @@
 
 ## Files
 
-- [MainView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/MainView.swift)
-- [LibraryDatabase.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/LibraryDatabase.swift)
-- [LibraryModels.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/LibraryModels.swift)
+- [MainView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
+- [LibraryDatabase.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase.swift)
+- [LibraryModels.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryModels.swift)

@@ -49,10 +49,10 @@
 
 ## Files
 
-- [MainView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/MainView.swift)
-- [ToolbarSpectrumView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/ToolbarSpectrumView.swift)
-- [SPCPlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/SPCPlaybackEngine.swift)
-- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlayerViewModel.swift)
-- [OptionsView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/OptionsView.swift)
-- [AppSessionPersistence.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/AppSessionPersistence.swift)
-- [SPCBoyTests.swift](/Users/john/Documents/Code/CocoaSpice/Tests/SPCBoyTests/SPCBoyTests.swift)
+- [MainView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
+- [ToolbarSpectrumView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/ToolbarSpectrumView.swift)
+- [SPCPlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/SPCPlaybackEngine.swift)
+- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
+- [OptionsView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/OptionsView.swift)
+- [AppSessionPersistence.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/AppSessionPersistence.swift)
+- [CocoaSpiceTests.swift](/Users/john/Documents/Code/CocoaSpice/Tests/CocoaSpiceTests/CocoaSpiceTests.swift)

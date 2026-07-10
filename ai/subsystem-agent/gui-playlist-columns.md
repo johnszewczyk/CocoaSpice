@@ -24,6 +24,6 @@
 
 ## Files
 
-- [PlaylistTableView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlaylistTableView.swift)
-- [PlaylistTableAutoSizer.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlaylistTableAutoSizer.swift)
-- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlayerViewModel.swift)
+- [PlaylistTableView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaylistTableView.swift)
+- [PlaylistTableAutoSizer.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaylistTableAutoSizer.swift)
+- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)

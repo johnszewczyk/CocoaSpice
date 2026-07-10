@@ -1,7 +1,7 @@
 import SwiftUI
 
 @main
-struct SPCBoyApp: App {
+struct CocoaSpiceApp: App {
     @State private var model = PlayerViewModel()
 
     init() {
@@ -28,7 +28,7 @@ struct SPCBoyApp: App {
         .windowToolbarStyle(.unified(showsTitle: false))
         .defaultSize(width: 1100, height: 720)
         .commands {
-            SPCBoyCommands(model: model)
+            CocoaSpiceCommands(model: model)
         }
 
         Settings {
@@ -38,7 +38,7 @@ struct SPCBoyApp: App {
     }
 }
 
-private struct SPCBoyCommands: Commands {
+private struct CocoaSpiceCommands: Commands {
     @Bindable var model: PlayerViewModel
     @Environment(\.openSettings) private var openSettings
 

@@ -30,9 +30,9 @@
 
 ## Files
 
-- [PlaybackDecoderRouting.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlaybackDecoderRouting.swift)
-- [SPCPlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/SPCPlaybackEngine.swift)
-- [GMEFormatSupport.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/GMEFormatSupport.swift)
+- [PlaybackDecoderRouting.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackDecoderRouting.swift)
+- [SPCPlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/SPCPlaybackEngine.swift)
+- [GMEFormatSupport.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/GMEFormatSupport.swift)
 - [libvgm_bridge.h](/Users/john/Documents/Code/CocoaSpice/Sources/CLibVGM/include/libvgm_bridge.h)
 - [libvgm_bridge.cpp](/Users/john/Documents/Code/CocoaSpice/Sources/CLibVGM/libvgm_bridge.cpp)
 - [highlycomplete_bridge.h](/Users/john/Documents/Code/CocoaSpice/Sources/CHighlyComplete/include/highlycomplete_bridge.h)

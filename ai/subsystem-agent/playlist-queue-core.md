@@ -31,8 +31,8 @@
 
 ## Files
 
-- [PlaylistTableView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlaylistTableView.swift)
-- [PlaylistM3UCodec.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlaylistM3UCodec.swift)
-- [PlaylistQueueLoader.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlaylistQueueLoader.swift)
-- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlayerViewModel.swift)
-- [LibraryModels.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/LibraryModels.swift)
+- [PlaylistTableView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaylistTableView.swift)
+- [PlaylistM3UCodec.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaylistM3UCodec.swift)
+- [PlaylistQueueLoader.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaylistQueueLoader.swift)
+- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
+- [LibraryModels.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryModels.swift)

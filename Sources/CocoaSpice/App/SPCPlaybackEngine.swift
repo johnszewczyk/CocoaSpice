@@ -7,7 +7,7 @@ final class SPCPlaybackEngine: @unchecked Sendable {
     private let channels: AVAudioChannelCount = 2
     private let chunkFrameCount = 4_096
     private let maxQueuedBuffers = 3
-    private let queue = DispatchQueue(label: "SPCBoy.playback", qos: .userInitiated)
+    private let queue = DispatchQueue(label: "CocoaSpice.playback", qos: .userInitiated)
     private let engine = AVAudioEngine()
     private let player = AVAudioPlayerNode()
     private let requestLock = NSLock()

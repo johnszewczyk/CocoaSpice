@@ -30,7 +30,7 @@
 
 ## Files
 
-- [SPCPlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/SPCPlaybackEngine.swift)
-- [PlaybackTimingPolicy.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlaybackTimingPolicy.swift)
-- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlayerViewModel.swift)
-- [OptionsView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/OptionsView.swift)
+- [SPCPlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/SPCPlaybackEngine.swift)
+- [PlaybackTimingPolicy.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackTimingPolicy.swift)
+- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
+- [OptionsView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/OptionsView.swift)

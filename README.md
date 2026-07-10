@@ -1,6 +1,6 @@
-# SPCBoy
+# CocoaSpice
 
-`SPCBoy` is a native macOS game-music player built with SwiftUI, `AVAudioEngine`, `libgme`, `libvgm`, and `Highly Complete`.
+`CocoaSpice` is a native macOS game-music player built with SwiftUI, `AVAudioEngine`, `libgme`, `libvgm`, and `Highly Complete`.
 
 ## Layout
 
@@ -36,12 +36,12 @@ By default it will look for the library at:
 Override that path for a launch with:
 
 ```bash
-SPCBOY_LIBRARY_ROOT="/path/to/spcsets_extracted" ./launch.sh
+COCOASPICE_LIBRARY_ROOT="/path/to/spcsets_extracted" ./launch.sh
 ```
 
 ## Notes
 
-- `libgme` is bundled into `dist/SPCBoy.app/Contents/Frameworks`
+- `libgme` is bundled into `dist/CocoaSpice.app/Contents/Frameworks`
 - `libvgm` is vendored under `vendor/libvgm` and built statically into the app during `./build.sh`
 - `Highly Complete` is provided by a local bridge target backed by vendored `mGBA` plus `psflib`
 - the build currently expects Homebrew `game-music-emu` at `/opt/homebrew`

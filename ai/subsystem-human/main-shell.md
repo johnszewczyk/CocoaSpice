@@ -16,5 +16,5 @@
 
 ## Files
 
-- [MainView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/MainView.swift)
-- [SPCPlayerApp.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/SPCPlayerApp.swift)
+- [MainView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
+- [SPCPlayerApp.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/SPCPlayerApp.swift)

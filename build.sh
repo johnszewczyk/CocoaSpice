@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BUILD_DIR="$ROOT_DIR/.build"
 DIST_DIR="$ROOT_DIR/dist"
-APP_NAME="SPCBoy"
+APP_NAME="CocoaSpice"
 CONFIGURATION="${1:-debug}"
 APP_DIR="$DIST_DIR/$APP_NAME.app"
 LIBGME_SOURCE="/opt/homebrew/lib/libgme.0.dylib"
@@ -41,7 +41,7 @@ swift build \
   --configuration "$CONFIGURATION" \
   --scratch-path "$BUILD_DIR"
 
-STAGING_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/SPCBoy-bundle.XXXXXX")"
+STAGING_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/CocoaSpice-bundle.XXXXXX")"
 trap 'rm -rf "$STAGING_ROOT"' EXIT
 
 STAGING_APP_DIR="$STAGING_ROOT/$APP_NAME.app"

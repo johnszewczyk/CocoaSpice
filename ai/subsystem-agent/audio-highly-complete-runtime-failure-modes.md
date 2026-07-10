@@ -32,7 +32,7 @@
 ## Files
 
 - [Package.swift](/Users/john/Documents/Code/CocoaSpice/Package.swift)
-- [PlaybackDecoderRouting.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlaybackDecoderRouting.swift)
+- [PlaybackDecoderRouting.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackDecoderRouting.swift)
 - [highlycomplete_bridge.cpp](/Users/john/Documents/Code/CocoaSpice/Sources/CHighlyComplete/highlycomplete_bridge.cpp)
 - [audio-highly-complete-bridge-lifecycle.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-bridge-lifecycle.md)
 - [audio-highly-complete-minigsf-timing.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-minigsf-timing.md)

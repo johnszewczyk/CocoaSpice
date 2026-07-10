@@ -10,12 +10,12 @@ let libMGBABuildDirectory = "\(rootPath)/.build/mgba"
 let libMGBAVendorDirectory = "\(rootPath)/vendor/mgba"
 
 let package = Package(
-    name: "SPCBoy",
+    name: "CocoaSpice",
     platforms: [
         .macOS(.v26)
     ],
     products: [
-        .executable(name: "SPCBoy", targets: ["SPCBoy"])
+        .executable(name: "CocoaSpice", targets: ["CocoaSpice"])
     ],
     targets: [
         .target(
@@ -79,7 +79,7 @@ let package = Package(
             ]
         ),
         .executableTarget(
-            name: "SPCBoy",
+            name: "CocoaSpice",
             dependencies: ["CGME", "CLibVGM", "CHighlyComplete"],
             linkerSettings: [
                 .linkedFramework("AppKit"),
@@ -92,8 +92,8 @@ let package = Package(
             ]
         ),
         .testTarget(
-            name: "SPCBoyTests",
-            dependencies: ["SPCBoy"]
+            name: "CocoaSpiceTests",
+            dependencies: ["CocoaSpice"]
         )
     ],
     swiftLanguageModes: [.v6]

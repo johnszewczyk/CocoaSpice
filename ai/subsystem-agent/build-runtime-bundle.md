@@ -21,9 +21,9 @@
 - `build.sh` also runs `scripts/build-mgba.sh` so the vendored `mGBA` archive exists when SwiftPM links the `Highly Complete` backend.
 - `build.sh` stages the `.app` in a temporary directory outside the project tree, copies `libgme.0.dylib` into the bundle, rewrites install names, clears recursive macOS extended attributes before and after signing, then copies the verified bundle back into `dist/`.
 - `launch.sh` invokes `build.sh` before launch.
-- `launch.sh` writes app stdout or stderr to `/tmp/SPCBoy.log`.
-- `launch.sh` exports `SPCBOY_LIBRARY_ROOT`, defaulting to the sibling `spcsets_extracted` path when unset.
-- Launch restores prior user state first, then falls back to `SPCBOY_LIBRARY_ROOT` only when the launch helper provides it.
+- `launch.sh` writes app stdout or stderr to `/tmp/CocoaSpice.log`.
+- `launch.sh` exports `COCOASPICE_LIBRARY_ROOT`, defaulting to the sibling `spcsets_extracted` path when unset.
+- Launch restores prior user state first, then falls back to `COCOASPICE_LIBRARY_ROOT` only when the launch helper provides it.
 
 ## Rules
 

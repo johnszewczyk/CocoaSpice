@@ -977,7 +977,7 @@ final class LibraryDatabase {
 
     private static func applicationSupportDirectory() throws -> URL {
         let base = try FileManager.default.url(for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true)
-        return base.appendingPathComponent("SPCBoy", isDirectory: true)
+        return base.appendingPathComponent("CocoaSpice", isDirectory: true)
     }
 
     private static func databaseError(handle: OpaquePointer?) -> NSError {

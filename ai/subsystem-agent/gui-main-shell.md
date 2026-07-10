@@ -29,7 +29,7 @@
 
 ## Files
 
-- [MainView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/MainView.swift)
+- [MainView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
 - [gui-toolbar-spectrum-analyzer.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/gui-toolbar-spectrum-analyzer.md)
-- [SPCPlayerApp.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/SPCPlayerApp.swift)
-- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlayerViewModel.swift)
+- [SPCPlayerApp.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/SPCPlayerApp.swift)
+- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)

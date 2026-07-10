@@ -33,10 +33,10 @@
 
 ## Files
 
-- [PlaybackDecoderRouting.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlaybackDecoderRouting.swift)
-- [SPCPlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/SPCPlaybackEngine.swift)
-- [AudioExportAAC.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/AudioExportAAC.swift)
-- [AudioExportProgressWindow.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/AudioExportProgressWindow.swift)
-- [SPCModels.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/SPCModels.swift)
-- [PlaylistTableView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlaylistTableView.swift)
-- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlayerViewModel.swift)
+- [PlaybackDecoderRouting.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackDecoderRouting.swift)
+- [SPCPlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/SPCPlaybackEngine.swift)
+- [AudioExportAAC.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/AudioExportAAC.swift)
+- [AudioExportProgressWindow.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/AudioExportProgressWindow.swift)
+- [SPCModels.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/SPCModels.swift)
+- [PlaylistTableView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaylistTableView.swift)
+- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)

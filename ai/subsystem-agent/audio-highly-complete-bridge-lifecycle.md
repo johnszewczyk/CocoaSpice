@@ -16,7 +16,7 @@
 - Playback, seek, and metadata access stay behind the C bridge API exposed by
   [highlycomplete_bridge.h](/Users/john/Documents/Code/CocoaSpice/Sources/CHighlyComplete/include/highlycomplete_bridge.h).
 - Swift serializes all `Highly Complete` bridge entry points behind a single lock in
-  [PlaybackDecoderRouting.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlaybackDecoderRouting.swift)
+  [PlaybackDecoderRouting.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackDecoderRouting.swift)
   because rapid concurrent inspect or create or render activity can destabilize this backend even when other decoders remain fine.
 
 ## Critical Notes
@@ -40,7 +40,7 @@
 
 ## Files
 
-- [PlaybackDecoderRouting.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlaybackDecoderRouting.swift)
+- [PlaybackDecoderRouting.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackDecoderRouting.swift)
 - [highlycomplete_bridge.h](/Users/john/Documents/Code/CocoaSpice/Sources/CHighlyComplete/include/highlycomplete_bridge.h)
 - [highlycomplete_bridge.cpp](/Users/john/Documents/Code/CocoaSpice/Sources/CHighlyComplete/highlycomplete_bridge.cpp)
 - [psflib.h](/Users/john/Documents/Code/CocoaSpice/Sources/CHighlyComplete/third_party/psflib/psflib.h)
