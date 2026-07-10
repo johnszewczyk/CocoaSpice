@@ -23,7 +23,7 @@ struct OptionsView: View {
     }
 
     private let windowBackground = Color(red: 30 / 255, green: 30 / 255, blue: 30 / 255)
-    private let sidebarBackground = Color(red: 36 / 255, green: 36 / 255, blue: 36 / 255)
+    private let sidebarBackground = Color(red: 20 / 255, green: 20 / 255, blue: 20 / 255)
     private let panelBackground = Color(red: 40 / 255, green: 40 / 255, blue: 40 / 255)
 
     var body: some View {
@@ -45,6 +45,8 @@ struct OptionsView: View {
             .padding(.vertical, 8)
             .frame(minWidth: 184, idealWidth: 184, maxWidth: 184, maxHeight: .infinity, alignment: .topLeading)
             .background(sidebarBackground)
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .padding(8)
 
             Divider()
 
