@@ -4,6 +4,7 @@ import SwiftUI
 struct OptionsView: View {
     @Bindable var model: PlayerViewModel
     @State private var longPlayTimeText = ""
+    @State private var sidebarFontSizeText = "11"
     @State private var selection: OptionsSection = .playback
 
     private enum OptionsSection: String, CaseIterable, Identifiable {
@@ -83,6 +84,7 @@ struct OptionsView: View {
         .frame(width: 900, height: 600)
         .onAppear {
             longPlayTimeText = Self.formatTime(model.manualPreFadeSeconds)
+            sidebarFontSizeText = Self.formatFontSize(model.databaseSidebarFontSize)
         }
         .onDisappear {
             model.savePreferencesNow()
@@ -156,17 +158,47 @@ struct OptionsView: View {
             }
 
             sectionCard(title: "Sidebar") {
-                Picker("Database text size", selection: $model.databaseSidebarFontSize) {
-                    ForEach([10.0, 11.0, 12.0, 13.0, 14.0, 16.0], id: \.self) { size in
-                        Text("(Int(size)) pt")
-                            .tag(CGFloat(size))
-                    }
-                }
-                .pickerStyle(.menu)
-
                 Text("Controls the game list text in the main database sidebar.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+
+                HStack {
+                    Text("Font size")
+                    Spacer()
+                    TextField("11", text: $sidebarFontSizeText)
+                        .textFieldStyle(.plain)
+                        .multilineTextAlignment(.trailing)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(width: 72)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.08)))
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white.opacity(0.12), lineWidth: 1))
+                        .onSubmit(applySidebarFontSizeText)
+                    Text("pt")
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack {
+                    Text("Text color")
+                    Spacer()
+                    Picker("Text color", selection: $model.databaseSidebarTextColor) {
+                        ForEach(PlayerViewModel.DatabaseSidebarTextColor.allCases) { color in
+                            Text(color.title).tag(color)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                }
+
+                HStack {
+                    Spacer()
+                    Button("Reset") {
+                        model.databaseSidebarFontSize = 11
+                        model.databaseSidebarTextColor = .secondary
+                        sidebarFontSizeText = "11"
+                    }
+                }
             }
         }
     }
@@ -296,6 +328,16 @@ struct OptionsView: View {
         model.manualPreFadeSeconds = max(30, parsedSeconds)
         model.handleManualPlaySecondsChanged()
         longPlayTimeText = Self.formatTime(model.manualPreFadeSeconds)
+    }
+
+    private func applySidebarFontSizeText() {
+        let parsed = Double(sidebarFontSizeText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 11
+        model.databaseSidebarFontSize = min(max(CGFloat(parsed), 10), 16)
+        sidebarFontSizeText = Self.formatFontSize(model.databaseSidebarFontSize)
+    }
+
+    private static func formatFontSize(_ size: CGFloat) -> String {
+        size == size.rounded() ? String(Int(size)) : String(format: "%.1f", size)
     }
 
     private static func formatTime(_ totalSeconds: Int) -> String {

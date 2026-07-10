@@ -315,7 +315,7 @@ private struct DatabaseGameListView: NSViewRepresentable {
                 textField.translatesAutoresizingMaskIntoConstraints = false
                 textField.font = .systemFont(ofSize: 11)
                 textField.lineBreakMode = .byTruncatingTail
-                textField.textColor = .secondaryLabelColor
+                textField.textColor = sidebarTextColor(model.databaseSidebarTextColor)
                 cell.textField = textField
                 cell.addSubview(textField)
 
@@ -330,8 +330,16 @@ private struct DatabaseGameListView: NSViewRepresentable {
 
             cell.textField?.stringValue = item.displayName
             cell.textField?.font = .systemFont(ofSize: model.databaseSidebarFontSize)
-            cell.textField?.textColor = .secondaryLabelColor
+            cell.textField?.textColor = sidebarTextColor(model.databaseSidebarTextColor)
             return cell
+        }
+
+        private func sidebarTextColor(_ color: PlayerViewModel.DatabaseSidebarTextColor) -> NSColor {
+            switch color {
+            case .secondary: .secondaryLabelColor
+            case .primary: .labelColor
+            case .tertiary: .tertiaryLabelColor
+            }
         }
 
         func tableViewSelectionDidChange(_ notification: Notification) {

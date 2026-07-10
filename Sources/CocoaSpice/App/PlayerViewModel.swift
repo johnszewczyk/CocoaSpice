@@ -22,6 +22,22 @@ final class PlayerViewModel {
         }
     }
 
+    enum DatabaseSidebarTextColor: String, CaseIterable, Identifiable {
+        case secondary
+        case primary
+        case tertiary
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .secondary: "Secondary"
+            case .primary: "Primary"
+            case .tertiary: "Tertiary"
+            }
+        }
+    }
+
     enum PlaylistSortColumn: String, CaseIterable, Identifiable {
         case index
         case file
@@ -66,6 +82,7 @@ final class PlayerViewModel {
         }
     }
     var databaseSidebarFontSize: CGFloat = 11
+    var databaseSidebarTextColor: DatabaseSidebarTextColor = .secondary
     var playlistSearchText: String = "" {
         didSet {
             scheduleVisiblePlaylistRefresh()
@@ -742,6 +759,7 @@ final class PlayerViewModel {
             sidebarDoubleClickActionRawValue: sidebarDoubleClickAction.rawValue,
             lastAudioExportDirectoryPath: lastAudioExportDirectoryURL?.path,
             databaseSidebarFontSize: databaseSidebarFontSize
+            ,databaseSidebarTextColor: databaseSidebarTextColor.rawValue
         )
     }
 
@@ -1622,6 +1640,9 @@ final class PlayerViewModel {
         }
         if let storedSidebarFontSize = preferences.databaseSidebarFontSize {
             databaseSidebarFontSize = min(max(CGFloat(storedSidebarFontSize), 10), 16)
+        }
+        if let storedSidebarTextColor = preferences.databaseSidebarTextColor.flatMap(DatabaseSidebarTextColor.init(rawValue:)) {
+            databaseSidebarTextColor = storedSidebarTextColor
         }
         if let storedSortColumn = preferences.playlistSortColumnRawValue.flatMap(PlaylistSortColumn.init(rawValue:)) {
             playlistSortColumn = storedSortColumn
