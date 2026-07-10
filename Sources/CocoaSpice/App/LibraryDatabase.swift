@@ -16,9 +16,13 @@ final class LibraryDatabase {
             .deletingLastPathComponent()
             .appendingPathComponent("SPCBoy", isDirectory: true)
             .appendingPathComponent("Library.sqlite", isDirectory: false)
-        if !FileManager.default.fileExists(atPath: dbURL.path),
-           FileManager.default.fileExists(atPath: legacyURL.path) {
-            try FileManager.default.copyItem(at: legacyURL, to: dbURL)
+        if FileManager.default.fileExists(atPath: legacyURL.path),
+           !Self.databaseHasRoots(at: dbURL),
+           Self.databaseHasRoots(at: legacyURL) {
+            if FileManager.default.fileExists(atPath: dbURL.path) {
+                try FileManager.default.removeItem(at: dbURL)
+            }
+            try FileManager.default.moveItem(at: legacyURL, to: dbURL)
         }
         self.dbURL = dbURL
 
@@ -991,6 +995,24 @@ final class LibraryDatabase {
     private static func databaseError(handle: OpaquePointer?) -> NSError {
         let message = handle.flatMap { String(cString: sqlite3_errmsg($0)) } ?? "Unknown SQLite error"
         return NSError(domain: "LibraryDatabase", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+    }
+
+    private static func databaseHasRoots(at url: URL) -> Bool {
+        guard FileManager.default.fileExists(atPath: url.path) else { return false }
+
+        var handle: OpaquePointer?
+        guard sqlite3_open_v2(url.path, &handle, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
+            sqlite3_close(handle)
+            return false
+        }
+        defer { sqlite3_close(handle) }
+
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(handle, "SELECT 1 FROM library_roots LIMIT 1;", -1, &statement, nil) == SQLITE_OK else {
+            return false
+        }
+        defer { sqlite3_finalize(statement) }
+        return sqlite3_step(statement) == SQLITE_ROW
     }
 }
 

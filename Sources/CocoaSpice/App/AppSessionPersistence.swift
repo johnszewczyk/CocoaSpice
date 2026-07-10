@@ -74,6 +74,7 @@ enum AppSessionPersistence {
                 continue
             }
             defaults.set(legacyValue, forKey: currentKey)
+            defaults.removeObject(forKey: legacyKey)
         }
     }
 
