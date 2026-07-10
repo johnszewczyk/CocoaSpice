@@ -1,0 +1,4 @@
+[submodule "vendor/libvgm"]
+	path = vendor/libvgm
+	url = https://github.com/ValleyBell/libvgm.git
+

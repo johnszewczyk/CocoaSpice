@@ -1,0 +1,40 @@
+# Audio Playback Backend Routing
+
+## Scope
+
+- Which decoder backend owns which file types.
+- How streamed playback stays backend-agnostic above the decoder layer.
+- The current `libgme`, `libvgm`, and `Highly Complete` split.
+
+## Current State
+
+- `SPCPlaybackEngine` now builds a decoder through a backend-routing factory rather than instantiating `libgme` directly.
+- `libgme` remains the backend for container and dump formats such as `spc`, `nsf`, `nsfe`, `gbs`, `hes`, `kss`, `sap`, and `ay`.
+- `libvgm` now owns `vgm`, `vgz`, `gym`, and `s98`.
+- `Highly Complete` now owns `gsf` and `minigsf`.
+- File inspection and playback share the same backend-routing table, so scan results, playlist import, and playback no longer disagree about VGM-family ownership.
+- `libvgm` is wrapped behind a small C bridge target so the Swift app can stay mostly ignorant of C++ details.
+- `Highly Complete` is also wrapped behind a local native bridge target, using `psflib` plus a headless `mGBA` core for GBA-audio execution.
+- The Swift wrapper serializes `Highly Complete` bridge calls behind a dedicated gate because this backend has stricter runtime-safety constraints than the others.
+- `Highly Complete` also performs native-rate to output-rate resampling for `minigsf` and `gsf` so GBA titles can feed the shared fixed-rate playback engine correctly.
+- Long Play policy is still selected above the decoder by extension profile, not by backend capability negotiation.
+- `libvgm` currently relies on app-side fade shaping for bounded manual playback because the app still owns the final playback cap.
+
+## Rules
+
+- Keep backend routing centralized; do not re-encode extension decisions in UI or playlist code.
+- Keep file intake policy, decoder routing, and Long Play policy as separate concerns.
+- Prefer adding new decoder backends under the existing playback abstractions instead of branching the view model.
+- Treat `Highly Complete` as a real backend subsystem, not as a one-off `minigsf` exception.
+- Do not assume all decoder backends share identical threading or sample-rate behavior.
+
+## Files
+
+- [PlaybackDecoderRouting.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlaybackDecoderRouting.swift)
+- [SPCPlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/SPCPlaybackEngine.swift)
+- [GMEFormatSupport.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/GMEFormatSupport.swift)
+- [libvgm_bridge.h](/Users/john/Documents/Code/CocoaSpice/Sources/CLibVGM/include/libvgm_bridge.h)
+- [libvgm_bridge.cpp](/Users/john/Documents/Code/CocoaSpice/Sources/CLibVGM/libvgm_bridge.cpp)
+- [highlycomplete_bridge.h](/Users/john/Documents/Code/CocoaSpice/Sources/CHighlyComplete/include/highlycomplete_bridge.h)
+- [highlycomplete_bridge.cpp](/Users/john/Documents/Code/CocoaSpice/Sources/CHighlyComplete/highlycomplete_bridge.cpp)
+- [audio-highly-complete-gsf-backend.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-gsf-backend.md)

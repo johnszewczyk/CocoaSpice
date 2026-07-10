@@ -1,0 +1,5 @@
+module CGME [system] {
+    header "shim.h"
+    link "gme"
+    export *
+}

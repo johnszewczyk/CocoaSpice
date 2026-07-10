@@ -1,0 +1,34 @@
+# Playlist
+
+## Display
+
+- Display: file metadata in a headed table.
+- Columns: transport, index, file, title, game, author, system, and length.
+- Columns: missing metadata falls back to useful file or folder text.
+- Columns: drag-and-drop resize.
+- Columns: double-click a divider to auto-size to current content.
+
+## Selection
+
+- Selection: standard Shift and Command multi-selection.
+- Selection: selected rows can be dragged together.
+
+## Activation
+
+- Rows: double-click starts playback.
+- Rows: Return starts playback of the primary selected row.
+- Rows: transport button plays or stops the row.
+- Queue: cut, paste, delete, move, and drag-reorder.
+- Files: Finder drops add supported files, folders, and ZIP archives.
+- Playlists: dropping an `.m3u` appends its playable entries to the current queue.
+- Playlists: `Open Playlist…` and opening an `.m3u` from Finder replace the current queue.
+
+## Persistence
+
+- Playlists: save and load as `.m3u`.
+- Playlists: preserve multi-track identity.
+
+## Files
+
+- [PlaylistTableView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlaylistTableView.swift)
+- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/SPCBoy/App/PlayerViewModel.swift)
