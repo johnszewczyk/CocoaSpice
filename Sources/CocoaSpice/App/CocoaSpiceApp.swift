@@ -36,7 +36,7 @@ struct CocoaSpiceApp: App {
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
-        .defaultSize(width: 720, height: 640)
+        .defaultSize(width: 900, height: 640)
     }
 }
 
