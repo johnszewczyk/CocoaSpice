@@ -22,28 +22,49 @@ struct OptionsView: View {
         }
     }
 
-    private let windowBackground = Color(nsColor: .windowBackgroundColor)
+    private let windowBackground = Color(red: 30 / 255, green: 30 / 255, blue: 30 / 255)
+    private let sidebarBackground = Color(red: 36 / 255, green: 36 / 255, blue: 36 / 255)
+    private let panelBackground = Color(red: 40 / 255, green: 40 / 255, blue: 40 / 255)
 
     var body: some View {
-        NavigationSplitView {
-            List(Section.allCases, selection: $selection) { section in
-                Label(section.rawValue, systemImage: section.systemImage)
-                    .tag(section)
+        HStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Options")
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 18)
+                    .padding(.bottom, 10)
+
+                ForEach(Section.allCases) { section in
+                    sidebarItem(section)
+                }
+
+                Spacer()
             }
-            .listStyle(.sidebar)
-            .navigationTitle("Options")
-            .frame(minWidth: 170)
-        } detail: {
+            .padding(.vertical, 8)
+            .frame(minWidth: 184, idealWidth: 184, maxWidth: 184, maxHeight: .infinity, alignment: .topLeading)
+            .background(sidebarBackground)
+
+            Divider()
+
             VStack(spacing: 0) {
+                HStack {
+                    Text(selection.rawValue)
+                        .font(.title3.weight(.semibold))
+                        .foregroundStyle(.white)
+                    Spacer()
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 18)
+                .padding(.bottom, 4)
+
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         switch selection {
-                        case .playback:
-                            playbackPage
-                        case .interface:
-                            interfacePage
-                        case .database:
-                            databasePage
+                        case .playback: playbackPage
+                        case .interface: interfacePage
+                        case .database: databasePage
                         }
                     }
                     .padding(20)
@@ -51,13 +72,9 @@ struct OptionsView: View {
 
                 if selection == .database {
                     Divider()
-
                     HStack {
-                        Button("Rescan Enabled Paths") {
-                            model.rescanEnabledLibraryRoots()
-                        }
-                        .keyboardShortcut(.defaultAction)
-
+                        Button("Rescan Enabled Paths") { model.rescanEnabledLibraryRoots() }
+                            .keyboardShortcut(.defaultAction)
                         if let libraryScanStatus = model.libraryScanStatus, !libraryScanStatus.isEmpty {
                             Text(libraryScanStatus)
                                 .font(.system(size: 11))
@@ -65,7 +82,6 @@ struct OptionsView: View {
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                         }
-
                         Spacer()
                     }
                     .padding(.horizontal, 20)
@@ -73,7 +89,6 @@ struct OptionsView: View {
                 }
             }
             .background(windowBackground)
-            .navigationTitle(selection.rawValue)
         }
         .frame(minWidth: 640, minHeight: 480)
         .onAppear {
@@ -90,13 +105,34 @@ struct OptionsView: View {
         }
     }
 
+    private func sidebarItem(_ section: Section) -> some View {
+        Button {
+            selection = section
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: section.systemImage)
+                    .frame(width: 20, alignment: .center)
+                Text(section.rawValue)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .font(.system(size: 13, weight: selection == section ? .semibold : .regular))
+            .foregroundStyle(selection == section ? .white : .secondary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .background(selection == section ? Color.white.opacity(0.12) : .clear)
+            .clipShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 8)
+    }
+
     private var playbackPage: some View {
         VStack(alignment: .leading, spacing: 16) {
             sectionCard(title: "Long Play") {
                 HStack(spacing: 12) {
                     Toggle(isOn: $model.longPlayEnabled) {
                         Text("Enable extended playback")
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(.white)
                     }
                     .toggleStyle(.checkbox)
                     .onChange(of: model.longPlayEnabled) { _, _ in
@@ -108,7 +144,7 @@ struct OptionsView: View {
                     TextField("0:00", text: $longPlayTimeText)
                         .textFieldStyle(.plain)
                         .multilineTextAlignment(.trailing)
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(.white)
                         .font(.system(.body, design: .monospaced))
                         .frame(width: 72)
                         .padding(.horizontal, 10)
@@ -141,11 +177,11 @@ struct OptionsView: View {
 
                     HStack(spacing: 16) {
                         ColorPicker("Base", selection: colorBinding(for: \.spectrumGradientStartColor), supportsOpacity: false)
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(.white)
                         ColorPicker("Peak", selection: colorBinding(for: \.spectrumGradientEndColor), supportsOpacity: false)
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(.white)
                         ColorPicker("Cap", selection: colorBinding(for: \.spectrumPeakColor), supportsOpacity: false)
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(.white)
                     }
                 }
             }
@@ -157,7 +193,7 @@ struct OptionsView: View {
             sectionCard(title: "Library Paths") {
                 HStack(alignment: .firstTextBaseline) {
                     Text("Music Scan Roots")
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(.white)
                     Spacer()
                     Button("Add Folders…") {
                         model.chooseLibraryScanRoots()
@@ -188,7 +224,7 @@ struct OptionsView: View {
                 )) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Playlist Follows Cursor")
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(.white)
                         Text("Selecting a folder immediately replaces the current playlist with that folder.")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
@@ -202,7 +238,7 @@ struct OptionsView: View {
                 )) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Double-Click Enqueues")
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(.white)
                         Text("Double-click only adds items to the playlist.")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
@@ -222,10 +258,15 @@ struct OptionsView: View {
 
     @ViewBuilder
     private func sectionCard<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        GroupBox(title) {
+        VStack(alignment: .leading, spacing: 14) {
+            Text(title)
+                .font(.headline)
+                .foregroundStyle(.white)
             content()
-                .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10).fill(panelBackground))
     }
 
     @ViewBuilder
@@ -243,7 +284,7 @@ struct OptionsView: View {
                 .toggleStyle(.checkbox)
 
                 Text(model.libraryScanRootStatusText(root))
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(.white)
                     .lineLimit(1)
 
                 Spacer()
