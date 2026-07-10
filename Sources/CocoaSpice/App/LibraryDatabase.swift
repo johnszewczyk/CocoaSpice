@@ -12,6 +12,14 @@ final class LibraryDatabase {
         let supportURL = try Self.applicationSupportDirectory()
         try FileManager.default.createDirectory(at: supportURL, withIntermediateDirectories: true)
         let dbURL = supportURL.appendingPathComponent("Library.sqlite", isDirectory: false)
+        let legacyURL = supportURL
+            .deletingLastPathComponent()
+            .appendingPathComponent("SPCBoy", isDirectory: true)
+            .appendingPathComponent("Library.sqlite", isDirectory: false)
+        if !FileManager.default.fileExists(atPath: dbURL.path),
+           FileManager.default.fileExists(atPath: legacyURL.path) {
+            try FileManager.default.copyItem(at: legacyURL, to: dbURL)
+        }
         self.dbURL = dbURL
 
         var handle: OpaquePointer?

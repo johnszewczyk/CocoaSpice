@@ -251,6 +251,25 @@ import Testing
     #expect(unifiedPreferences.spectrumPeakColor == "0.400000,0.500000,0.600000,1.000000")
 }
 
+@Test func legacyPreferencesMigrateToCocoaSpiceKeys() {
+    let suiteName = "CocoaSpiceTests.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        Issue.record("Failed to create isolated UserDefaults suite")
+        return
+    }
+    defaults.removePersistentDomain(forName: suiteName)
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    defaults.set("/tmp/music", forKey: "SPCBoy.lastRootPath")
+    defaults.set(true, forKey: "SPCBoy.longPlayEnabled")
+    defaults.set("already-current", forKey: AppDefaultsKey.lastRootPath)
+
+    AppSessionPersistence.migrateLegacyPreferences(defaults: defaults)
+
+    #expect(defaults.string(forKey: AppDefaultsKey.lastRootPath) == "already-current")
+    #expect(defaults.bool(forKey: AppDefaultsKey.longPlayEnabled))
+}
+
 @Test func spectrumColorSerializationRoundTrips() {
     let color = NSColor(
         red: 0.25,

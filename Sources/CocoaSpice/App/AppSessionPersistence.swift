@@ -53,6 +53,30 @@ struct RestoredPlaylistColumnState {
 }
 
 enum AppSessionPersistence {
+    private static let legacyPrefix = "SPCBoy."
+
+    static func migrateLegacyPreferences(defaults: UserDefaults = .standard) {
+        let keys = [
+            "lastRootPath", "lastSelectedFolderPath", "lastLibrarySelectedFolderPath",
+            "sidebarSearchText", "playlistSearchText", "longPlayEnabled", "manualPreFadeSeconds",
+            "spectrumGradientStartColor", "spectrumGradientEndColor", "spectrumPeakColor",
+            "sidebarDoubleClickAction", "playlistFollowsCursor", "lastAudioExportDirectoryPath",
+            "playlistSortColumn", "playlistSortDirection", "persistedPlaylistPaths",
+            "persistedSelectedTrackPath", "persistedCurrentTrackPath", "playlistColumnOrder",
+            "playlistColumnVisibility", "playlistColumnWidths"
+        ]
+
+        for suffix in keys {
+            let legacyKey = legacyPrefix + suffix
+            let currentKey = "CocoaSpice." + suffix
+            guard defaults.object(forKey: currentKey) == nil,
+                  let legacyValue = defaults.object(forKey: legacyKey) else {
+                continue
+            }
+            defaults.set(legacyValue, forKey: currentKey)
+        }
+    }
+
     static func restorePlaybackPreferences(defaults: UserDefaults = .standard) -> RestoredPlaybackPreferences {
         return RestoredPlaybackPreferences(
             longPlayEnabled: defaults.bool(forKey: AppDefaultsKey.longPlayEnabled),

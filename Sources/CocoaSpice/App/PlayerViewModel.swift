@@ -207,6 +207,7 @@ final class PlayerViewModel {
     }
 
     init() {
+        AppSessionPersistence.migrateLegacyPreferences()
         libraryDatabase = try? LibraryDatabase()
         toolbarSpectrum.gradientStartColor = spectrumGradientStartColor
         toolbarSpectrum.gradientEndColor = spectrumGradientEndColor

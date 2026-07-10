@@ -22,8 +22,7 @@ struct OptionsView: View {
         }
     }
 
-    private let windowBackground = Color(red: 30 / 255, green: 30 / 255, blue: 30 / 255)
-    private let panelBackground = Color(red: 40 / 255, green: 40 / 255, blue: 40 / 255)
+    private let windowBackground = Color(nsColor: .windowBackgroundColor)
 
     var body: some View {
         NavigationSplitView {
@@ -97,7 +96,7 @@ struct OptionsView: View {
                 HStack(spacing: 12) {
                     Toggle(isOn: $model.longPlayEnabled) {
                         Text("Enable extended playback")
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.primary)
                     }
                     .toggleStyle(.checkbox)
                     .onChange(of: model.longPlayEnabled) { _, _ in
@@ -109,7 +108,7 @@ struct OptionsView: View {
                     TextField("0:00", text: $longPlayTimeText)
                         .textFieldStyle(.plain)
                         .multilineTextAlignment(.trailing)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                         .font(.system(.body, design: .monospaced))
                         .frame(width: 72)
                         .padding(.horizontal, 10)
@@ -142,11 +141,11 @@ struct OptionsView: View {
 
                     HStack(spacing: 16) {
                         ColorPicker("Base", selection: colorBinding(for: \.spectrumGradientStartColor), supportsOpacity: false)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.primary)
                         ColorPicker("Peak", selection: colorBinding(for: \.spectrumGradientEndColor), supportsOpacity: false)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.primary)
                         ColorPicker("Cap", selection: colorBinding(for: \.spectrumPeakColor), supportsOpacity: false)
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.primary)
                     }
                 }
             }
@@ -158,7 +157,7 @@ struct OptionsView: View {
             sectionCard(title: "Library Paths") {
                 HStack(alignment: .firstTextBaseline) {
                     Text("Music Scan Roots")
-                        .foregroundStyle(.white)
+                        .foregroundStyle(.primary)
                     Spacer()
                     Button("Add Folders…") {
                         model.chooseLibraryScanRoots()
@@ -189,7 +188,7 @@ struct OptionsView: View {
                 )) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Playlist Follows Cursor")
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.primary)
                         Text("Selecting a folder immediately replaces the current playlist with that folder.")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
@@ -203,7 +202,7 @@ struct OptionsView: View {
                 )) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Double-Click Enqueues")
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.primary)
                         Text("Double-click only adds items to the playlist.")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
@@ -223,19 +222,10 @@ struct OptionsView: View {
 
     @ViewBuilder
     private func sectionCard<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(title)
-                .font(.headline)
-                .foregroundStyle(.white)
-
+        GroupBox(title) {
             content()
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 10)
-                .fill(panelBackground)
-        )
     }
 
     @ViewBuilder
@@ -253,7 +243,7 @@ struct OptionsView: View {
                 .toggleStyle(.checkbox)
 
                 Text(model.libraryScanRootStatusText(root))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.primary)
                     .lineLimit(1)
 
                 Spacer()
