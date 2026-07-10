@@ -31,17 +31,18 @@ struct CocoaSpiceApp: App {
             CocoaSpiceCommands(model: model)
         }
 
-        Settings {
+        Window("Options", id: "options") {
             OptionsView(model: model)
         }
         .windowStyle(.titleBar)
+        .windowToolbarStyle(.unified)
         .defaultSize(width: 720, height: 640)
     }
 }
 
 private struct CocoaSpiceCommands: Commands {
     @Bindable var model: PlayerViewModel
-    @Environment(\.openSettings) private var openSettings
+    @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
         CommandGroup(after: .newItem) {
@@ -95,12 +96,12 @@ private struct CocoaSpiceCommands: Commands {
 
         CommandGroup(replacing: .appSettings) {
             Button("Options...") {
-                if let settingsWindow = NSApp.windows.first(where: {
-                    $0.isVisible && ($0.title.lowercased().contains("settings") || $0.title.lowercased().contains("options"))
+                if let optionsWindow = NSApp.windows.first(where: {
+                    $0.isVisible && $0.title == "Options"
                 }) {
-                    settingsWindow.close()
+                    optionsWindow.close()
                 } else {
-                    openSettings()
+                    openWindow(id: "options")
                 }
             }
             .keyboardShortcut(",", modifiers: .command)
