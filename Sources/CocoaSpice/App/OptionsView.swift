@@ -23,33 +23,18 @@ struct OptionsView: View {
     }
 
     private let windowBackground = Color(red: 30 / 255, green: 30 / 255, blue: 30 / 255)
-    private let sidebarBackground = Color(red: 20 / 255, green: 20 / 255, blue: 20 / 255)
     private let panelBackground = Color(red: 40 / 255, green: 40 / 255, blue: 40 / 255)
 
     var body: some View {
-        HStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Options")
-                    .font(.headline)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 18)
-                    .padding(.bottom, 10)
-
-                ForEach(Section.allCases) { section in
-                    sidebarItem(section)
-                }
-
-                Spacer()
+        NavigationSplitView {
+            List(Section.allCases, selection: $selection) { section in
+                Label(section.rawValue, systemImage: section.systemImage)
+                    .tag(section)
             }
-            .padding(.vertical, 8)
-            .frame(minWidth: 184, idealWidth: 184, maxWidth: 184, maxHeight: .infinity, alignment: .topLeading)
-            .background(sidebarBackground)
-            .clipShape(RoundedRectangle(cornerRadius: 10))
-            .padding(8)
-
-            Divider()
-
+            .listStyle(.sidebar)
+            .navigationTitle("Options")
+            .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 240)
+        } detail: {
             VStack(spacing: 0) {
                 HStack {
                     Text(selection.rawValue)
@@ -90,7 +75,6 @@ struct OptionsView: View {
                     .padding(.vertical, 14)
                 }
             }
-            .background(windowBackground)
         }
         .frame(minWidth: 640, minHeight: 480)
         .onAppear {
@@ -105,27 +89,6 @@ struct OptionsView: View {
                 longPlayTimeText = formatted
             }
         }
-    }
-
-    private func sidebarItem(_ section: Section) -> some View {
-        Button {
-            selection = section
-        } label: {
-            HStack(spacing: 10) {
-                Image(systemName: section.systemImage)
-                    .frame(width: 20, alignment: .center)
-                Text(section.rawValue)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .font(.system(size: 13, weight: selection == section ? .semibold : .regular))
-            .foregroundStyle(selection == section ? .white : .secondary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(selection == section ? Color.white.opacity(0.12) : .clear)
-            .clipShape(RoundedRectangle(cornerRadius: 6))
-        }
-        .buttonStyle(.plain)
-        .padding(.horizontal, 8)
     }
 
     private var playbackPage: some View {
