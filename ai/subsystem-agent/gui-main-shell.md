@@ -31,5 +31,5 @@
 
 - [MainView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
 - [gui-toolbar-spectrum-analyzer.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/gui-toolbar-spectrum-analyzer.md)
-- [SPCPlayerApp.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/SPCPlayerApp.swift)
+- [CocoaSpiceApp.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/CocoaSpiceApp.swift)
 - [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)

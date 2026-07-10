@@ -1,6 +1,6 @@
 # Options
 
-## Library
+## Database
 
 - Scan roots: add and manage folders used by the database.
 - Scanning: shows current-file progress.
@@ -10,7 +10,7 @@
 - Long Play: enable shared extended playback.
 - Duration: set a manual playback target.
 
-## Appearance
+## Interface
 
 - Spectrum analyzer: choose base, peak, and cap colors.
 

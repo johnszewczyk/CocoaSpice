@@ -25,4 +25,4 @@
 
 - [PlaylistM3UCodec.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaylistM3UCodec.swift)
 - [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
-- [SPCPlayerApp.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/SPCPlayerApp.swift)
+- [CocoaSpiceApp.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/CocoaSpiceApp.swift)
