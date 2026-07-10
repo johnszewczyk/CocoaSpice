@@ -34,7 +34,8 @@ struct CocoaSpiceApp: App {
         Settings {
             OptionsView(model: model)
         }
-        .defaultSize(width: 640, height: 640)
+        .windowStyle(.titleBar)
+        .defaultSize(width: 720, height: 640)
     }
 }
 

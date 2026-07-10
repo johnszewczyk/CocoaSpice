@@ -60,8 +60,7 @@ struct OptionsView: View {
                 if selection == .database {
                     Divider()
                     HStack {
-                        Button("Rescan Enabled Paths") { model.rescanEnabledLibraryRoots() }
-                            .keyboardShortcut(.defaultAction)
+                        Spacer()
                         if let libraryScanStatus = model.libraryScanStatus, !libraryScanStatus.isEmpty {
                             Text(libraryScanStatus)
                                 .font(.system(size: 11))
@@ -69,7 +68,8 @@ struct OptionsView: View {
                                 .lineLimit(1)
                                 .truncationMode(.middle)
                         }
-                        Spacer()
+                        Button("Rescan Enabled Paths") { model.rescanEnabledLibraryRoots() }
+                            .keyboardShortcut(.defaultAction)
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 14)
@@ -157,8 +157,6 @@ struct OptionsView: View {
         VStack(alignment: .leading, spacing: 16) {
             sectionCard(title: "Library Paths") {
                 HStack(alignment: .firstTextBaseline) {
-                    Text("Music Scan Roots")
-                        .foregroundStyle(.white)
                     Spacer()
                     Button("Add Folders…") {
                         model.chooseLibraryScanRoots()
