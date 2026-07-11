@@ -22,7 +22,7 @@
 - The native output boundary uses a preallocated C11 atomic stereo ring buffer and an `AVAudioSourceNode` endpoint.
 - `NativePlaybackSession` owns decoder creation, generation invalidation, dedicated refill work, high-water priming, seek rebuilds, route-change recovery, and one completion callback per generation.
 - `PlaybackEngine` is the app-facing façade and delegates playback, pause/resume, seek, stop, status, spectrum tap, and completion to the native session.
-- Startup, seek, and route recovery prime only 8,192 frames before resuming; the refill worker grows the buffer toward its high-water mark after output starts.
+- Startup, seek, and route recovery prime only 2,048 frames before resuming; the refill worker grows the buffer toward its high-water mark after output starts.
 
 ## Rules
 

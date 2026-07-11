@@ -22,7 +22,7 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
         sampleRate: Double = 44_100,
         channels: AVAudioChannelCount = 2,
         capacityFrames: Int = 88_200,
-        primeFrameCount: Int = 8_192
+        primeFrameCount: Int = 2_048
     ) throws {
         guard sampleRate > 0,
               channels == 2,

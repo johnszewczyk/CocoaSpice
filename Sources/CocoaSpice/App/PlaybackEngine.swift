@@ -5,7 +5,7 @@ import CGME
 final class PlaybackEngine: @unchecked Sendable {
     private let sampleRate: Double = 44_100
     private let channels: AVAudioChannelCount = 2
-    private let chunkFrameCount = 4_096
+    private let chunkFrameCount = 2_048
     private let queue = DispatchQueue(label: "CocoaSpice.playback", qos: .userInitiated)
     private let nativeSession: NativePlaybackSession
     private let requestLock = NSLock()
