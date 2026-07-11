@@ -55,7 +55,7 @@ final class NativePlaybackSession: @unchecked Sendable {
         try refillQueue.sync {
             refillTimer?.cancel()
             refillTimer = nil
-            output.stop()
+            output.prepareForRestart()
 
             let stream = try PlaybackStreamSession(
                 track: track,
@@ -104,7 +104,7 @@ final class NativePlaybackSession: @unchecked Sendable {
         try refillQueue.sync {
             guard let stream else { return }
             let wasPlaying = output.snapshot.transportState == .playing
-            output.stop()
+            output.prepareForRestart()
             generation += 1
             finishedGeneration = nil
             try stream.seek(to: seconds)
