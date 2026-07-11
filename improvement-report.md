@@ -242,7 +242,7 @@ The end event should be emitted once per generation. Queue auto-advance must con
 - Define `NativeAudioOutput` and immutable output snapshots.
 - Define session states and generation ownership.
 - Add unit-testable position and completion helpers.
-- Keep the existing player-node implementation behind the same internal contract while the new output path is built.
+- Keep the native output contract below the app-facing playback façade.
 
 ### Phase 2: Native ring-buffer output
 
@@ -254,7 +254,7 @@ The end event should be emitted once per generation. Queue auto-advance must con
 ### Phase 3: Decoder worker and session integration
 
 - Move decoder rendering to a dedicated worker owned by the playback session.
-- Replace player-node buffer scheduling as the primary production/consumption path.
+- Keep decoder production on the session refill worker and PCM consumption on the native output callback.
 - Preserve decoder module interfaces and current timing policy.
 - Make frame accounting authoritative for position.
 
@@ -268,7 +268,7 @@ The end event should be emitted once per generation. Queue auto-advance must con
 
 - Add optional native playback diagnostics to the app UI or debug reporting.
 - Verify no callback locks, allocations, decoder calls, or Swift calls.
-- Remove obsolete rolling-player-node scheduling only after the new path is validated.
+- Keep the native ring-buffer path as the single production/consumption path and update runtime notes with measured diagnostics.
 - Update subsystem documentation and third-party/runtime notes.
 
 ## Acceptance Tests

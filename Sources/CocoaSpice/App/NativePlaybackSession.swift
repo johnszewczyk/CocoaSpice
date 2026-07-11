@@ -10,10 +10,8 @@ final class NativePlaybackSession: @unchecked Sendable {
     private var refillTimer: DispatchSourceTimer?
     private var stream: PlaybackStreamSession?
     private var currentTrack: TrackItem?
-    private var plan = PlaybackPlan(preFadeSeconds: 150, fadeSeconds: 6, totalSeconds: 156, usesNativeEnding: false)
     private var generation = 0
     private var finishedGeneration: Int?
-    private var shouldAutoplay = false
     private var completionHandler: (@Sendable (Int) -> Void)?
 
     init(
@@ -71,8 +69,6 @@ final class NativePlaybackSession: @unchecked Sendable {
             finishedGeneration = nil
             self.stream = stream
             currentTrack = track
-            self.plan = plan
-            shouldAutoplay = autoplay
             output.clear()
             output.markTrackLoaded(generation: generation)
             try refillTo(targetBufferedFrames: output.primeFrameCount)
@@ -90,11 +86,9 @@ final class NativePlaybackSession: @unchecked Sendable {
             let isPlaying = output.snapshot.transportState == .playing
             if isPlaying {
                 output.pause()
-                shouldAutoplay = false
                 return false
             }
 
-            shouldAutoplay = true
             try output.start()
             return true
         }
@@ -111,7 +105,6 @@ final class NativePlaybackSession: @unchecked Sendable {
             output.clear()
             output.markTrackLoaded(generation: generation)
             try refillTo(targetBufferedFrames: output.primeFrameCount)
-            shouldAutoplay = wasPlaying
             if wasPlaying {
                 try output.start()
             }
@@ -124,7 +117,6 @@ final class NativePlaybackSession: @unchecked Sendable {
             refillTimer = nil
             generation += 1
             finishedGeneration = nil
-            shouldAutoplay = false
             stream = nil
             currentTrack = nil
             output.stop()
