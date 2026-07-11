@@ -2,7 +2,7 @@
 
 ## Product
 
-- `CocoaSpice` is a native macOS universal audio frontend for game-music formats, growing toward standard audio support as well.
+- `CocoaSpice` is a native macOS audio frontend for game-music formats, growing toward standard audio support as well.
 - Current decoder families include `libgme`, `libvgm`, and `Highly Complete` for GBA PSF-family playback.
 - The current product split is a scanned `Database` browser on the left and an editable `Playlist` on the right.
 

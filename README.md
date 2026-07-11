@@ -7,7 +7,7 @@
 - Left pane: scanned database game list with sidebar search
 - Right pane: editable playlist and queue
 - Top toolbar: previous/play-pause/next
-- Far-right titlebar: 20-bar live spectrum analyzer with customizable bar and cap colors
+- Far-right titlebar: 20-bar live spectrum analyzer with customizable base, peak, and cap colors
 
 ## Current Behavior
 
