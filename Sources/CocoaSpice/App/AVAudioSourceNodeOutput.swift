@@ -9,7 +9,7 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
     private let engine = AVAudioEngine()
     private let sourceNode: AVAudioSourceNode
     private let format: AVAudioFormat
-    private let primeFrameCount: Int
+    let primeFrameCount: Int
     private var transportState: PlaybackTransportState = .stopped
     private var outputState: NativeAudioOutputState = .stopped
     private var trackLoaded = false
@@ -22,7 +22,7 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
         sampleRate: Double = 44_100,
         channels: AVAudioChannelCount = 2,
         capacityFrames: Int = 88_200,
-        primeFrameCount: Int = 16_384
+        primeFrameCount: Int = 8_192
     ) throws {
         guard sampleRate > 0,
               channels == 2,

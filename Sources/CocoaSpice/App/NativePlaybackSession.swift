@@ -75,7 +75,7 @@ final class NativePlaybackSession: @unchecked Sendable {
             shouldAutoplay = autoplay
             output.clear()
             output.markTrackLoaded(generation: generation)
-            try refillToHighWaterMark()
+            try refillTo(targetBufferedFrames: output.primeFrameCount)
 
             if autoplay {
                 try output.start()
@@ -110,7 +110,7 @@ final class NativePlaybackSession: @unchecked Sendable {
             try stream.seek(to: seconds)
             output.clear()
             output.markTrackLoaded(generation: generation)
-            try refillToHighWaterMark()
+            try refillTo(targetBufferedFrames: output.primeFrameCount)
             shouldAutoplay = wasPlaying
             if wasPlaying {
                 try output.start()
@@ -201,7 +201,7 @@ final class NativePlaybackSession: @unchecked Sendable {
                 try stream.seek(to: seconds)
                 self.output.clear()
                 self.output.markTrackLoaded(generation: self.generation)
-                try self.refillToHighWaterMark()
+                try self.refillTo(targetBufferedFrames: self.output.primeFrameCount)
                 if wasPlaying {
                     try self.output.start()
                 }
@@ -212,10 +212,14 @@ final class NativePlaybackSession: @unchecked Sendable {
     }
 
     private func refillToHighWaterMark() throws {
-        guard let stream else { return }
         let highWaterMark = Int(Double(output.ringBuffer.capacityFrames) * 0.75)
+        try refillTo(targetBufferedFrames: highWaterMark)
+    }
 
-        while output.ringBuffer.bufferedFrames < highWaterMark {
+    private func refillTo(targetBufferedFrames: Int) throws {
+        guard let stream else { return }
+
+        while output.ringBuffer.bufferedFrames < targetBufferedFrames {
             guard let buffer = try stream.makeNextBuffer(
                 sampleRate: sampleRate,
                 channels: channels
