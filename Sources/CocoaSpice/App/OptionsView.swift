@@ -81,7 +81,8 @@ struct OptionsView: View {
                 }
             }
         }
-        .frame(width: 900, height: 600)
+        .frame(width: 900)
+        .frame(minHeight: 600)
         .onAppear {
             longPlayTimeText = Self.formatTime(model.manualPreFadeSeconds)
             sidebarFontSizeText = Self.formatFontSize(model.databaseSidebarFontSize)
