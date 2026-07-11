@@ -20,7 +20,7 @@
 - Native output state is represented by immutable value-type snapshots with explicit transport/output states, frame counters, buffer counters, underruns, end state, and stream generation.
 - Frame-accounting helpers derive position from the session origin and frames supplied to output; completion helpers require planned/native completion and an empty output buffer.
 - The Phase 2 native output boundary uses a preallocated C11 atomic stereo ring buffer and an `AVAudioSourceNode` endpoint; it is independently feedable and remains behind the existing player-node path until session integration is validated.
-- `NativePlaybackSession` now owns decoder creation, generation invalidation, dedicated refill work, high-water priming, seek rebuilds, and one completion callback per generation; the existing `SPCPlaybackEngine` façade has not delegated to it yet.
+- `NativePlaybackSession` now owns decoder creation, generation invalidation, dedicated refill work, high-water priming, seek rebuilds, and one completion callback per generation; the existing `PlaybackEngine` façade has not delegated to it yet.
 
 ## Rules
 
@@ -33,7 +33,7 @@
 
 ## Files
 
-- [SPCPlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/SPCPlaybackEngine.swift)
+- [PlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackEngine.swift)
 - [PlaybackAudioContracts.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackAudioContracts.swift)
 - [RealtimePCMFrameRingBuffer.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/RealtimePCMFrameRingBuffer.swift)
 - [AVAudioSourceNodeOutput.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/AVAudioSourceNodeOutput.swift)

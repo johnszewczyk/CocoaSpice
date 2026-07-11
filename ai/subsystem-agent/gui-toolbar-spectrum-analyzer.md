@@ -51,7 +51,7 @@
 
 - [MainView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
 - [ToolbarSpectrumView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/ToolbarSpectrumView.swift)
-- [SPCPlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/SPCPlaybackEngine.swift)
+- [PlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackEngine.swift)
 - [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
 - [OptionsView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/OptionsView.swift)
 - [AppSessionPersistence.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/AppSessionPersistence.swift)

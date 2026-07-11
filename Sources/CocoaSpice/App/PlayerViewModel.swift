@@ -161,7 +161,7 @@ final class PlayerViewModel {
         libraryDatabase?.databaseURL
     }
 
-    @ObservationIgnored private var playbackStorage: SPCPlaybackEngine?
+    @ObservationIgnored private var playbackStorage: PlaybackEngine?
     @ObservationIgnored private var remoteTransportStorage: RemoteTransportController?
     @ObservationIgnored private var audioExportWindowController: AudioExportProgressWindowController?
     @ObservationIgnored private var lastAudioExportDirectoryURL: URL?
@@ -188,11 +188,11 @@ final class PlayerViewModel {
     var pendingPlaylistColumnVisibility: [String: Bool]?
     var pendingPlaylistColumnWidths: [String: Double]?
 
-    private var playback: SPCPlaybackEngine {
+    private var playback: PlaybackEngine {
         if let playbackStorage {
             return playbackStorage
         }
-        let playback = SPCPlaybackEngine()
+        let playback = PlaybackEngine()
         playback.setSpectrumLevelHandler { [weak self] levels in
             Task { @MainActor [weak self] in
                 self?.toolbarSpectrum.update(with: levels)
@@ -1177,7 +1177,7 @@ final class PlayerViewModel {
             } else if let cachedMetadata {
                 cachedMetadata
             } else {
-                try await SPCPlaybackEngine.inspectMetadata(track: track)
+                try await PlaybackEngine.inspectMetadata(track: track)
             }
 
             try Task.checkCancellation()
@@ -1475,7 +1475,7 @@ final class PlayerViewModel {
             await withTaskGroup(of: (String, TrackMetadata?).self) { group in
                 for track in missingTracks {
                     group.addTask {
-                        let metadata = try? await SPCPlaybackEngine.inspectMetadata(track: track)
+                        let metadata = try? await PlaybackEngine.inspectMetadata(track: track)
                         return (track.id, metadata)
                     }
                 }
@@ -1906,7 +1906,7 @@ final class PlayerViewModel {
                         lastProgressStatusUpdate = now
                     }
                     let values = try? url.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
-                    let inspectedTracks = try? await SPCPlaybackEngine.inspectPlayableTracks(fileURL: url)
+                    let inspectedTracks = try? await PlaybackEngine.inspectPlayableTracks(fileURL: url)
                     let playableTracks = inspectedTracks?.isEmpty == false
                         ? inspectedTracks!
                         : [InspectedTrack(track: TrackItem(url: url), metadata: TrackMetadata(game: "", song: "", system: "", author: "", comment: "", introLengthMs: 0, loopLengthMs: 0, playLengthMs: 0, fadeLengthMs: 0))]

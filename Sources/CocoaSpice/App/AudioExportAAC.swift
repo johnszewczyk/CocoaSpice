@@ -79,7 +79,7 @@ enum AudioExportAACService {
             let metadata = if let cached = cachedMetadata[track.id] {
                 cached
             } else {
-                try await SPCPlaybackEngine.inspectMetadata(track: track)
+                try await PlaybackEngine.inspectMetadata(track: track)
             }
 
             let plan = PlaybackTimingPolicy.playbackPlan(

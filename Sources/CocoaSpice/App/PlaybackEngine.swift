@@ -2,7 +2,7 @@
 import Foundation
 import CGME
 
-final class SPCPlaybackEngine: @unchecked Sendable {
+final class PlaybackEngine: @unchecked Sendable {
     private let sampleRate: Double = 44_100
     private let channels: AVAudioChannelCount = 2
     private let chunkFrameCount = 4_096
@@ -13,7 +13,7 @@ final class SPCPlaybackEngine: @unchecked Sendable {
     private let requestLock = NSLock()
     private let spectrumAnalyzer: SpectrumBandAnalyzer
     private var currentPlaybackDuration: TimeInterval = 0
-    private var currentStream: SPCStreamSession?
+    private var currentStream: PlaybackStreamSession?
     private var playbackStartedAt: Date?
     private var pauseStartedAt: Date?
     private var accumulatedPauseTime: TimeInterval = 0
@@ -214,7 +214,7 @@ final class SPCPlaybackEngine: @unchecked Sendable {
         resumeAt requestedSeconds: TimeInterval,
         autoplay: Bool
     ) throws -> TrackMetadata {
-        let stream = try SPCStreamSession(
+        let stream = try PlaybackStreamSession(
             track: track,
             sampleRate: Int(sampleRate),
             totalSeconds: plan.usesNativeEnding ? 0 : plan.totalSeconds,
@@ -484,7 +484,7 @@ private final class SpectrumBandAnalyzer: @unchecked Sendable {
     }
 }
 
-final class SPCStreamSession {
+final class PlaybackStreamSession {
     let metadata: TrackMetadata
     let totalFrames: Int?
 

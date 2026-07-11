@@ -203,7 +203,7 @@ enum PlaylistQueueLoader {
     }
 
     private static func inspectPlayableTracks(forFileURL fileURL: URL) async -> [InspectedTrack] {
-        if let inspectedTracks = try? await SPCPlaybackEngine.inspectPlayableTracks(fileURL: fileURL),
+        if let inspectedTracks = try? await PlaybackEngine.inspectPlayableTracks(fileURL: fileURL),
            !inspectedTracks.isEmpty {
             return inspectedTracks
         }
@@ -223,7 +223,7 @@ enum PlaylistQueueLoader {
             return []
         }
 
-        if let inspectedTracks = try? await SPCPlaybackEngine.inspectPlayableTracks(fileURL: materializedURL),
+        if let inspectedTracks = try? await PlaybackEngine.inspectPlayableTracks(fileURL: materializedURL),
            !inspectedTracks.isEmpty {
             return inspectedTracks.map { inspectedTrack in
                 InspectedTrack(

@@ -8,7 +8,7 @@ final class NativePlaybackSession: @unchecked Sendable {
     private let output: AVAudioSourceNodeOutput
     private let refillQueue = DispatchQueue(label: "CocoaSpice.native-playback-refill", qos: .userInitiated)
     private var refillTimer: DispatchSourceTimer?
-    private var stream: SPCStreamSession?
+    private var stream: PlaybackStreamSession?
     private var currentTrack: TrackItem?
     private var plan = PlaybackPlan(preFadeSeconds: 150, fadeSeconds: 6, totalSeconds: 156, usesNativeEnding: false)
     private var generation = 0
@@ -47,7 +47,7 @@ final class NativePlaybackSession: @unchecked Sendable {
             refillTimer = nil
             output.stop()
 
-            let stream = try SPCStreamSession(
+            let stream = try PlaybackStreamSession(
                 track: track,
                 sampleRate: Int(sampleRate),
                 totalSeconds: plan.usesNativeEnding ? 0 : plan.totalSeconds,

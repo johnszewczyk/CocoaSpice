@@ -8,7 +8,7 @@
 
 ## Current State
 
-- `SPCPlaybackEngine` now builds a decoder through a backend-routing factory rather than instantiating `libgme` directly.
+- `PlaybackEngine` now builds a decoder through a backend-routing factory rather than instantiating `libgme` directly.
 - `libgme` remains the backend for container and dump formats such as `spc`, `nsf`, `nsfe`, `gbs`, `hes`, `kss`, `sap`, and `ay`.
 - `lazyusf2` owns `usf` and `miniusf` through the `CLazyUSF` bridge; keep its PSF-chain loading and N64 emulation behind that bridge.
 - Backend modules expose app-owned PCM, metadata, seeking, and timing hooks; the player model must not call decoder-specific C APIs directly.
@@ -33,7 +33,7 @@
 ## Files
 
 - [PlaybackDecoderRouting.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackDecoderRouting.swift)
-- [SPCPlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/SPCPlaybackEngine.swift)
+- [PlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackEngine.swift)
 - [GMEFormatSupport.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/GMEFormatSupport.swift)
 - [libvgm_bridge.h](/Users/john/Documents/Code/CocoaSpice/Sources/CLibVGM/include/libvgm_bridge.h)
 - [libvgm_bridge.cpp](/Users/john/Documents/Code/CocoaSpice/Sources/CLibVGM/libvgm_bridge.cpp)

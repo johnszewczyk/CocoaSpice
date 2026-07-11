@@ -15,14 +15,14 @@
 
 ## Rules
 
-- Treat `SPCPlaybackEngine` as the generic streamed playback host, not a `libgme`-only shell.
+- Treat `PlaybackEngine` as the generic streamed playback host, not a `libgme`-only shell.
 - Treat extension filtering and playback-plan selection as separate policy layers; they should not be conflated.
 - When broadening format support, update every intake surface that shares the scanner allowlist instead of only the live playback path.
 - Keep user-facing timing controls unified unless a concrete backend constraint forces a split.
 
 ## Files
 
-- [SPCPlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/SPCPlaybackEngine.swift)
+- [PlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackEngine.swift)
 - [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
 - [ZipArchiveSupport.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/ZipArchiveSupport.swift)
 - [SPCFileScanner.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/SPCFileScanner.swift)
