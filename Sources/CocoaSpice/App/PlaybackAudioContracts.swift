@@ -40,6 +40,7 @@ protocol NativeAudioOutput: AnyObject, Sendable {
 
     func start() throws
     func pause()
+    func finish()
     func stop()
     func clear()
 }

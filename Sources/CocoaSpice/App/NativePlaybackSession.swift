@@ -28,6 +28,16 @@ final class NativePlaybackSession: @unchecked Sendable {
             sampleRate: sampleRate,
             channels: channels
         )
+        output.setConfigurationChangeHandler { [weak self] in
+            self?.recoverFromConfigurationChange()
+        }
+    }
+
+    func setSpectrumTap(
+        bufferSize: AVAudioFrameCount,
+        handler: @escaping (AVAudioPCMBuffer, AVAudioTime?) -> Void
+    ) {
+        output.setSpectrumTap(bufferSize: bufferSize, handler: handler)
     }
 
     func setCompletionHandler(_ handler: (@Sendable (Int) -> Void)?) {
@@ -136,6 +146,12 @@ final class NativePlaybackSession: @unchecked Sendable {
         }
     }
 
+    func isCurrentGeneration(_ generation: Int) -> Bool {
+        refillQueue.sync {
+            output.snapshot.generation == generation
+        }
+    }
+
     private func startRefillTimer() {
         let timer = DispatchSource.makeTimerSource(queue: refillQueue)
         timer.schedule(deadline: .now(), repeating: .milliseconds(5))
@@ -163,7 +179,36 @@ final class NativePlaybackSession: @unchecked Sendable {
         }
 
         finishedGeneration = generation
+        output.finish()
         completionHandler?(generation)
+    }
+
+    private func recoverFromConfigurationChange() {
+        refillQueue.async {
+            guard let stream = self.stream else { return }
+            let wasPlaying = self.output.snapshot.transportState == .playing
+            let position = self.output.snapshot.positionFrames
+            let seconds = PlaybackFrameAccounting.positionSeconds(
+                sessionStartFrame: 0,
+                framesSupplied: position,
+                sampleRate: Int(self.sampleRate)
+            )
+
+            do {
+                self.output.stop()
+                self.generation += 1
+                self.finishedGeneration = nil
+                try stream.seek(to: seconds)
+                self.output.clear()
+                self.output.markTrackLoaded(generation: self.generation)
+                try self.refillToHighWaterMark()
+                if wasPlaying {
+                    try self.output.start()
+                }
+            } catch {
+                self.output.stop()
+            }
+        }
     }
 
     private func refillToHighWaterMark() throws {

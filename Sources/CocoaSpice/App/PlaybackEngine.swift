@@ -6,22 +6,13 @@ final class PlaybackEngine: @unchecked Sendable {
     private let sampleRate: Double = 44_100
     private let channels: AVAudioChannelCount = 2
     private let chunkFrameCount = 4_096
-    private let maxQueuedBuffers = 3
     private let queue = DispatchQueue(label: "CocoaSpice.playback", qos: .userInitiated)
-    private let engine = AVAudioEngine()
-    private let player = AVAudioPlayerNode()
+    private let nativeSession: NativePlaybackSession
     private let requestLock = NSLock()
     private let spectrumAnalyzer: SpectrumBandAnalyzer
     private var currentPlaybackDuration: TimeInterval = 0
-    private var currentStream: PlaybackStreamSession?
-    private var playbackStartedAt: Date?
-    private var pauseStartedAt: Date?
-    private var accumulatedPauseTime: TimeInterval = 0
-    private var streamGeneration = 0
-    private var queuedBufferCount = 0
     private var spectrumLevelHandler: (@Sendable ([Float]) -> Void)?
     private var playbackStateHandler: (@Sendable (PlaybackStatusSnapshot) -> Void)?
-    private var configurationChangeObserver: NSObjectProtocol?
     private var latestPlaybackRequest = 0
 
     private(set) var currentTrack: TrackItem?
@@ -30,30 +21,19 @@ final class PlaybackEngine: @unchecked Sendable {
 
     init() {
         spectrumAnalyzer = SpectrumBandAnalyzer(sampleRate: Float(sampleRate))
-        queue.sync {
-            engine.attach(player)
-
-            let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: channels)
-            engine.connect(player, to: engine.mainMixerNode, format: format)
-            let mixerOutputFormat = engine.mainMixerNode.outputFormat(forBus: 0)
-            engine.mainMixerNode.installTap(onBus: 0, bufferSize: 512, format: mixerOutputFormat) { [weak self] buffer, _ in
-                self?.handleSpectrumBuffer(buffer)
+        nativeSession = try! NativePlaybackSession(
+            sampleRate: sampleRate,
+            channels: channels,
+            chunkFrameCount: chunkFrameCount
+        )
+        nativeSession.setSpectrumTap(bufferSize: 512) { [weak self] buffer, _ in
+            self?.handleSpectrumBuffer(buffer)
+        }
+        nativeSession.setCompletionHandler { [weak self] generation in
+            guard let self else { return }
+            self.queue.async { [weak self] in
+                self?.handleNativeCompletion(generation: generation)
             }
-            try? engine.start()
-        }
-
-        configurationChangeObserver = NotificationCenter.default.addObserver(
-            forName: .AVAudioEngineConfigurationChange,
-            object: engine,
-            queue: nil
-        ) { [weak self] _ in
-            self?.recoverFromConfigurationChange()
-        }
-    }
-
-    deinit {
-        if let configurationChangeObserver {
-            NotificationCenter.default.removeObserver(configurationChangeObserver)
         }
     }
 
@@ -85,11 +65,10 @@ final class PlaybackEngine: @unchecked Sendable {
             guard self.isLatestPlaybackRequest(requestID) else {
                 throw CancellationError()
             }
-            return try self.loadRenderedTrack(
+            return try self.loadTrack(
                 track: track,
                 plan: plan,
-                resumeAt: 0,
-                autoplay: true
+                resumeAt: 0
             )
         }
     }
@@ -127,17 +106,10 @@ final class PlaybackEngine: @unchecked Sendable {
 
     func togglePause() async -> Bool {
         await enqueue {
-            if self.player.isPlaying {
-                self.player.pause()
-                self.pauseStartedAt = Date()
-                self.isPlaying = false
-            } else {
-                if let pauseStartedAt = self.pauseStartedAt {
-                    self.accumulatedPauseTime += Date().timeIntervalSince(pauseStartedAt)
-                }
-                self.pauseStartedAt = nil
-                self.player.play()
-                self.isPlaying = true
+            do {
+                self.isPlaying = try self.nativeSession.togglePause()
+            } catch {
+                self.resetPlaybackState()
             }
             self.publishPlaybackState()
             return self.isPlaying
@@ -154,28 +126,6 @@ final class PlaybackEngine: @unchecked Sendable {
         await stopPlayback()
     }
 
-    private func recoverFromConfigurationChange() {
-        queue.async {
-            guard let currentStream = self.currentStream else { return }
-
-            let wasPlaying = self.isPlaying
-            let elapsedSeconds = self.elapsedPlaybackSeconds()
-
-            do {
-                self.engine.stop()
-                self.player.stop()
-                self.player.reset()
-                try self.engine.start()
-                try currentStream.seek(to: elapsedSeconds)
-                try self.scheduleStreaming(autoplay: wasPlaying)
-                self.isPlaying = wasPlaying
-                self.publishPlaybackState()
-            } catch {
-                self.resetPlaybackState()
-            }
-        }
-    }
-
     func statusSnapshot() async -> PlaybackStatusSnapshot {
         await enqueue {
             self.currentSnapshot()
@@ -190,43 +140,24 @@ final class PlaybackEngine: @unchecked Sendable {
 
     func seek(to seconds: TimeInterval) async throws {
         try await enqueue {
-            guard let currentStream = self.currentStream else { return }
+            guard self.currentTrack != nil else { return }
             let clampedSeconds: TimeInterval
             if self.currentPlaybackPlan.usesNativeEnding {
                 clampedSeconds = max(0, seconds)
             } else {
                 clampedSeconds = max(0, min(seconds, self.currentPlaybackDuration))
             }
-            let wasPlaying = self.isPlaying
-            self.pauseStartedAt = nil
-            self.accumulatedPauseTime = 0
-            self.playbackStartedAt = Date().addingTimeInterval(-clampedSeconds)
-            try currentStream.seek(to: clampedSeconds)
-            try self.scheduleStreaming(autoplay: wasPlaying)
-            self.isPlaying = wasPlaying
+            try self.nativeSession.seek(to: clampedSeconds)
+            self.isPlaying = self.nativeSession.statusSnapshot().isPlaying
             self.publishPlaybackState()
         }
     }
 
-    private func loadRenderedTrack(
+    private func loadTrack(
         track: TrackItem,
         plan: PlaybackPlan,
-        resumeAt requestedSeconds: TimeInterval,
-        autoplay: Bool
+        resumeAt requestedSeconds: TimeInterval
     ) throws -> TrackMetadata {
-        let stream = try PlaybackStreamSession(
-            track: track,
-            sampleRate: Int(sampleRate),
-            totalSeconds: plan.usesNativeEnding ? 0 : plan.totalSeconds,
-            loopSeconds: plan.preFadeSeconds,
-            fadeSeconds: plan.fadeSeconds,
-            chunkFrameCount: chunkFrameCount
-        )
-
-        player.stop()
-        player.reset()
-
-        currentStream = stream
         currentTrack = track
         currentPlaybackPlan = plan
         currentPlaybackDuration = TimeInterval(plan.totalSeconds)
@@ -237,89 +168,22 @@ final class PlaybackEngine: @unchecked Sendable {
         } else {
             clampedResume = max(0, min(requestedSeconds, currentPlaybackDuration))
         }
-        playbackStartedAt = Date().addingTimeInterval(-clampedResume)
-        accumulatedPauseTime = 0
-        pauseStartedAt = autoplay ? nil : Date()
-
-        try stream.seek(to: clampedResume)
-        try scheduleStreaming(autoplay: autoplay)
-        isPlaying = autoplay
+        let metadata = try nativeSession.load(
+            track: track,
+            plan: plan,
+            resumeAt: clampedResume,
+            autoplay: true
+        )
+        isPlaying = true
         publishPlaybackState()
-        return stream.metadata
-    }
-
-    private func scheduleStreaming(autoplay: Bool) throws {
-        streamGeneration += 1
-        queuedBufferCount = 0
-        player.stop()
-        player.reset()
-        if !engine.isRunning {
-            try engine.start()
-        }
-
-        try enqueueBuffersIfNeeded(generation: streamGeneration)
-
-        if autoplay {
-            player.play()
-        }
-    }
-
-    private func enqueueBuffersIfNeeded(generation: Int) throws {
-        guard generation == streamGeneration, let currentStream else { return }
-
-        while queuedBufferCount < maxQueuedBuffers {
-            guard let buffer = try currentStream.makeNextBuffer(
-                sampleRate: sampleRate,
-                channels: channels
-            ) else {
-                if queuedBufferCount == 0 {
-                    finishPlayback(generation: generation)
-                }
-                break
-            }
-
-            queuedBufferCount += 1
-            player.scheduleBuffer(buffer, completionCallbackType: .dataConsumed) { [weak self] _ in
-                self?.queue.async { [weak self] in
-                    self?.handleConsumedBuffer(generation: generation)
-                }
-            }
-        }
-    }
-
-    private func handleConsumedBuffer(generation: Int) {
-        guard generation == streamGeneration else { return }
-        queuedBufferCount = max(0, queuedBufferCount - 1)
-
-        do {
-            try enqueueBuffersIfNeeded(generation: generation)
-        } catch {
-            resetPlaybackState()
-        }
-    }
-
-    private func finishPlayback(generation: Int) {
-        guard generation == streamGeneration else { return }
-        isPlaying = false
-        pauseStartedAt = nil
-        queuedBufferCount = 0
-        spectrumAnalyzer.reset()
-        spectrumLevelHandler?(Array(repeating: 0, count: SpectrumBandAnalyzer.bandCount))
-        publishPlaybackState()
+        return metadata
     }
 
     private func resetPlaybackState() {
-        streamGeneration += 1
-        player.stop()
-        player.reset()
+        nativeSession.stop()
         isPlaying = false
-        currentStream = nil
         currentTrack = nil
         currentPlaybackDuration = 0
-        playbackStartedAt = nil
-        pauseStartedAt = nil
-        accumulatedPauseTime = 0
-        queuedBufferCount = 0
         spectrumAnalyzer.reset()
         spectrumLevelHandler?(Array(repeating: 0, count: SpectrumBandAnalyzer.bandCount))
         publishPlaybackState()
@@ -330,28 +194,21 @@ final class PlaybackEngine: @unchecked Sendable {
     }
 
     private func currentSnapshot() -> PlaybackStatusSnapshot {
-        PlaybackStatusSnapshot(
-            currentTrackID: currentTrack?.id,
-            isPlaying: isPlaying,
-            elapsedSeconds: elapsedPlaybackSeconds()
-        )
-    }
-
-    private func elapsedPlaybackSeconds() -> TimeInterval {
-        guard let playbackStartedAt else { return 0 }
-
-        let effectiveNow = pauseStartedAt ?? Date()
-        let elapsed = effectiveNow.timeIntervalSince(playbackStartedAt) - accumulatedPauseTime
-        if currentPlaybackPlan.usesNativeEnding {
-            return max(0, elapsed)
-        }
-        return max(0, min(elapsed, currentPlaybackDuration))
+        nativeSession.statusSnapshot()
     }
 
     private func handleSpectrumBuffer(_ buffer: AVAudioPCMBuffer) {
-        guard player.isPlaying else { return }
+        guard isPlaying else { return }
         guard let levels = spectrumAnalyzer.process(buffer: buffer) else { return }
         spectrumLevelHandler?(levels)
+    }
+
+    private func handleNativeCompletion(generation: Int) {
+        guard nativeSession.isCurrentGeneration(generation) else { return }
+        isPlaying = false
+        spectrumAnalyzer.reset()
+        spectrumLevelHandler?(Array(repeating: 0, count: SpectrumBandAnalyzer.bandCount))
+        publishPlaybackState()
     }
 
     private func enqueue<T: Sendable>(_ operation: @escaping @Sendable () throws -> T) async throws -> T {

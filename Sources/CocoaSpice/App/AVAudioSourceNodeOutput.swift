@@ -16,6 +16,7 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
     private var decodeError: String?
     private var reachedEnd = false
     private var generation = 0
+    private var configurationChangeObserver: NSObjectProtocol?
 
     init(
         sampleRate: Double = 44_100,
@@ -70,6 +71,35 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
 
         engine.attach(sourceNode)
         engine.connect(sourceNode, to: engine.mainMixerNode, format: format)
+    }
+
+    deinit {
+        if let configurationChangeObserver {
+            NotificationCenter.default.removeObserver(configurationChangeObserver)
+        }
+    }
+
+    func setSpectrumTap(
+        bufferSize: AVAudioFrameCount,
+        handler: @escaping (AVAudioPCMBuffer, AVAudioTime?) -> Void
+    ) {
+        let mixerFormat = engine.mainMixerNode.outputFormat(forBus: 0)
+        engine.mainMixerNode.installTap(
+            onBus: 0,
+            bufferSize: bufferSize,
+            format: mixerFormat,
+            block: handler
+        )
+    }
+
+    func setConfigurationChangeHandler(_ handler: @escaping @Sendable () -> Void) {
+        configurationChangeObserver = NotificationCenter.default.addObserver(
+            forName: .AVAudioEngineConfigurationChange,
+            object: engine,
+            queue: nil
+        ) { _ in
+            handler()
+        }
     }
 
     var snapshot: NativeAudioOutputSnapshot {
@@ -130,6 +160,12 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
         engine.pause()
         outputState = .primed
         transportState = .paused
+    }
+
+    func finish() {
+        engine.pause()
+        outputState = .stopped
+        transportState = .ended
     }
 
     func stop() {

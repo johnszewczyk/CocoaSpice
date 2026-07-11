@@ -35,7 +35,8 @@ The target is therefore a CocoaSpice-native playback core with SPCBoy-style outp
 ### Ownership
 
 - `PlayerViewModel` owns app-facing queue, selection, timing settings, transport intent, and UI state.
-- `PlaybackEngine` owns the serial playback queue, `AVAudioEngine`, `AVAudioPlayerNode`, decoder session, stream scheduling, pause state, and output-configuration recovery.
+- `PlaybackEngine` owns the app-facing serial queue, transport façade, timing plan, and native session integration.
+- `NativePlaybackSession` owns the decoder session, dedicated refill worker, native output, generation lifecycle, pause state, completion, and output-configuration recovery.
 - `AudioTrackDecoder` owns decoder-specific metadata, rendering, seeking, timing configuration, and end detection.
 - `PlaybackDecoderFactory` routes registered extensions to decoder implementations.
 - `PlaybackTimingPolicy` converts metadata and user timing preferences into a playback plan.
@@ -45,9 +46,9 @@ The target is therefore a CocoaSpice-native playback core with SPCBoy-style outp
 1. The view model creates a playback request and invalidates older requests.
 2. The playback engine creates a decoder through `PlaybackDecoderFactory`.
 3. `PlaybackStreamSession` renders PCM chunks.
-4. The engine schedules a small rolling window of `AVAudioPCMBuffer` objects into `AVAudioPlayerNode`.
-5. Buffer-consumption callbacks refill the rolling window on the serial playback queue.
-6. Playback elapsed time is currently derived primarily from wall-clock dates.
+4. `NativePlaybackSession` renders PCM on its refill queue into the preallocated ring buffer.
+5. `AVAudioSourceNode` consumes the ring buffer on the realtime output callback and supplies silence when it underruns.
+6. Playback elapsed time is derived from frames supplied by the native output.
 
 ### Current strengths to preserve
 
