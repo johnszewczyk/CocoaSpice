@@ -126,6 +126,12 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
         transportState = .playing
     }
 
+    func pause() {
+        engine.pause()
+        outputState = .primed
+        transportState = .paused
+    }
+
     func stop() {
         engine.stop()
         ringBuffer.clear()

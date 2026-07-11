@@ -39,6 +39,7 @@ protocol NativeAudioOutput: AnyObject, Sendable {
     var snapshot: NativeAudioOutputSnapshot { get }
 
     func start() throws
+    func pause()
     func stop()
     func clear()
 }

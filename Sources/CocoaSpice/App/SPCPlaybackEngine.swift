@@ -484,7 +484,7 @@ private final class SpectrumBandAnalyzer: @unchecked Sendable {
     }
 }
 
-private final class SPCStreamSession {
+final class SPCStreamSession {
     let metadata: TrackMetadata
     let totalFrames: Int?
 

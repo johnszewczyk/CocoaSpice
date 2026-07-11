@@ -1,0 +1,200 @@
+@preconcurrency import AVFoundation
+import Foundation
+
+final class NativePlaybackSession: @unchecked Sendable {
+    private let sampleRate: Double
+    private let channels: AVAudioChannelCount
+    private let chunkFrameCount: Int
+    private let output: AVAudioSourceNodeOutput
+    private let refillQueue = DispatchQueue(label: "CocoaSpice.native-playback-refill", qos: .userInitiated)
+    private var refillTimer: DispatchSourceTimer?
+    private var stream: SPCStreamSession?
+    private var currentTrack: TrackItem?
+    private var plan = PlaybackPlan(preFadeSeconds: 150, fadeSeconds: 6, totalSeconds: 156, usesNativeEnding: false)
+    private var generation = 0
+    private var finishedGeneration: Int?
+    private var shouldAutoplay = false
+    private var completionHandler: (@Sendable (Int) -> Void)?
+
+    init(
+        sampleRate: Double = 44_100,
+        channels: AVAudioChannelCount = 2,
+        chunkFrameCount: Int = 4_096
+    ) throws {
+        self.sampleRate = sampleRate
+        self.channels = channels
+        self.chunkFrameCount = chunkFrameCount
+        output = try AVAudioSourceNodeOutput(
+            sampleRate: sampleRate,
+            channels: channels
+        )
+    }
+
+    func setCompletionHandler(_ handler: (@Sendable (Int) -> Void)?) {
+        refillQueue.async {
+            self.completionHandler = handler
+        }
+    }
+
+    func load(
+        track: TrackItem,
+        plan: PlaybackPlan,
+        resumeAt seconds: TimeInterval = 0,
+        autoplay: Bool
+    ) throws -> TrackMetadata {
+        try refillQueue.sync {
+            refillTimer?.cancel()
+            refillTimer = nil
+            output.stop()
+
+            let stream = try SPCStreamSession(
+                track: track,
+                sampleRate: Int(sampleRate),
+                totalSeconds: plan.usesNativeEnding ? 0 : plan.totalSeconds,
+                loopSeconds: plan.preFadeSeconds,
+                fadeSeconds: plan.fadeSeconds,
+                chunkFrameCount: chunkFrameCount
+            )
+            try stream.seek(to: seconds)
+
+            generation += 1
+            finishedGeneration = nil
+            self.stream = stream
+            currentTrack = track
+            self.plan = plan
+            shouldAutoplay = autoplay
+            output.clear()
+            output.markTrackLoaded(generation: generation)
+            try refillToHighWaterMark()
+
+            if autoplay {
+                try output.start()
+            }
+            startRefillTimer()
+            return stream.metadata
+        }
+    }
+
+    func togglePause() throws -> Bool {
+        try refillQueue.sync {
+            let isPlaying = output.snapshot.transportState == .playing
+            if isPlaying {
+                output.pause()
+                shouldAutoplay = false
+                return false
+            }
+
+            shouldAutoplay = true
+            try output.start()
+            return true
+        }
+    }
+
+    func seek(to seconds: TimeInterval) throws {
+        try refillQueue.sync {
+            guard let stream else { return }
+            let wasPlaying = output.snapshot.transportState == .playing
+            output.stop()
+            generation += 1
+            finishedGeneration = nil
+            try stream.seek(to: seconds)
+            output.clear()
+            output.markTrackLoaded(generation: generation)
+            try refillToHighWaterMark()
+            shouldAutoplay = wasPlaying
+            if wasPlaying {
+                try output.start()
+            }
+        }
+    }
+
+    func stop() {
+        refillQueue.sync {
+            refillTimer?.cancel()
+            refillTimer = nil
+            generation += 1
+            finishedGeneration = nil
+            shouldAutoplay = false
+            stream = nil
+            currentTrack = nil
+            output.stop()
+        }
+    }
+
+    func statusSnapshot() -> PlaybackStatusSnapshot {
+        refillQueue.sync {
+            let snapshot = output.snapshot
+            return PlaybackStatusSnapshot(
+                currentTrackID: currentTrack?.id,
+                isPlaying: snapshot.transportState == .playing,
+                elapsedSeconds: PlaybackFrameAccounting.positionSeconds(
+                    sessionStartFrame: 0,
+                    framesSupplied: snapshot.framesSupplied,
+                    sampleRate: Int(sampleRate)
+                )
+            )
+        }
+    }
+
+    private func startRefillTimer() {
+        let timer = DispatchSource.makeTimerSource(queue: refillQueue)
+        timer.schedule(deadline: .now(), repeating: .milliseconds(5))
+        timer.setEventHandler { [weak self] in
+            self?.refill()
+        }
+        refillTimer = timer
+        timer.resume()
+    }
+
+    private func refill() {
+        guard stream != nil else { return }
+
+        do {
+            try refillToHighWaterMark()
+        } catch {
+            output.stop()
+            return
+        }
+
+        guard output.snapshot.reachedEnd,
+              output.snapshot.bufferedFrames == 0,
+              finishedGeneration != generation else {
+            return
+        }
+
+        finishedGeneration = generation
+        completionHandler?(generation)
+    }
+
+    private func refillToHighWaterMark() throws {
+        guard let stream else { return }
+        let highWaterMark = Int(Double(output.ringBuffer.capacityFrames) * 0.75)
+
+        while output.ringBuffer.bufferedFrames < highWaterMark {
+            guard let buffer = try stream.makeNextBuffer(
+                sampleRate: sampleRate,
+                channels: channels
+            ) else {
+                output.markReachedEnd()
+                break
+            }
+
+            let frameCount = Int(buffer.frameLength)
+            guard frameCount > 0,
+                  let channelData = buffer.floatChannelData else {
+                break
+            }
+
+            let left = Array(UnsafeBufferPointer(start: channelData[0], count: frameCount))
+            let right = Array(UnsafeBufferPointer(start: channelData[1], count: frameCount))
+            let written = left.withUnsafeBufferPointer { leftBuffer in
+                right.withUnsafeBufferPointer { rightBuffer in
+                    output.enqueue(left: leftBuffer, right: rightBuffer)
+                }
+            }
+            if written < frameCount {
+                break
+            }
+        }
+    }
+}
