@@ -81,8 +81,8 @@ final class PlayerViewModel {
             handleSidebarSearchChanged()
         }
     }
-    var databaseSidebarFontSize: CGFloat = 11
-    var databaseSidebarTextColor: DatabaseSidebarTextColor = .secondary
+    var databaseSidebarFontSize: CGFloat = 12
+    var databaseSidebarTextColor: DatabaseSidebarTextColor = .primary
     var playlistSearchText: String = "" {
         didSet {
             scheduleVisiblePlaylistRefresh()
@@ -761,6 +761,16 @@ final class PlayerViewModel {
             databaseSidebarFontSize: databaseSidebarFontSize
             ,databaseSidebarTextColor: databaseSidebarTextColor.rawValue
         )
+    }
+
+    func setDatabaseSidebarFontSize(_ size: CGFloat) {
+        databaseSidebarFontSize = min(max(size, 10), 16)
+        savePreferencesNow()
+    }
+
+    func setDatabaseSidebarTextColor(_ color: DatabaseSidebarTextColor) {
+        databaseSidebarTextColor = color
+        savePreferencesNow()
     }
 
     func exportTracksToAAC(_ tracks: [TrackItem]) {

@@ -163,41 +163,44 @@ struct OptionsView: View {
                     .foregroundStyle(.secondary)
 
                 HStack {
-                    Text("Font size")
+                    Text("Font size (pt)")
                     Spacer()
-                    TextField("11", text: $sidebarFontSizeText)
+                    TextField("12", text: $sidebarFontSizeText)
                         .textFieldStyle(.plain)
                         .multilineTextAlignment(.trailing)
                         .font(.system(.body, design: .monospaced))
-                        .frame(width: 72)
+                        .frame(width: 120)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.08)))
                         .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white.opacity(0.12), lineWidth: 1))
                         .onSubmit(applySidebarFontSizeText)
-                    Text("pt")
-                        .foregroundStyle(.secondary)
                 }
 
                 HStack {
                     Text("Text color")
                     Spacer()
-                    Picker("Text color", selection: $model.databaseSidebarTextColor) {
+                    Picker("Text color", selection: Binding(
+                        get: { model.databaseSidebarTextColor },
+                        set: { model.setDatabaseSidebarTextColor($0) }
+                    )) {
                         ForEach(PlayerViewModel.DatabaseSidebarTextColor.allCases) { color in
                             Text(color.title).tag(color)
                         }
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)
+                    .frame(width: 120, alignment: .trailing)
                 }
 
                 HStack {
                     Spacer()
                     Button("Reset") {
-                        model.databaseSidebarFontSize = 11
-                        model.databaseSidebarTextColor = .secondary
-                        sidebarFontSizeText = "11"
+                        model.setDatabaseSidebarFontSize(12)
+                        model.setDatabaseSidebarTextColor(.primary)
+                        sidebarFontSizeText = "12"
                     }
+                    .frame(width: 120)
                 }
             }
         }
@@ -331,8 +334,8 @@ struct OptionsView: View {
     }
 
     private func applySidebarFontSizeText() {
-        let parsed = Double(sidebarFontSizeText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 11
-        model.databaseSidebarFontSize = min(max(CGFloat(parsed), 10), 16)
+        let parsed = Double(sidebarFontSizeText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 12
+        model.setDatabaseSidebarFontSize(CGFloat(parsed))
         sidebarFontSizeText = Self.formatFontSize(model.databaseSidebarFontSize)
     }
 

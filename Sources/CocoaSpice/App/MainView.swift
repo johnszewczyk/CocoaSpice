@@ -277,6 +277,7 @@ private struct DatabaseGameListView: NSViewRepresentable {
 
         func reload() {
             guard let tableView else { return }
+            tableView.rowHeight = model.databaseSidebarFontSize + 5
             tableView.reloadData()
 
             let rows = IndexSet(model.visibleDatabaseGameItems.enumerated().compactMap { index, item in
