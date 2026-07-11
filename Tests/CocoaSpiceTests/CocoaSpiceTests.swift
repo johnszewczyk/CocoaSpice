@@ -96,6 +96,98 @@ import Testing
     ))
 }
 
+@Test func realtimeRingBufferPreservesStereoFramesAndCapacity() throws {
+    let ringBuffer = try RealtimePCMFrameRingBuffer(capacityFrames: 3)
+    let inputLeft: [Float] = [0.1, 0.2, 0.3, 0.4]
+    let inputRight: [Float] = [1.1, 1.2, 1.3, 1.4]
+
+    let written = inputLeft.withUnsafeBufferPointer { left in
+        inputRight.withUnsafeBufferPointer { right in
+            ringBuffer.write(left: left, right: right)
+        }
+    }
+
+    #expect(written == 3)
+    #expect(ringBuffer.bufferedFrames == 3)
+
+    var outputLeft = Array(repeating: Float.zero, count: 3)
+    var outputRight = Array(repeating: Float.zero, count: 3)
+    let read = outputLeft.withUnsafeMutableBufferPointer { left in
+        outputRight.withUnsafeMutableBufferPointer { right in
+            ringBuffer.read(left: left, right: right)
+        }
+    }
+
+    #expect(read == 3)
+    #expect(outputLeft == [0.1, 0.2, 0.3])
+    #expect(outputRight == [1.1, 1.2, 1.3])
+    #expect(ringBuffer.bufferedFrames == 0)
+}
+
+@Test func realtimeRingBufferWrapsAfterReadAndClear() throws {
+    let ringBuffer = try RealtimePCMFrameRingBuffer(capacityFrames: 3)
+    let firstLeft: [Float] = [1, 2]
+    let firstRight: [Float] = [11, 12]
+    _ = firstLeft.withUnsafeBufferPointer { left in
+        firstRight.withUnsafeBufferPointer { right in
+            ringBuffer.write(left: left, right: right)
+        }
+    }
+
+    var discardedLeft = Array(repeating: Float.zero, count: 2)
+    var discardedRight = Array(repeating: Float.zero, count: 2)
+    _ = discardedLeft.withUnsafeMutableBufferPointer { left in
+        discardedRight.withUnsafeMutableBufferPointer { right in
+            ringBuffer.read(left: left, right: right)
+        }
+    }
+
+    let secondLeft: [Float] = [3, 4, 5]
+    let secondRight: [Float] = [13, 14, 15]
+    _ = secondLeft.withUnsafeBufferPointer { left in
+        secondRight.withUnsafeBufferPointer { right in
+            ringBuffer.write(left: left, right: right)
+        }
+    }
+
+    var outputLeft = Array(repeating: Float.zero, count: 3)
+    var outputRight = Array(repeating: Float.zero, count: 3)
+    _ = outputLeft.withUnsafeMutableBufferPointer { left in
+        outputRight.withUnsafeMutableBufferPointer { right in
+            ringBuffer.read(left: left, right: right)
+        }
+    }
+
+    #expect(outputLeft == [3, 4, 5])
+    #expect(outputRight == [13, 14, 15])
+
+    ringBuffer.clear()
+    #expect(ringBuffer.bufferedFrames == 0)
+    #expect(ringBuffer.framesRead == 0)
+    #expect(ringBuffer.framesRequested == 0)
+    #expect(ringBuffer.underrunCount == 0)
+}
+
+@Test func realtimeRingBufferTracksOutputDemandAndUnderruns() throws {
+    let ringBuffer = try RealtimePCMFrameRingBuffer(capacityFrames: 2)
+    let input: [Float] = [1, 2]
+    _ = input.withUnsafeBufferPointer { values in
+        ringBuffer.write(left: values, right: values)
+    }
+
+    var outputLeft = Array(repeating: Float.zero, count: 3)
+    var outputRight = Array(repeating: Float.zero, count: 3)
+    _ = outputLeft.withUnsafeMutableBufferPointer { left in
+        outputRight.withUnsafeMutableBufferPointer { right in
+            ringBuffer.read(left: left, right: right)
+        }
+    }
+
+    #expect(ringBuffer.framesRequested == 3)
+    #expect(ringBuffer.framesRead == 2)
+    #expect(ringBuffer.underrunCount == 1)
+}
+
 @Test func rapidQueueNavigationCanAdvanceFromPendingTrack() {
     let first = TrackItem(url: URL(fileURLWithPath: "/tmp/one.spc"))
     let second = TrackItem(url: URL(fileURLWithPath: "/tmp/two.spc"))

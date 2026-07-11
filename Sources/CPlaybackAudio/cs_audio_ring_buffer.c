@@ -1,0 +1,163 @@
+#include "cs_audio_ring_buffer.h"
+
+#include <stdatomic.h>
+#include <stdlib.h>
+#include <string.h>
+
+struct CSAudioRingBuffer {
+    float *left;
+    float *right;
+    uint64_t capacity_frames;
+    _Atomic uint64_t read_index;
+    _Atomic uint64_t write_index;
+    _Atomic uint64_t frames_read;
+    _Atomic uint64_t frames_requested;
+    _Atomic uint64_t underrun_count;
+};
+
+CSAudioRingBuffer *cs_audio_ring_buffer_create(uint64_t capacity_frames) {
+    if (capacity_frames == 0) {
+        return NULL;
+    }
+
+    CSAudioRingBuffer *buffer = calloc(1, sizeof(*buffer));
+    if (buffer == NULL) {
+        return NULL;
+    }
+
+    buffer->left = calloc(capacity_frames, sizeof(float));
+    buffer->right = calloc(capacity_frames, sizeof(float));
+    if (buffer->left == NULL || buffer->right == NULL) {
+        free(buffer->left);
+        free(buffer->right);
+        free(buffer);
+        return NULL;
+    }
+
+    buffer->capacity_frames = capacity_frames;
+    atomic_init(&buffer->read_index, 0);
+    atomic_init(&buffer->write_index, 0);
+    atomic_init(&buffer->frames_read, 0);
+    atomic_init(&buffer->frames_requested, 0);
+    atomic_init(&buffer->underrun_count, 0);
+    return buffer;
+}
+
+void cs_audio_ring_buffer_destroy(CSAudioRingBuffer *buffer) {
+    if (buffer == NULL) {
+        return;
+    }
+
+    free(buffer->left);
+    free(buffer->right);
+    free(buffer);
+}
+
+void cs_audio_ring_buffer_clear(CSAudioRingBuffer *buffer) {
+    if (buffer == NULL) {
+        return;
+    }
+
+    uint64_t write_index = atomic_load_explicit(&buffer->write_index, memory_order_relaxed);
+    atomic_store_explicit(&buffer->read_index, write_index, memory_order_release);
+    atomic_store_explicit(&buffer->frames_read, 0, memory_order_release);
+    atomic_store_explicit(&buffer->frames_requested, 0, memory_order_release);
+    atomic_store_explicit(&buffer->underrun_count, 0, memory_order_release);
+}
+
+uint64_t cs_audio_ring_buffer_capacity_frames(const CSAudioRingBuffer *buffer) {
+    return buffer == NULL ? 0 : buffer->capacity_frames;
+}
+
+uint64_t cs_audio_ring_buffer_buffered_frames(const CSAudioRingBuffer *buffer) {
+    if (buffer == NULL) {
+        return 0;
+    }
+
+    uint64_t write_index = atomic_load_explicit(&buffer->write_index, memory_order_acquire);
+    uint64_t read_index = atomic_load_explicit(&buffer->read_index, memory_order_acquire);
+    return write_index - read_index;
+}
+
+uint64_t cs_audio_ring_buffer_frames_read(const CSAudioRingBuffer *buffer) {
+    return buffer == NULL
+        ? 0
+        : atomic_load_explicit(&buffer->frames_read, memory_order_acquire);
+}
+
+uint64_t cs_audio_ring_buffer_frames_requested(const CSAudioRingBuffer *buffer) {
+    return buffer == NULL
+        ? 0
+        : atomic_load_explicit(&buffer->frames_requested, memory_order_acquire);
+}
+
+uint64_t cs_audio_ring_buffer_underrun_count(const CSAudioRingBuffer *buffer) {
+    return buffer == NULL
+        ? 0
+        : atomic_load_explicit(&buffer->underrun_count, memory_order_acquire);
+}
+
+uint64_t cs_audio_ring_buffer_write_stereo(
+    CSAudioRingBuffer *buffer,
+    const float *left,
+    const float *right,
+    uint64_t frame_count
+) {
+    if (buffer == NULL || left == NULL || right == NULL || frame_count == 0) {
+        return 0;
+    }
+
+    uint64_t write_index = atomic_load_explicit(&buffer->write_index, memory_order_relaxed);
+    uint64_t read_index = atomic_load_explicit(&buffer->read_index, memory_order_acquire);
+    uint64_t available = buffer->capacity_frames - (write_index - read_index);
+    uint64_t frames_to_write = frame_count < available ? frame_count : available;
+
+    for (uint64_t offset = 0; offset < frames_to_write; offset += 1) {
+        uint64_t slot = (write_index + offset) % buffer->capacity_frames;
+        buffer->left[slot] = left[offset];
+        buffer->right[slot] = right[offset];
+    }
+
+    atomic_store_explicit(
+        &buffer->write_index,
+        write_index + frames_to_write,
+        memory_order_release
+    );
+    return frames_to_write;
+}
+
+uint64_t cs_audio_ring_buffer_read_stereo(
+    CSAudioRingBuffer *buffer,
+    float *left,
+    float *right,
+    uint64_t frame_count
+) {
+    if (buffer == NULL || left == NULL || right == NULL || frame_count == 0) {
+        return 0;
+    }
+
+    atomic_fetch_add_explicit(&buffer->frames_requested, frame_count, memory_order_relaxed);
+
+    uint64_t read_index = atomic_load_explicit(&buffer->read_index, memory_order_relaxed);
+    uint64_t write_index = atomic_load_explicit(&buffer->write_index, memory_order_acquire);
+    uint64_t available = write_index - read_index;
+    uint64_t frames_to_read = frame_count < available ? frame_count : available;
+
+    if (frames_to_read < frame_count) {
+        atomic_fetch_add_explicit(&buffer->underrun_count, 1, memory_order_relaxed);
+    }
+
+    for (uint64_t offset = 0; offset < frames_to_read; offset += 1) {
+        uint64_t slot = (read_index + offset) % buffer->capacity_frames;
+        left[offset] = buffer->left[slot];
+        right[offset] = buffer->right[slot];
+    }
+
+    atomic_store_explicit(
+        &buffer->read_index,
+        read_index + frames_to_read,
+        memory_order_release
+    );
+    atomic_fetch_add_explicit(&buffer->frames_read, frames_to_read, memory_order_relaxed);
+    return frames_to_read;
+}

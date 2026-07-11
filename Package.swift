@@ -93,9 +93,14 @@ let package = Package(
                 .linkedLibrary("m")
             ]
         ),
+        .target(
+            name: "CPlaybackAudio",
+            path: "Sources/CPlaybackAudio",
+            publicHeadersPath: "include"
+        ),
         .executableTarget(
             name: "CocoaSpice",
-            dependencies: ["CGME", "CLibVGM", "CHighlyComplete", "CLazyUSF"],
+            dependencies: ["CGME", "CLibVGM", "CHighlyComplete", "CLazyUSF", "CPlaybackAudio"],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("AudioToolbox"),

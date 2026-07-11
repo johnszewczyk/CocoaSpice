@@ -19,6 +19,7 @@
 - Audio-engine configuration changes rebuild the current stream from its elapsed position and preserve its playing or paused state.
 - Native output state is represented by immutable value-type snapshots with explicit transport/output states, frame counters, buffer counters, underruns, end state, and stream generation.
 - Frame-accounting helpers derive position from the session origin and frames supplied to output; completion helpers require planned/native completion and an empty output buffer.
+- The Phase 2 native output boundary uses a preallocated C11 atomic stereo ring buffer and an `AVAudioSourceNode` endpoint; it is independently feedable and remains behind the existing player-node path until session integration is validated.
 
 ## Rules
 
@@ -27,9 +28,13 @@
 - Keep streamed decode behavior separate from queue editing and metadata display.
 - Preserve playback state across audio-engine configuration changes; do not treat an output-device change as user pause or stop.
 - Keep realtime output contracts independent of decoder calls and UI state; the callback/output boundary will consume PCM and publish counters while the session owns decoder work.
+- Keep ring-buffer clear and telemetry reset coordinated by the session while output consumption is stopped.
 
 ## Files
 
 - [SPCPlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/SPCPlaybackEngine.swift)
 - [PlaybackAudioContracts.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackAudioContracts.swift)
+- [RealtimePCMFrameRingBuffer.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/RealtimePCMFrameRingBuffer.swift)
+- [AVAudioSourceNodeOutput.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/AVAudioSourceNodeOutput.swift)
+- [cs_audio_ring_buffer.c](/Users/john/Documents/Code/CocoaSpice/Sources/CPlaybackAudio/cs_audio_ring_buffer.c)
 - [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
