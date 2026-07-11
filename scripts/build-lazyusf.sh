@@ -11,7 +11,7 @@ make -C "$SOURCE_DIR" clean >/dev/null 2>&1 || true
 make -C "$SOURCE_DIR" liblazyusf.a \
   CC="${CC:-cc}" \
   AR="${AR:-ar}" \
-  CFLAGS="-c -O2 -fPIC -I. -I$ROOT_DIR/vendor/psflib -Wno-return-type" \
+  CFLAGS="-c -O2 -fPIC -I. -I$ROOT_DIR/vendor/psflib -Wno-return-type -Wno-pointer-to-int-cast -Wno-pointer-sign -Wno-shift-negative-value -Wno-macro-redefined" \
   OPTS="" \
   ROPTS="-DARCH_MIN_ARM_NEON" \
   >/dev/null
