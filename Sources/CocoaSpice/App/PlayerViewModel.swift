@@ -23,8 +23,8 @@ final class PlayerViewModel {
     }
 
     enum DatabaseSidebarTextColor: String, CaseIterable, Identifiable {
-        case secondary
         case primary
+        case secondary
         case tertiary
 
         var id: String { rawValue }

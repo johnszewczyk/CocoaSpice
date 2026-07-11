@@ -201,8 +201,9 @@ struct OptionsView: View {
                         model.setDatabaseSidebarTextColor(.primary)
                         sidebarFontSizeText = "12"
                     }
-                    .frame(width: 72)
+                    .frame(width: 72, alignment: .trailing)
                 }
+                .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
     }
