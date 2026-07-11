@@ -18,7 +18,9 @@
 - The bottom status bar shows path or status context on the left and elapsed or total time on the right.
 - Empty states use native `ContentUnavailableView`.
 - The app uses the standard `Command+,` shortcut for Options, and the command toggles the Options window open or closed.
-- The Options window defaults to a `640x640` utility-style size.
+- Options opens as a regular titled window rather than the special SwiftUI Settings scene.
+- The Options window is fixed at `900pt` wide, starts at `600pt` tall, and permits vertical resizing.
+- The Options sidebar uses a native `NavigationSplitView` with a `Components` section containing Playback, Interface, and Database.
 
 ## Rules
 
