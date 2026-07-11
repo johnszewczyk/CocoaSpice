@@ -38,6 +38,14 @@ struct CocoaSpiceApp: App {
         .windowToolbarStyle(.unified)
         .defaultSize(width: 900, height: 600)
         .windowResizability(.contentSize)
+
+        Window("About CocoaSpice", id: "about") {
+            AboutView()
+        }
+        .windowStyle(.titleBar)
+        .windowToolbarStyle(.unified)
+        .defaultSize(width: 560, height: 620)
+        .windowResizability(.contentSize)
     }
 }
 
@@ -46,6 +54,12 @@ private struct CocoaSpiceCommands: Commands {
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
+        CommandGroup(replacing: .appInfo) {
+            Button("About CocoaSpice") {
+                openWindow(id: "about")
+            }
+        }
+
         CommandGroup(after: .newItem) {
             Button("Open Playlist...") {
                 model.loadPlaylistM3U()

@@ -4,6 +4,12 @@ enum PlaybackDecoderBackend: Sendable {
     case gme
     case libvgm
     case highlyComplete
+    case lazyUSF
+}
+
+struct PlaybackDecoderModule: Sendable {
+    let backend: PlaybackDecoderBackend
+    let supportedExtensions: Set<String>
 }
 
 enum GMEFormatSupport {
@@ -31,22 +37,24 @@ enum GMEFormatSupport {
         "minigsf"
     ]
 
-    static let supportedExtensions: Set<String> =
-        libGMESupportedExtensions
-        .union(libVGMSupportedExtensions)
-        .union(highlyCompleteSupportedExtensions)
+    static let lazyUSFSupportedExtensions: Set<String> = [
+        "usf",
+        "miniusf"
+    ]
+
+    // Static modules are the current plugin boundary. A future dynamically loaded
+    // module can provide the same extension and backend registration contract.
+    static let modules: [PlaybackDecoderModule] = [
+        PlaybackDecoderModule(backend: .gme, supportedExtensions: libGMESupportedExtensions),
+        PlaybackDecoderModule(backend: .libvgm, supportedExtensions: libVGMSupportedExtensions),
+        PlaybackDecoderModule(backend: .highlyComplete, supportedExtensions: highlyCompleteSupportedExtensions),
+        PlaybackDecoderModule(backend: .lazyUSF, supportedExtensions: lazyUSFSupportedExtensions)
+    ]
+
+    static let supportedExtensions: Set<String> = Set(modules.flatMap(\.supportedExtensions))
 
     static func playbackBackend(forPathExtension extensionName: String) -> PlaybackDecoderBackend? {
         let normalized = extensionName.lowercased()
-        if highlyCompleteSupportedExtensions.contains(normalized) {
-            return .highlyComplete
-        }
-        if libVGMSupportedExtensions.contains(normalized) {
-            return .libvgm
-        }
-        if libGMESupportedExtensions.contains(normalized) {
-            return .gme
-        }
-        return nil
+        return modules.first { $0.supportedExtensions.contains(normalized) }?.backend
     }
 }

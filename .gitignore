@@ -7,7 +7,12 @@
 dist/
 *.tar.gz
 
+# Generated lazyusf2 objects and archives
+vendor/lazyusf2/**/*.o
+vendor/lazyusf2/*.a
+vendor/lazyusf2/bench
+vendor/lazyusf2/dumpresampled
+
 # Local editor and OS metadata
 .idea/
 .vscode/
-

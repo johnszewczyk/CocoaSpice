@@ -376,25 +376,37 @@ final class SPCPlaybackEngine: @unchecked Sendable {
 }
 
 private final class SpectrumBandAnalyzer: @unchecked Sendable {
-    static let bandCount = 20
+    static let bandCount = 40
+    private static let minimumBandFrequency: Float = 31.25
+    private static let maximumBandFrequency: Float = 4_000
 
     private let sampleRate: Float
     // Log-spaced centers over a chiptune-oriented range.
     // This preserves an orderly analyzer layout while biasing the visible activity
     // toward the region that tends to matter most for retro game music.
-    private let bandFrequencies: [Float] = [
-        31.25, 39.76, 50.59, 64.37, 81.91,
-        104.24, 132.66, 168.82, 214.83, 273.38,
-        347.88, 442.67, 563.29, 716.80, 912.11,
-        1160.63, 1476.88, 1879.32, 2391.45, 3043.15
-    ]
-    private let analysisFrameCount = 1_024
+    // Equal spacing in log frequency gives each band the same relative width,
+    // matching how real EQ bands are distributed across octaves.
+    private let bandFrequencies: [Float]
+    private let bandEdges: [(lower: Float, upper: Float)]
+    private let analysisFrameCount = 2_048
     private let minimumUpdateInterval: TimeInterval = 1.0 / 120.0
-    private var analysisBuffer = Array(repeating: Float.zero, count: 1_024)
+    private var analysisBuffer = Array(repeating: Float.zero, count: 2_048)
     private var lastPublishUptime: TimeInterval = 0
 
     init(sampleRate: Float) {
         self.sampleRate = sampleRate
+        let bandRatio = pow(
+            Self.maximumBandFrequency / Self.minimumBandFrequency,
+            1 / Float(Self.bandCount)
+        )
+        bandEdges = (0..<Self.bandCount).map { index in
+            let lower = Self.minimumBandFrequency * pow(bandRatio, Float(index))
+            let upper = Self.minimumBandFrequency * pow(bandRatio, Float(index + 1))
+            return (lower: lower, upper: upper)
+        }
+        bandFrequencies = bandEdges.map { edge in
+            sqrt(edge.lower * edge.upper)
+        }
     }
 
     func reset() {
@@ -435,10 +447,15 @@ private final class SpectrumBandAnalyzer: @unchecked Sendable {
         let floor = max(0.0001, rms)
 
         var levels = Array(repeating: Float.zero, count: Self.bandCount)
-        for (index, centerFrequency) in bandFrequencies.enumerated() {
-            let frequency = min(centerFrequency, sampleRate * 0.45)
-            let magnitude = goertzelMagnitude(targetFrequency: frequency, sampleCount: analysisFrameCount)
-            let relative = magnitude / floor
+        for index in bandFrequencies.indices {
+            let edge = bandEdges[index]
+            let probeFrequencies = [edge.lower, bandFrequencies[index], edge.upper]
+            let bandPower = probeFrequencies.reduce(Float.zero) { power, frequency in
+                let clampedFrequency = min(frequency, sampleRate * 0.45)
+                let magnitude = goertzelMagnitude(targetFrequency: clampedFrequency, sampleCount: analysisFrameCount)
+                return power + (magnitude * magnitude)
+            } / Float(probeFrequencies.count)
+            let relative = sqrt(bandPower) / floor
             levels[index] = min(1, log10f(1 + (relative * 6)) / log10f(7))
         }
 

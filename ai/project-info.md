@@ -3,7 +3,7 @@
 ## Product
 
 - `CocoaSpice` is a native macOS audio frontend for game-music formats, growing toward standard audio support as well.
-- Current decoder families include `libgme`, `libvgm`, and `Highly Complete` for GBA PSF-family playback.
+- Current decoder families include `libgme`, `libvgm`, `Highly Complete` for GBA PSF-family playback, and `lazyusf2` for Nintendo 64 USF-family playback.
 - The current product split is a scanned `Database` browser on the left and an editable `Playlist` on the right.
 
 ## Major Components
@@ -44,6 +44,8 @@ Agent engineering notes:
 - Agent subsystem notes describe only current engineering constraints and ownership facts.
 - Keep codec notes separate from database and playlist behavior.
 - Keep critical Highly Complete engineering notes current, but never write them as historical fix reports.
+- Keep each decoder behind the app-owned `AudioTrackDecoder` and `AudioFileInspector` interfaces; format intake and backend ownership must remain separate from transport and timing.
+- Decoder registration is a static plugin registry today; adding a module should add one backend target, one bridge, and one registry entry rather than expand scanner or transport conditionals.
 - Keep the UI native and simple before inventing custom chrome.
 
 ## Human Docs

@@ -16,10 +16,16 @@ import Testing
     #expect(SPCFileScanner.supportedExtensions.contains("vgz"))
     #expect(SPCFileScanner.supportedExtensions.contains("gsf"))
     #expect(SPCFileScanner.supportedExtensions.contains("minigsf"))
+    #expect(SPCFileScanner.supportedExtensions.contains("usf"))
+    #expect(SPCFileScanner.supportedExtensions.contains("miniusf"))
 }
 
 @Test func supportedExtensionsPreserveLegacyS98Compatibility() {
     #expect(SPCFileScanner.supportedExtensions.contains("s98"))
+}
+
+@Test @MainActor func spectrumAnalyzerUsesFortyBands() {
+    #expect(ToolbarSpectrumModel.bandCount == 40)
 }
 
 @Test func playbackBackendRoutesVGMFamilyToLibVGM() {
@@ -31,6 +37,8 @@ import Testing
     #expect(GMEFormatSupport.playbackBackend(forPathExtension: "s98") == .libvgm)
     #expect(GMEFormatSupport.playbackBackend(forPathExtension: "gsf") == .highlyComplete)
     #expect(GMEFormatSupport.playbackBackend(forPathExtension: "minigsf") == .highlyComplete)
+    #expect(GMEFormatSupport.playbackBackend(forPathExtension: "usf") == .lazyUSF)
+    #expect(GMEFormatSupport.playbackBackend(forPathExtension: "miniusf") == .lazyUSF)
 }
 
 @Test func rapidQueueNavigationCanAdvanceFromPendingTrack() {

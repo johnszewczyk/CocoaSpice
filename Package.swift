@@ -8,6 +8,8 @@ let libVGMBuildDirectory = "\(rootPath)/.build/libvgm"
 let libVGMVendorDirectory = "\(rootPath)/vendor/libvgm"
 let libMGBABuildDirectory = "\(rootPath)/.build/mgba"
 let libMGBAVendorDirectory = "\(rootPath)/vendor/mgba"
+let lazyUSFBuildDirectory = "\(rootPath)/.build/lazyusf"
+let lazyUSFVendorDirectory = "\(rootPath)/vendor/lazyusf2"
 
 let package = Package(
     name: "CocoaSpice",
@@ -78,9 +80,22 @@ let package = Package(
                 .linkedLibrary("z")
             ]
         ),
+        .target(
+            name: "CLazyUSF",
+            path: "Sources/CLazyUSF",
+            publicHeadersPath: "include",
+            cSettings: [
+                .unsafeFlags(["-I\(lazyUSFVendorDirectory)", "-I\(rootPath)/vendor/psflib"])
+            ],
+            linkerSettings: [
+                .unsafeFlags(["\(lazyUSFBuildDirectory)/liblazyusf.a", "\(lazyUSFBuildDirectory)/libpsflib.a"]),
+                .linkedLibrary("z"),
+                .linkedLibrary("m")
+            ]
+        ),
         .executableTarget(
             name: "CocoaSpice",
-            dependencies: ["CGME", "CLibVGM", "CHighlyComplete"],
+            dependencies: ["CGME", "CLibVGM", "CHighlyComplete", "CLazyUSF"],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("AudioToolbox"),

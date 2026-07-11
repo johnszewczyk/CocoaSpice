@@ -21,6 +21,9 @@ fi
 if [[ ! -x "$ROOT_DIR/scripts/build-mgba.sh" ]]; then
   chmod +x "$ROOT_DIR/scripts/build-mgba.sh"
 fi
+if [[ ! -x "$ROOT_DIR/scripts/build-lazyusf.sh" ]]; then
+  chmod +x "$ROOT_DIR/scripts/build-lazyusf.sh"
+fi
 
 mkdir -p "$BUILD_DIR" "$DIST_DIR"
 
@@ -34,6 +37,7 @@ export SWIFT_MODULECACHE_PATH="$BUILD_DIR/swift-module-cache"
 
 "$ROOT_DIR/scripts/build-libvgm.sh"
 "$ROOT_DIR/scripts/build-mgba.sh"
+"$ROOT_DIR/scripts/build-lazyusf.sh"
 
 swift build \
   --package-path "$ROOT_DIR" \

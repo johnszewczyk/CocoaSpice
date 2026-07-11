@@ -6,7 +6,7 @@ import SwiftUI
 @MainActor
 @Observable
 final class ToolbarSpectrumModel {
-    static let bandCount = 20
+    static let bandCount = 40
     private let capHoldDuration: TimeInterval = 0.100
     private let capDropDecayRate: Double = 3.2
     private let fallSmoothingTimeConstant: TimeInterval = 0.050

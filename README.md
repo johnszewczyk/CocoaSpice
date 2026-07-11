@@ -44,6 +44,8 @@ COCOASPICE_LIBRARY_ROOT="/path/to/spcsets_extracted" ./launch.sh
 - `libgme` is bundled into `dist/CocoaSpice.app/Contents/Frameworks`
 - `libvgm` is vendored under `vendor/libvgm` and built statically into the app during `./build.sh`
 - `Highly Complete` is provided by a local bridge target backed by vendored `mGBA` plus `psflib`
+- `lazyusf2` is vendored under `vendor/lazyusf2` and built statically into the app for USF and miniUSF playback
+- Third-party licensing notes are kept in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)
 - the build currently expects Homebrew `game-music-emu` at `/opt/homebrew`
 - the build currently expects `cmake` to be installed locally so `scripts/build-libvgm.sh` and `scripts/build-mgba.sh` can produce the static backend libraries
 - the app now targets the current macOS generation in SwiftPM rather than macOS 14

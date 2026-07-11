@@ -10,6 +10,8 @@
 
 - `SPCPlaybackEngine` now builds a decoder through a backend-routing factory rather than instantiating `libgme` directly.
 - `libgme` remains the backend for container and dump formats such as `spc`, `nsf`, `nsfe`, `gbs`, `hes`, `kss`, `sap`, and `ay`.
+- `lazyusf2` owns `usf` and `miniusf` through the `CLazyUSF` bridge; keep its PSF-chain loading and N64 emulation behind that bridge.
+- Backend modules expose app-owned PCM, metadata, seeking, and timing hooks; the player model must not call decoder-specific C APIs directly.
 - `libvgm` now owns `vgm`, `vgz`, `gym`, and `s98`.
 - `Highly Complete` now owns `gsf` and `minigsf`.
 - File inspection and playback share the same backend-routing table, so scan results, playlist import, and playback no longer disagree about VGM-family ownership.

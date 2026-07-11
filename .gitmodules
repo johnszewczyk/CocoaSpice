@@ -1,4 +1,6 @@
 [submodule "vendor/libvgm"]
 	path = vendor/libvgm
 	url = https://github.com/ValleyBell/libvgm.git
-
+[submodule "vendor/lazyusf2"]
+	path = vendor/lazyusf2
+	url = https://gitlab.com/kode54/lazyusf2.git

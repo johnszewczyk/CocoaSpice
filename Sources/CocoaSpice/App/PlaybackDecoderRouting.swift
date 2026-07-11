@@ -1,6 +1,7 @@
 import Foundation
 import CLibVGM
 import CHighlyComplete
+import CLazyUSF
 
 private enum HighlyCompleteBridgeGate {
     private static let lock = NSLock()
@@ -38,6 +39,8 @@ enum PlaybackDecoderFactory {
             return try LibVGMDecoder(track: track, sampleRate: sampleRate)
         case .highlyComplete:
             return try HighlyCompleteDecoder(track: track, sampleRate: sampleRate)
+        case .lazyUSF:
+            return try LazyUSFDecoder(track: track, sampleRate: sampleRate)
         }
     }
 
@@ -49,6 +52,8 @@ enum PlaybackDecoderFactory {
             return try LibVGMFileInspector(fileURL: fileURL)
         case .highlyComplete:
             return try HighlyCompleteFileInspector(fileURL: fileURL)
+        case .lazyUSF:
+            return try LazyUSFFileInspector(fileURL: fileURL)
         }
     }
 
@@ -438,5 +443,120 @@ final class HighlyCompleteFileInspector: AudioFileInspector {
             throw SPCDecoderError.library("HighlyComplete GSF files expose a single playable track.")
         }
         return trackMetadata
+    }
+}
+
+final class LazyUSFDecoder: AudioTrackDecoder {
+    let sampleRate: Int
+    let appliesFadeInternally = false
+    private var handle: lazyusf_player_handle_t?
+
+    init(track: TrackItem, sampleRate: Int) throws {
+        self.sampleRate = sampleRate
+        let fileURL = try ZipArchiveSupport.materializePlayableFile(for: track)
+        var errorMessage: UnsafeMutablePointer<CChar>?
+        let createdHandle = fileURL.path.withCString { path in
+            lazyusf_player_create(path, Int32(sampleRate), &errorMessage)
+        }
+        guard let createdHandle else {
+            defer { Self.freeErrorMessage(errorMessage) }
+            if let errorMessage { throw SPCDecoderError.library(String(cString: errorMessage)) }
+            throw SPCDecoderError.initializationFailed
+        }
+        handle = createdHandle
+    }
+
+    deinit {
+        if let handle { lazyusf_player_destroy(handle) }
+    }
+
+    func metadata() throws -> TrackMetadata {
+        guard let handle else { throw SPCDecoderError.initializationFailed }
+        var rawMetadata = lazyusf_metadata_t()
+        defer { lazyusf_metadata_clear(&rawMetadata) }
+        var errorMessage: UnsafeMutablePointer<CChar>?
+        let status = lazyusf_player_read_metadata(handle, &rawMetadata, &errorMessage)
+        try Self.throwIfNeeded(status, errorMessage: errorMessage)
+        return Self.trackMetadata(from: rawMetadata)
+    }
+
+    var playedFrames: Int {
+        guard let handle else { return 0 }
+        return Int(lazyusf_player_played_frames(handle))
+    }
+
+    var trackEnded: Bool { false }
+
+    func configurePlayback(loopSeconds: Int, fadeSeconds: Int, usesNativeEnding: Bool) {}
+
+    func seek(toMilliseconds milliseconds: Int) throws {
+        guard let handle else { throw SPCDecoderError.initializationFailed }
+        var errorMessage: UnsafeMutablePointer<CChar>?
+        let status = lazyusf_player_seek_milliseconds(handle, Int32(milliseconds), &errorMessage)
+        try Self.throwIfNeeded(status, errorMessage: errorMessage)
+    }
+
+    func decode(frameCount: Int) throws -> DecodedChunk {
+        guard let handle else { throw SPCDecoderError.initializationFailed }
+        var interleaved = [Int16](repeating: 0, count: frameCount * 2)
+        var renderedFrames: Int32 = 0
+        var errorMessage: UnsafeMutablePointer<CChar>?
+        let status = lazyusf_player_render_s16(handle, Int32(frameCount), &interleaved, &renderedFrames, &errorMessage)
+        try Self.throwIfNeeded(status, errorMessage: errorMessage)
+        let actualFrameCount = max(0, Int(renderedFrames))
+        var left = [Float](repeating: 0, count: actualFrameCount)
+        var right = [Float](repeating: 0, count: actualFrameCount)
+        for frame in 0..<actualFrameCount {
+            let sourceIndex = frame * 2
+            left[frame] = Float(interleaved[sourceIndex]) / Float(Int16.max)
+            right[frame] = Float(interleaved[sourceIndex + 1]) / Float(Int16.max)
+        }
+        return DecodedChunk(left: left, right: right, frameCount: actualFrameCount)
+    }
+
+    static func trackMetadata(from rawMetadata: lazyusf_metadata_t) -> TrackMetadata {
+        TrackMetadata(
+            game: string(from: rawMetadata.game),
+            song: string(from: rawMetadata.title),
+            system: string(from: rawMetadata.system),
+            author: string(from: rawMetadata.artist),
+            comment: string(from: rawMetadata.comment),
+            introLengthMs: 0,
+            loopLengthMs: 0,
+            playLengthMs: Int(rawMetadata.play_length_ms),
+            fadeLengthMs: Int(rawMetadata.fade_length_ms)
+        )
+    }
+
+    private static func string(from pointer: UnsafeMutablePointer<CChar>?) -> String {
+        guard let pointer else { return "" }
+        return String(cString: pointer)
+    }
+
+    private static func throwIfNeeded(_ status: Int32, errorMessage: UnsafeMutablePointer<CChar>?) throws {
+        defer { freeErrorMessage(errorMessage) }
+        guard status == 0 else {
+            if let errorMessage { throw SPCDecoderError.library(String(cString: errorMessage)) }
+            throw SPCDecoderError.initializationFailed
+        }
+    }
+
+    private static func freeErrorMessage(_ errorMessage: UnsafeMutablePointer<CChar>?) {
+        guard let errorMessage else { return }
+        lazyusf_error_message_free(errorMessage)
+    }
+}
+
+final class LazyUSFFileInspector: AudioFileInspector {
+    let trackCount = 1
+    private let decoder: LazyUSFDecoder
+
+    init(fileURL: URL) throws {
+        decoder = try LazyUSFDecoder(track: TrackItem(url: fileURL), sampleRate: 44_100)
+    }
+
+    func metadata(trackIndex: Int) throws -> TrackMetadata {
+        guard trackIndex == 0 else { throw SPCDecoderError.library("USF files expose a single playable track.") }
+        return try decoder.metadata()
     }
 }

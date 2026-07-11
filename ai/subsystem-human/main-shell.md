@@ -14,7 +14,13 @@
 - Options: opens with `Command+,`.
 - Options: utility window sized for preference editing.
 
+## About
+
+- About CocoaSpice: opens from the standard App menu.
+- About: lists the external decoder and emulator projects used by the app, their purposes, license terms, and source links.
+
 ## Files
 
 - [MainView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
 - [CocoaSpiceApp.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/CocoaSpiceApp.swift)
+- [AboutView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/AboutView.swift)

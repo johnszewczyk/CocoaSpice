@@ -2,7 +2,7 @@
 
 ## Formats
 
-- Playback: SPC, NSF, NSFE, GBS, HES, KSS, AY, SAP, VGM, VGZ, GYM, S98, GSF, and miniGSF files.
+- Playback: SPC, NSF, NSFE, GBS, HES, KSS, AY, SAP, VGM, VGZ, GYM, S98, GSF, miniGSF, USF, and miniUSF files.
 
 ## Playback Controls
 
