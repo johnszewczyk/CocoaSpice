@@ -169,7 +169,7 @@ struct OptionsView: View {
                         .textFieldStyle(.plain)
                         .multilineTextAlignment(.trailing)
                         .font(.system(.body, design: .monospaced))
-                        .frame(width: 120)
+                        .frame(width: 72)
                         .padding(.horizontal, 10)
                         .padding(.vertical, 6)
                         .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.08)))
@@ -190,7 +190,7 @@ struct OptionsView: View {
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)
-                    .frame(width: 120, alignment: .trailing)
+                    .frame(width: 72, alignment: .trailing)
                 }
 
                 HStack {
@@ -200,7 +200,7 @@ struct OptionsView: View {
                         model.setDatabaseSidebarTextColor(.primary)
                         sidebarFontSizeText = "12"
                     }
-                    .frame(width: 120)
+                    .frame(width: 72)
                 }
             }
         }
@@ -335,6 +335,7 @@ struct OptionsView: View {
 
     private func applySidebarFontSizeText() {
         let parsed = Double(sidebarFontSizeText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 12
+        guard parsed.isFinite else { return }
         model.setDatabaseSidebarFontSize(CGFloat(parsed))
         sidebarFontSizeText = Self.formatFontSize(model.databaseSidebarFontSize)
     }

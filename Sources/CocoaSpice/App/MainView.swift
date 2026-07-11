@@ -71,7 +71,11 @@ struct MainView: View {
                             description: Text("No database games match the current sidebar search.")
                         )
                     } else {
-                        DatabaseGameListView(model: model)
+                        DatabaseGameListView(
+                            model: model,
+                            sidebarFontSize: model.databaseSidebarFontSize,
+                            sidebarTextColor: model.databaseSidebarTextColor
+                        )
                     }
                 }
             }
@@ -217,9 +221,15 @@ private final class AccessoryProbeView: NSView {
 
 private struct DatabaseGameListView: NSViewRepresentable {
     @Bindable var model: PlayerViewModel
+    let sidebarFontSize: CGFloat
+    let sidebarTextColor: PlayerViewModel.DatabaseSidebarTextColor
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(model: model)
+        Coordinator(
+            model: model,
+            sidebarFontSize: sidebarFontSize,
+            sidebarTextColor: sidebarTextColor
+        )
     }
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -259,16 +269,22 @@ private struct DatabaseGameListView: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         context.coordinator.model = model
+        context.coordinator.sidebarFontSize = sidebarFontSize
+        context.coordinator.sidebarTextColor = sidebarTextColor
         context.coordinator.reload()
     }
 
     @MainActor
     final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
         @Bindable var model: PlayerViewModel
+        var sidebarFontSize: CGFloat
+        var sidebarTextColor: PlayerViewModel.DatabaseSidebarTextColor
         private weak var tableView: DatabaseGameNativeTableView?
 
-        init(model: PlayerViewModel) {
+        init(model: PlayerViewModel, sidebarFontSize: CGFloat, sidebarTextColor: PlayerViewModel.DatabaseSidebarTextColor) {
             self._model = Bindable(model)
+            self.sidebarFontSize = sidebarFontSize
+            self.sidebarTextColor = sidebarTextColor
         }
 
         func attach(tableView: DatabaseGameNativeTableView) {
@@ -277,7 +293,7 @@ private struct DatabaseGameListView: NSViewRepresentable {
 
         func reload() {
             guard let tableView else { return }
-            tableView.rowHeight = model.databaseSidebarFontSize + 5
+            tableView.rowHeight = sidebarFontSize + 5
             tableView.reloadData()
 
             let rows = IndexSet(model.visibleDatabaseGameItems.enumerated().compactMap { index, item in
@@ -301,7 +317,7 @@ private struct DatabaseGameListView: NSViewRepresentable {
         }
 
         func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-            16
+            sidebarFontSize + 5
         }
 
         func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
@@ -316,7 +332,7 @@ private struct DatabaseGameListView: NSViewRepresentable {
                 textField.translatesAutoresizingMaskIntoConstraints = false
                 textField.font = .systemFont(ofSize: 11)
                 textField.lineBreakMode = .byTruncatingTail
-                textField.textColor = sidebarTextColor(model.databaseSidebarTextColor)
+                textField.textColor = resolvedSidebarTextColor(sidebarTextColor)
                 cell.textField = textField
                 cell.addSubview(textField)
 
@@ -330,12 +346,12 @@ private struct DatabaseGameListView: NSViewRepresentable {
             }()
 
             cell.textField?.stringValue = item.displayName
-            cell.textField?.font = .systemFont(ofSize: model.databaseSidebarFontSize)
-            cell.textField?.textColor = sidebarTextColor(model.databaseSidebarTextColor)
+            cell.textField?.font = .systemFont(ofSize: sidebarFontSize)
+            cell.textField?.textColor = resolvedSidebarTextColor(sidebarTextColor)
             return cell
         }
 
-        private func sidebarTextColor(_ color: PlayerViewModel.DatabaseSidebarTextColor) -> NSColor {
+        private func resolvedSidebarTextColor(_ color: PlayerViewModel.DatabaseSidebarTextColor) -> NSColor {
             switch color {
             case .secondary: .secondaryLabelColor
             case .primary: .labelColor

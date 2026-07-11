@@ -764,7 +764,7 @@ final class PlayerViewModel {
     }
 
     func setDatabaseSidebarFontSize(_ size: CGFloat) {
-        databaseSidebarFontSize = min(max(size, 10), 16)
+        databaseSidebarFontSize = size
         savePreferencesNow()
     }
 
@@ -1649,7 +1649,7 @@ final class PlayerViewModel {
             lastAudioExportDirectoryURL = URL(fileURLWithPath: lastAudioExportDirectoryPath, isDirectory: true).standardizedFileURL
         }
         if let storedSidebarFontSize = preferences.databaseSidebarFontSize {
-            databaseSidebarFontSize = min(max(CGFloat(storedSidebarFontSize), 10), 16)
+            databaseSidebarFontSize = CGFloat(storedSidebarFontSize)
         }
         if let storedSidebarTextColor = preferences.databaseSidebarTextColor.flatMap(DatabaseSidebarTextColor.init(rawValue:)) {
             databaseSidebarTextColor = storedSidebarTextColor
