@@ -17,6 +17,8 @@
 - Seek rebuilds the rolling stream from the requested offset rather than rendering a replacement file.
 - Old refill work is dropped when a new track, stop, or seek invalidates the prior stream generation.
 - Audio-engine configuration changes rebuild the current stream from its elapsed position and preserve its playing or paused state.
+- Native output state is represented by immutable value-type snapshots with explicit transport/output states, frame counters, buffer counters, underruns, end state, and stream generation.
+- Frame-accounting helpers derive position from the session origin and frames supplied to output; completion helpers require planned/native completion and an empty output buffer.
 
 ## Rules
 
@@ -24,8 +26,10 @@
 - Preserve the small rolling queue model when refill logic changes.
 - Keep streamed decode behavior separate from queue editing and metadata display.
 - Preserve playback state across audio-engine configuration changes; do not treat an output-device change as user pause or stop.
+- Keep realtime output contracts independent of decoder calls and UI state; the callback/output boundary will consume PCM and publish counters while the session owns decoder work.
 
 ## Files
 
 - [SPCPlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/SPCPlaybackEngine.swift)
+- [PlaybackAudioContracts.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackAudioContracts.swift)
 - [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)

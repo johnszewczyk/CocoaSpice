@@ -41,6 +41,61 @@ import Testing
     #expect(GMEFormatSupport.playbackBackend(forPathExtension: "miniusf") == .lazyUSF)
 }
 
+@Test func frameAccountingUsesSuppliedOutputFrames() {
+    #expect(PlaybackFrameAccounting.positionFrames(
+        sessionStartFrame: 44_100,
+        framesSupplied: 22_050
+    ) == 66_150)
+    #expect(PlaybackFrameAccounting.positionSeconds(
+        sessionStartFrame: 44_100,
+        framesSupplied: 22_050,
+        sampleRate: 44_100
+    ) == 1.5)
+}
+
+@Test func frameAccountingDoesNotMoveBackwardsForNegativeSupply() {
+    #expect(PlaybackFrameAccounting.positionFrames(
+        sessionStartFrame: 44_100,
+        framesSupplied: -1
+    ) == 44_100)
+}
+
+@Test func nativeCompletionWaitsForBufferedFramesToDrain() {
+    #expect(!PlaybackCompletionPolicy.shouldFinish(
+        reachedDecoderEnd: true,
+        plannedFrameCount: nil,
+        framesSupplied: 10_000,
+        bufferedFrames: 512
+    ))
+    #expect(PlaybackCompletionPolicy.shouldFinish(
+        reachedDecoderEnd: true,
+        plannedFrameCount: nil,
+        framesSupplied: 10_000,
+        bufferedFrames: 0
+    ))
+}
+
+@Test func fixedDurationCompletionUsesPlannedFramesAndDrain() {
+    #expect(!PlaybackCompletionPolicy.shouldFinish(
+        reachedDecoderEnd: false,
+        plannedFrameCount: 44_100,
+        framesSupplied: 44_100,
+        bufferedFrames: 256
+    ))
+    #expect(PlaybackCompletionPolicy.shouldFinish(
+        reachedDecoderEnd: false,
+        plannedFrameCount: 44_100,
+        framesSupplied: 44_100,
+        bufferedFrames: 0
+    ))
+    #expect(!PlaybackCompletionPolicy.shouldFinish(
+        reachedDecoderEnd: false,
+        plannedFrameCount: 44_100,
+        framesSupplied: 44_099,
+        bufferedFrames: 0
+    ))
+}
+
 @Test func rapidQueueNavigationCanAdvanceFromPendingTrack() {
     let first = TrackItem(url: URL(fileURLWithPath: "/tmp/one.spc"))
     let second = TrackItem(url: URL(fileURLWithPath: "/tmp/two.spc"))

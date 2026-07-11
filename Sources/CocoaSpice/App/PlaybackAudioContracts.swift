@@ -1,0 +1,82 @@
+import Foundation
+
+enum PlaybackTransportState: String, Equatable, Sendable {
+    case stopped
+    case loading
+    case paused
+    case playing
+    case seeking
+    case ended
+    case failed
+}
+
+enum NativeAudioOutputState: String, Equatable, Sendable {
+    case unavailable
+    case stopped
+    case primed
+    case running
+    case failed
+}
+
+struct NativeAudioOutputSnapshot: Equatable, Sendable {
+    let transportState: PlaybackTransportState
+    let outputState: NativeAudioOutputState
+    let trackLoaded: Bool
+    let decodeError: String?
+    let reachedEnd: Bool
+    let sampleRate: Int
+    let channelCount: Int
+    let bufferedFrames: Int64
+    let ringBufferFrames: Int64
+    let framesRequested: Int64
+    let framesSupplied: Int64
+    let underrunCount: Int64
+    let positionFrames: Int64
+    let generation: Int
+}
+
+protocol NativeAudioOutput: AnyObject, Sendable {
+    var snapshot: NativeAudioOutputSnapshot { get }
+
+    func start() throws
+    func stop()
+    func clear()
+}
+
+enum PlaybackFrameAccounting {
+    static func positionFrames(
+        sessionStartFrame: Int64,
+        framesSupplied: Int64
+    ) -> Int64 {
+        sessionStartFrame + max(0, framesSupplied)
+    }
+
+    static func positionSeconds(
+        sessionStartFrame: Int64,
+        framesSupplied: Int64,
+        sampleRate: Int
+    ) -> TimeInterval {
+        guard sampleRate > 0 else { return 0 }
+        return Double(positionFrames(
+            sessionStartFrame: sessionStartFrame,
+            framesSupplied: framesSupplied
+        )) / Double(sampleRate)
+    }
+}
+
+enum PlaybackCompletionPolicy {
+    static func shouldFinish(
+        reachedDecoderEnd: Bool,
+        plannedFrameCount: Int64?,
+        framesSupplied: Int64,
+        bufferedFrames: Int64
+    ) -> Bool {
+        guard bufferedFrames <= 0 else { return false }
+
+        if let plannedFrameCount {
+            return framesSupplied >= max(0, plannedFrameCount)
+        }
+
+        return reachedDecoderEnd
+    }
+}
