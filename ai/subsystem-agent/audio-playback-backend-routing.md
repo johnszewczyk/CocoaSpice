@@ -26,17 +26,18 @@
 
 - Keep backend routing centralized; do not re-encode extension decisions in UI or playlist code.
 - Keep file intake policy, decoder routing, and Long Play policy as separate concerns.
+- Archive materialization happens before backend creation. ZIP and 7z members stream through `7zz`; RSN members route through `unar` because RSN files are solid RAR-family archives.
 - Prefer adding new decoder backends under the existing playback abstractions instead of branching the view model.
 - Treat `Highly Complete` as a real backend subsystem, not as a one-off `minigsf` exception.
 - Do not assume all decoder backends share identical threading or sample-rate behavior.
 
 ## Files
 
-- [PlaybackDecoderRouting.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackDecoderRouting.swift)
-- [PlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackEngine.swift)
-- [GMEFormatSupport.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/GMEFormatSupport.swift)
-- [libvgm_bridge.h](/Users/john/Documents/Code/CocoaSpice/Sources/CLibVGM/include/libvgm_bridge.h)
-- [libvgm_bridge.cpp](/Users/john/Documents/Code/CocoaSpice/Sources/CLibVGM/libvgm_bridge.cpp)
-- [highlycomplete_bridge.h](/Users/john/Documents/Code/CocoaSpice/Sources/CHighlyComplete/include/highlycomplete_bridge.h)
-- [highlycomplete_bridge.cpp](/Users/john/Documents/Code/CocoaSpice/Sources/CHighlyComplete/highlycomplete_bridge.cpp)
-- [audio-highly-complete-gsf-backend.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-gsf-backend.md)
+- [PlaybackDecoderRouting.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackDecoderRouting.swift)
+- [PlaybackEngine.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackEngine.swift)
+- [GMEFormatSupport.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/GMEFormatSupport.swift)
+- [libvgm_bridge.h](/Users/john/Downloads/Code/CocoaSpice/Sources/CLibVGM/include/libvgm_bridge.h)
+- [libvgm_bridge.cpp](/Users/john/Downloads/Code/CocoaSpice/Sources/CLibVGM/libvgm_bridge.cpp)
+- [highlycomplete_bridge.h](/Users/john/Downloads/Code/CocoaSpice/Sources/CHighlyComplete/include/highlycomplete_bridge.h)
+- [highlycomplete_bridge.cpp](/Users/john/Downloads/Code/CocoaSpice/Sources/CHighlyComplete/highlycomplete_bridge.cpp)
+- [audio-highly-complete-gsf-backend.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-gsf-backend.md)

@@ -29,7 +29,7 @@
 
 ## Files
 
-- [MainView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
-- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
-- [QueueTransportNavigation.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/QueueTransportNavigation.swift)
-- [RemoteTransportController.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/RemoteTransportController.swift)
+- [MainView.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
+- [PlayerViewModel.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
+- [QueueTransportNavigation.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/QueueTransportNavigation.swift)
+- [RemoteTransportController.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/RemoteTransportController.swift)

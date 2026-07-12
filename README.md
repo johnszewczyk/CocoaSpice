@@ -31,7 +31,7 @@ Launch it without Xcode:
 
 By default it will look for the library at:
 
-`/Users/john/Documents/Code/SPC/spcsets_extracted`
+`/Users/john/Downloads/Code/SPC/spcsets_extracted`
 
 Override that path for a launch with:
 
@@ -43,6 +43,7 @@ COCOASPICE_LIBRARY_ROOT="/path/to/spcsets_extracted" ./launch.sh
 
 - `libgme` is bundled into `dist/CocoaSpice.app/Contents/Frameworks`
 - `libvgm` is vendored under `vendor/libvgm` and built statically into the app during `./build.sh`
+- `./launch.sh` performs an incremental build before launching; pass `--rebuild` when a clean rebuild is intentional.
 - `Highly Complete` is provided by a local bridge target backed by vendored `mGBA` plus `psflib`
 - `lazyusf2` is vendored under `vendor/lazyusf2` and built statically into the app for USF and miniUSF playback
 - Third-party licensing notes are kept in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)

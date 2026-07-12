@@ -39,8 +39,8 @@
 
 ## Files
 
-- [PlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackEngine.swift)
-- [PlaybackDecoderRouting.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackDecoderRouting.swift)
-- [highlycomplete_bridge.cpp](/Users/john/Documents/Code/CocoaSpice/Sources/CHighlyComplete/highlycomplete_bridge.cpp)
-- [audio-playback-streaming.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/audio-playback-streaming.md)
-- [audio-playback-timing.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/audio-playback-timing.md)
+- [PlaybackEngine.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackEngine.swift)
+- [PlaybackDecoderRouting.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackDecoderRouting.swift)
+- [highlycomplete_bridge.cpp](/Users/john/Downloads/Code/CocoaSpice/Sources/CHighlyComplete/highlycomplete_bridge.cpp)
+- [audio-playback-streaming.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-playback-streaming.md)
+- [audio-playback-timing.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-playback-timing.md)

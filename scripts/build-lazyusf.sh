@@ -7,7 +7,6 @@ BUILD_DIR="$ROOT_DIR/.build/lazyusf"
 
 mkdir -p "$BUILD_DIR"
 
-make -C "$SOURCE_DIR" clean >/dev/null 2>&1 || true
 make -C "$SOURCE_DIR" liblazyusf.a \
   CC="${CC:-cc}" \
   AR="${AR:-ar}" \

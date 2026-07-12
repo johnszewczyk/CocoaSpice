@@ -3,7 +3,11 @@
 ## Database
 
 - Scan roots: add and manage folders used by the database.
-- Scanning: shows current-file progress.
+- Scanning: shows completed files over total files, estimated remaining time, issue count, and the current filename.
+- Scanning: shows preparation and discovered-file status before item processing begins.
+- Scanning: can be stopped from the database status bar while a scan is active.
+- Database setup and scan-root save failures appear in the database status area.
+- Library paths expose Rescan, Log, Up, Down, and Del actions; Log opens the latest scan issue report.
 
 ## Playback
 
@@ -21,8 +25,8 @@
 
 - Options opens in a native titled macOS window.
 - The window is 900pt wide, starts at 600pt tall, keeps its width fixed, and allows additional vertical space.
-- The sidebar contains Playback, Interface, and Database components.
+- The sidebar contains Database, Interface, and Playback components in alphabetical order.
 
 ## Files
 
-- [OptionsView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/OptionsView.swift)
+- [OptionsView.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/OptionsView.swift)

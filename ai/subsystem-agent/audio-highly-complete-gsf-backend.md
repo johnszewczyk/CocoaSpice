@@ -17,11 +17,11 @@
   metadata inspection, playback, seek, and frame decoding all stay behind the shared decoder protocols.
 - Long Play policy is still owned above the decoder by the app timing layer rather than by backend-specific UI branches.
 - The detailed bridge lifecycle rules live in
-  [audio-highly-complete-bridge-lifecycle.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-bridge-lifecycle.md).
+  [audio-highly-complete-bridge-lifecycle.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-bridge-lifecycle.md).
 - The miniGSF timing and resampling rules live in
-  [audio-highly-complete-minigsf-timing.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-minigsf-timing.md).
+  [audio-highly-complete-minigsf-timing.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-minigsf-timing.md).
 - The runtime regression and failure notes live in
-  [audio-highly-complete-runtime-failure-modes.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-runtime-failure-modes.md).
+  [audio-highly-complete-runtime-failure-modes.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-runtime-failure-modes.md).
 
 ## Rules
 
@@ -32,14 +32,14 @@
 
 ## Files
 
-- [GMEFormatSupport.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/GMEFormatSupport.swift)
-- [PlaybackDecoderRouting.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackDecoderRouting.swift)
-- [highlycomplete_bridge.h](/Users/john/Documents/Code/CocoaSpice/Sources/CHighlyComplete/include/highlycomplete_bridge.h)
-- [highlycomplete_bridge.cpp](/Users/john/Documents/Code/CocoaSpice/Sources/CHighlyComplete/highlycomplete_bridge.cpp)
-- [scripts/build-mgba.sh](/Users/john/Documents/Code/CocoaSpice/scripts/build-mgba.sh)
-- [vendor/mgba/CMakeLists.txt](/Users/john/Documents/Code/CocoaSpice/vendor/mgba/CMakeLists.txt)
-- [psflib.h](/Users/john/Documents/Code/CocoaSpice/Sources/CHighlyComplete/third_party/psflib/psflib.h)
-- [psflib.c](/Users/john/Documents/Code/CocoaSpice/Sources/CHighlyComplete/third_party/psflib/psflib.c)
-- [audio-highly-complete-bridge-lifecycle.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-bridge-lifecycle.md)
-- [audio-highly-complete-minigsf-timing.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-minigsf-timing.md)
-- [audio-highly-complete-runtime-failure-modes.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-runtime-failure-modes.md)
+- [GMEFormatSupport.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/GMEFormatSupport.swift)
+- [PlaybackDecoderRouting.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackDecoderRouting.swift)
+- [highlycomplete_bridge.h](/Users/john/Downloads/Code/CocoaSpice/Sources/CHighlyComplete/include/highlycomplete_bridge.h)
+- [highlycomplete_bridge.cpp](/Users/john/Downloads/Code/CocoaSpice/Sources/CHighlyComplete/highlycomplete_bridge.cpp)
+- [scripts/build-mgba.sh](/Users/john/Downloads/Code/CocoaSpice/scripts/build-mgba.sh)
+- [vendor/mgba/CMakeLists.txt](/Users/john/Downloads/Code/CocoaSpice/vendor/mgba/CMakeLists.txt)
+- [psflib.h](/Users/john/Downloads/Code/CocoaSpice/Sources/CHighlyComplete/third_party/psflib/psflib.h)
+- [psflib.c](/Users/john/Downloads/Code/CocoaSpice/Sources/CHighlyComplete/third_party/psflib/psflib.c)
+- [audio-highly-complete-bridge-lifecycle.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-bridge-lifecycle.md)
+- [audio-highly-complete-minigsf-timing.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-minigsf-timing.md)
+- [audio-highly-complete-runtime-failure-modes.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-runtime-failure-modes.md)

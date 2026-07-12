@@ -37,10 +37,10 @@
 
 ## Files
 
-- [Package.swift](/Users/john/Documents/Code/CocoaSpice/Package.swift)
-- [build.sh](/Users/john/Documents/Code/CocoaSpice/build.sh)
-- [launch.sh](/Users/john/Documents/Code/CocoaSpice/launch.sh)
-- [scripts/build-libvgm.sh](/Users/john/Documents/Code/CocoaSpice/scripts/build-libvgm.sh)
-- [scripts/build-mgba.sh](/Users/john/Documents/Code/CocoaSpice/scripts/build-mgba.sh)
-- [Resources/Info.plist](/Users/john/Documents/Code/CocoaSpice/Resources/Info.plist)
-- [Sources/CGME/shim.h](/Users/john/Documents/Code/CocoaSpice/Sources/CGME/shim.h)
+- [Package.swift](/Users/john/Downloads/Code/CocoaSpice/Package.swift)
+- [build.sh](/Users/john/Downloads/Code/CocoaSpice/build.sh)
+- [launch.sh](/Users/john/Downloads/Code/CocoaSpice/launch.sh)
+- [scripts/build-libvgm.sh](/Users/john/Downloads/Code/CocoaSpice/scripts/build-libvgm.sh)
+- [scripts/build-mgba.sh](/Users/john/Downloads/Code/CocoaSpice/scripts/build-mgba.sh)
+- [Resources/Info.plist](/Users/john/Downloads/Code/CocoaSpice/Resources/Info.plist)
+- [Sources/CGME/shim.h](/Users/john/Downloads/Code/CocoaSpice/Sources/CGME/shim.h)

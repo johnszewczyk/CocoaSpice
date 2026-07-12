@@ -19,24 +19,24 @@
 
 Human-facing behavior:
 
-- Main shell: [main-shell.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-human/main-shell.md)
-- Playlist: [playlist.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-human/playlist.md)
-- Playback: [playback.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-human/playback.md)
-- Database browser: [database-browser.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-human/database-browser.md)
-- Options: [options.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-human/options.md)
-- Audio export: [audio-export.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-human/audio-export.md)
+- Main shell: [main-shell.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-human/main-shell.md)
+- Playlist: [playlist.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-human/playlist.md)
+- Playback: [playback.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-human/playback.md)
+- Database browser: [database-browser.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-human/database-browser.md)
+- Options: [options.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-human/options.md)
+- Audio export: [audio-export.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-human/audio-export.md)
 
 Agent engineering notes:
 
-- Playback backend routing: [audio-playback-backend-routing.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/audio-playback-backend-routing.md)
-- Highly Complete lifecycle and timing: [audio-highly-complete-bridge-lifecycle.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-bridge-lifecycle.md), [audio-highly-complete-minigsf-timing.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-minigsf-timing.md)
-- Highly Complete failure boundaries: [audio-highly-complete-runtime-failure-modes.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-runtime-failure-modes.md)
-- Codec intake and policy: [audio-libgme-format-intake.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/audio-libgme-format-intake.md)
-- Playback streaming, transport, and timing: [audio-playback-streaming.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/audio-playback-streaming.md), [audio-playback-transport.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/audio-playback-transport.md), [audio-playback-timing.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/audio-playback-timing.md)
-- Database ownership: [library-browser-database.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/library-browser-database.md), [library-scan-roots.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/library-scan-roots.md), [database-sidebar-presentation.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/database-sidebar-presentation.md)
-- Playlist ownership and formats: [playlist-queue-core.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/playlist-queue-core.md), [playlist-file-formats.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/playlist-file-formats.md), [gui-playlist-columns.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/gui-playlist-columns.md), [gui-playlist-selection-operations.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/gui-playlist-selection-operations.md)
-- App state, async work, and packaging: [app-session-persistence.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/app-session-persistence.md), [async-task-ownership.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/async-task-ownership.md), [build-runtime-bundle.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/build-runtime-bundle.md)
-- Remaining engineering notes: [subsystem-agent/](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/)
+- Playback backend routing: [audio-playback-backend-routing.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-playback-backend-routing.md)
+- Highly Complete lifecycle and timing: [audio-highly-complete-bridge-lifecycle.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-bridge-lifecycle.md), [audio-highly-complete-minigsf-timing.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-minigsf-timing.md)
+- Highly Complete failure boundaries: [audio-highly-complete-runtime-failure-modes.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-runtime-failure-modes.md)
+- Codec intake and policy: [audio-libgme-format-intake.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-libgme-format-intake.md)
+- Playback streaming, transport, and timing: [audio-playback-streaming.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-playback-streaming.md), [audio-playback-transport.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-playback-transport.md), [audio-playback-timing.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-playback-timing.md)
+- Database ownership: [library-browser-database.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/library-browser-database.md), [library-scan-roots.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/library-scan-roots.md), [database-sidebar-presentation.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/database-sidebar-presentation.md)
+- Playlist ownership and formats: [playlist-queue-core.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/playlist-queue-core.md), [playlist-file-formats.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/playlist-file-formats.md), [gui-playlist-columns.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/gui-playlist-columns.md), [gui-playlist-selection-operations.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/gui-playlist-selection-operations.md)
+- App state, async work, and packaging: [app-session-persistence.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/app-session-persistence.md), [async-task-ownership.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/async-task-ownership.md), [build-runtime-bundle.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/build-runtime-bundle.md)
+- Remaining engineering notes: [subsystem-agent/](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/)
 
 ## Local Rules
 

@@ -24,6 +24,6 @@
 
 ## Files
 
-- [MainView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
-- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
-- [NativeSearchField.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/NativeSearchField.swift)
+- [MainView.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
+- [PlayerViewModel.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
+- [NativeSearchField.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/NativeSearchField.swift)

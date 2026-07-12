@@ -5,12 +5,12 @@ struct OptionsView: View {
     @Bindable var model: PlayerViewModel
     @State private var longPlayTimeText = ""
     @State private var sidebarFontSizeText = "11"
-    @State private var selection: OptionsSection = .playback
+    @State private var selection: OptionsSection = .database
 
     private enum OptionsSection: String, CaseIterable, Identifiable {
-        case playback = "Playback"
-        case interface = "Interface"
         case database = "Database"
+        case interface = "Interface"
+        case playback = "Playback"
 
         var id: Self { self }
 
@@ -62,27 +62,9 @@ struct OptionsView: View {
                     .padding(20)
                 }
 
-                if selection == .database {
-                    Divider()
-                    HStack {
-                        Spacer()
-                        if let libraryScanStatus = model.libraryScanStatus, !libraryScanStatus.isEmpty {
-                            Text(libraryScanStatus)
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                        }
-                        Button("Rescan Enabled Paths") { model.rescanEnabledLibraryRoots() }
-                            .keyboardShortcut(.defaultAction)
-                    }
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 14)
-                }
             }
         }
-        .frame(width: 900)
-        .frame(minHeight: 600)
+        .frame(width: 1280, height: 720)
         .onAppear {
             longPlayTimeText = Self.formatTime(model.manualPreFadeSeconds)
             sidebarFontSizeText = Self.formatFontSize(model.databaseSidebarFontSize)
@@ -211,13 +193,6 @@ struct OptionsView: View {
     private var databasePage: some View {
         VStack(alignment: .leading, spacing: 16) {
             sectionCard(title: "Library Paths") {
-                HStack(alignment: .firstTextBaseline) {
-                    Spacer()
-                    Button("Add Folders…") {
-                        model.chooseLibraryScanRoots()
-                    }
-                }
-
                 if model.libraryScanRoots.isEmpty {
                     Text("No scan roots configured.")
                         .font(.system(size: 12))
@@ -232,6 +207,13 @@ struct OptionsView: View {
                             scanRootRow(root)
                         }
                     }
+                }
+
+                HStack {
+                    Button("Add Folders…") {
+                        model.chooseLibraryScanRoots()
+                    }
+                    Spacer()
                 }
             }
 
@@ -308,19 +290,30 @@ struct OptionsView: View {
                 Spacer()
 
                 HStack(spacing: 8) {
-                    Button("Rescan") { model.rescanLibraryRoot(root.id) }
+                    Button("Scan") { model.scanLibraryRoot(root.id) }
+                    Button("Retry") { model.retryFailedLibraryRoot(root.id) }
+                    Button("Log") { model.openLibraryScanLog(root.id) }
+                        .disabled(!model.hasLibraryScanLog(root.id))
                     Button("Up") { model.moveLibraryScanRootUp(root.id) }
                         .disabled(!model.canMoveLibraryScanRootUp(root.id))
                     Button("Down") { model.moveLibraryScanRootDown(root.id) }
                         .disabled(!model.canMoveLibraryScanRootDown(root.id))
-                    Button("Remove") { model.removeLibraryScanRoot(root.id) }
+                    Button("Del") { model.removeLibraryScanRoot(root.id) }
                 }
             }
 
-            Text(root.path)
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack {
+                Text(root.path)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+                    .lineLimit(1)
+                if model.libraryScanRootIsClean(root) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.green)
+                        .accessibilityLabel("Scan completed without issues")
+                }
+            }
         }
         .padding(12)
         .background(Color.white.opacity(0.06))

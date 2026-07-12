@@ -8,9 +8,8 @@ struct LoadedPlaylistData: Sendable {
 
 enum PlaylistQueueLoader {
     static func loadTracks(in folderURL: URL) async -> [TrackItem] {
-        await Task.detached(priority: .utility) {
-            SPCFileScanner.playlist(for: folderURL)
-        }.value
+        let loaded = await loadDroppedTracks(from: [folderURL])
+        return loaded.tracks
     }
 
     static func canImportDroppedURL(_ url: URL) -> Bool {
@@ -106,6 +105,22 @@ enum PlaylistQueueLoader {
             if (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
                 let fileURLs = directoryPlayableFileURLs(in: url)
                 for fileURL in fileURLs {
+                    if ZipArchiveSupport.canHandle(fileURL) {
+                        let entries =
+                            (try? ZipArchiveSupport.listPlayableEntries(
+                                in: fileURL,
+                                supportedExtensions: SPCFileScanner.supportedExtensions
+                            )) ?? []
+                        for entry in entries {
+                            let inspectedTracks = await inspectPlayableTracks(forArchiveEntry: entry)
+                            merge(
+                                inspectedTracks: inspectedTracks,
+                                into: &importedTracks,
+                                metadata: &importedMetadata
+                            )
+                        }
+                        continue
+                    }
                     let inspectedTracks = await inspectPlayableTracks(forFileURL: fileURL)
                     merge(
                         inspectedTracks: inspectedTracks,
@@ -198,12 +213,15 @@ enum PlaylistQueueLoader {
         )) ?? []
 
         return urls
-            .filter { SPCFileScanner.supportedExtensions.contains($0.pathExtension.lowercased()) }
+            .filter {
+                ZipArchiveSupport.canHandle($0)
+                    || SPCFileScanner.supportedExtensions.contains($0.pathExtension.lowercased())
+            }
             .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
     }
 
     private static func inspectPlayableTracks(forFileURL fileURL: URL) async -> [InspectedTrack] {
-        if let inspectedTracks = try? await PlaybackEngine.inspectPlayableTracks(fileURL: fileURL),
+        if let inspectedTracks = try? await PlaybackInspection.inspectPlayableTracks(fileURL: fileURL),
            !inspectedTracks.isEmpty {
             return inspectedTracks
         }
@@ -223,7 +241,7 @@ enum PlaylistQueueLoader {
             return []
         }
 
-        if let inspectedTracks = try? await PlaybackEngine.inspectPlayableTracks(fileURL: materializedURL),
+        if let inspectedTracks = try? await PlaybackInspection.inspectPlayableTracks(fileURL: materializedURL),
            !inspectedTracks.isEmpty {
             return inspectedTracks.map { inspectedTrack in
                 InspectedTrack(

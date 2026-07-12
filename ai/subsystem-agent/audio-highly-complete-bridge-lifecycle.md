@@ -14,9 +14,9 @@
 - The bridge assembles the resolved GBA ROM image in memory, then creates a `VFile` view over that image for `mGBA`.
 - `mCoreFindVF` chooses the GBA core, `core->init` allocates the real emulator state, and `core->loadROM` transfers ownership of the ROM view into the core.
 - Playback, seek, and metadata access stay behind the C bridge API exposed by
-  [highlycomplete_bridge.h](/Users/john/Documents/Code/CocoaSpice/Sources/CHighlyComplete/include/highlycomplete_bridge.h).
+  [highlycomplete_bridge.h](/Users/john/Downloads/Code/CocoaSpice/Sources/CHighlyComplete/include/highlycomplete_bridge.h).
 - Swift serializes all `Highly Complete` bridge entry points behind a single lock in
-  [PlaybackDecoderRouting.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackDecoderRouting.swift)
+  [PlaybackDecoderRouting.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackDecoderRouting.swift)
   because rapid concurrent inspect or create or render activity can destabilize this backend even when other decoders remain fine.
 
 ## Critical Notes
@@ -40,9 +40,9 @@
 
 ## Files
 
-- [PlaybackDecoderRouting.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackDecoderRouting.swift)
-- [highlycomplete_bridge.h](/Users/john/Documents/Code/CocoaSpice/Sources/CHighlyComplete/include/highlycomplete_bridge.h)
-- [highlycomplete_bridge.cpp](/Users/john/Documents/Code/CocoaSpice/Sources/CHighlyComplete/highlycomplete_bridge.cpp)
-- [psflib.h](/Users/john/Documents/Code/CocoaSpice/Sources/CHighlyComplete/third_party/psflib/psflib.h)
-- [psflib.c](/Users/john/Documents/Code/CocoaSpice/Sources/CHighlyComplete/third_party/psflib/psflib.c)
-- [audio-highly-complete-gsf-backend.md](/Users/john/Documents/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-gsf-backend.md)
+- [PlaybackDecoderRouting.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackDecoderRouting.swift)
+- [highlycomplete_bridge.h](/Users/john/Downloads/Code/CocoaSpice/Sources/CHighlyComplete/include/highlycomplete_bridge.h)
+- [highlycomplete_bridge.cpp](/Users/john/Downloads/Code/CocoaSpice/Sources/CHighlyComplete/highlycomplete_bridge.cpp)
+- [psflib.h](/Users/john/Downloads/Code/CocoaSpice/Sources/CHighlyComplete/third_party/psflib/psflib.h)
+- [psflib.c](/Users/john/Downloads/Code/CocoaSpice/Sources/CHighlyComplete/third_party/psflib/psflib.c)
+- [audio-highly-complete-gsf-backend.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-gsf-backend.md)

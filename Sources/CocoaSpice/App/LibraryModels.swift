@@ -15,7 +15,7 @@ struct LibraryScanRoot: Identifiable, Equatable {
     }
 }
 
-struct LibraryTrackRecord {
+struct LibraryTrackRecord: Sendable {
     let rootID: Int64
     let folderPath: String
     let path: String
@@ -25,5 +25,7 @@ struct LibraryTrackRecord {
     let trackCount: Int
     let fileSize: Int64
     let modifiedAt: Date
+    let archivePath: String?
+    let archiveEntry: String?
     let metadata: TrackMetadata?
 }

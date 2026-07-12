@@ -10,6 +10,7 @@
 - Controls: media keys and standard transport commands.
 - Controls: rapid previous or next commands use the newest requested track.
 - Playback: starts through a streamed audio path.
+- Archives: supported game-music files can play from ZIP, 7z, and RSN containers; only the selected member is materialized into the cache.
 - Seeking: supports forward and backward movement.
 - Audio output: resumes at the current position after an output-device change when playback was active.
 
@@ -20,5 +21,5 @@
 
 ## Files
 
-- [PlaybackEngine.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackEngine.swift)
-- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
+- [PlaybackEngine.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackEngine.swift)
+- [PlayerViewModel.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)

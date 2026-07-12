@@ -5,6 +5,10 @@ ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 APP_EXECUTABLE="$ROOT_DIR/dist/CocoaSpice.app/Contents/MacOS/CocoaSpice"
 LIBRARY_ROOT_DEFAULT="$(cd "$ROOT_DIR/.." && pwd)/spcsets_extracted"
 
+if [[ "${1:-}" == "--rebuild" ]]; then
+  rm -rf "$ROOT_DIR/.build" "$ROOT_DIR/dist/CocoaSpice.app"
+fi
+
 "$ROOT_DIR/build.sh"
 
 export COCOASPICE_LIBRARY_ROOT="${COCOASPICE_LIBRARY_ROOT:-$LIBRARY_ROOT_DEFAULT}"

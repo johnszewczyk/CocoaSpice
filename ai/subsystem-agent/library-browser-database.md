@@ -11,7 +11,10 @@
 - The sidebar database browser is a scanned persistent browser, not a raw filesystem tree.
 - The sidebar displays a dense flat list of games derived from scanned metadata.
 - Sidebar game buckets are keyed by `game title + system`, not title alone, so cross-platform name collisions stay separate.
-- The scanned database now stores one playable row per discovered subtrack for multi-track `libgme` containers such as NSF.
+- The scanned database now stores one playable row per discovered subtrack for loose or archived multi-track `libgme` containers such as NSF, GBS, and KSS.
+- Archive scans expand playable members from ZIP, 7z, and RSN containers, retaining archive path plus member path for later playback materialization.
+- Archived SPC members use header metadata during indexing; multi-track archive members are materialized and inspected during indexing so their playlist/database leaves carry track counts and indices.
+- Metadata-free archive rows group by archive path, so each RSN/ZIP/7z set appears as its own database item instead of disappearing into the containing folder.
 - Database rows support native multiselect.
 - Database double-click follows the configured sidebar double-click behavior.
 - Database `Return` activates the current selection.
@@ -29,9 +32,9 @@
 
 ## Files
 
-- [DatabaseSidebarPresentation.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarPresentation.swift)
-- [LibraryDatabase.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase.swift)
-- [LibraryModels.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryModels.swift)
-- [MainView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
-- [PlaylistQueueLoader.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaylistQueueLoader.swift)
-- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
+- [DatabaseSidebarPresentation.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarPresentation.swift)
+- [LibraryDatabase.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase.swift)
+- [LibraryModels.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryModels.swift)
+- [MainView.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
+- [PlaylistQueueLoader.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlaylistQueueLoader.swift)
+- [PlayerViewModel.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)

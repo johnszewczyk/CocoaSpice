@@ -24,6 +24,274 @@ import Testing
     #expect(SPCFileScanner.supportedExtensions.contains("s98"))
 }
 
+@Test func scanRegistryRoutesByPriorityAndNormalizesExtensions() {
+    let registry = ScanPluginRegistry(descriptors: [
+        ScanPluginDescriptor(
+            pluginID: "fallback",
+            displayName: "Fallback",
+            supportedExtensions: ["vgm"],
+            priority: 1
+        ),
+        ScanPluginDescriptor(
+            pluginID: "preferred",
+            displayName: "Preferred",
+            supportedExtensions: [".VGM"],
+            supportsMultiTrack: true,
+            priority: 2
+        )
+    ])
+
+    let route = registry.route(for: ".VGM", archiveMember: true)
+    #expect(route?.pluginID == "preferred")
+    #expect(route?.formatExtension == "vgm")
+    #expect(route?.supportsMultiTrack == true)
+}
+
+@Test func scanSelectionSeparatesNewRetryAndIncrementalModes() {
+    let identity = ScanItemIdentity(rootID: 1, path: "/music/set.gbs", archiveEntry: "song.gbs")
+    let fingerprint = ScanFingerprint(fileSize: 10, modifiedAt: Date(timeIntervalSince1970: 1))
+    let changed = ScanFingerprint(fileSize: 11, modifiedAt: Date(timeIntervalSince1970: 2))
+
+    let successful = ScanInventoryItem(identity: identity, fingerprint: fingerprint, state: .successful, route: nil)
+    let failed = ScanInventoryItem(identity: identity, fingerprint: fingerprint, state: .failed, route: nil)
+
+    #expect(!ScanSelection.includes(successful, mode: .incremental, currentFingerprint: fingerprint))
+    #expect(ScanSelection.includes(successful, mode: .incremental, currentFingerprint: changed))
+    #expect(ScanSelection.includes(failed, mode: .retryFailed, currentFingerprint: fingerprint))
+    #expect(!ScanSelection.includes(successful, mode: .retryFailed, currentFingerprint: fingerprint))
+    #expect(ScanSelection.includes(successful, mode: .newScan, currentFingerprint: fingerprint))
+}
+
+@Test func scanPlannerOnlySchedulesSelectedItemsInStableOrder() {
+    let fingerprint = ScanFingerprint(fileSize: 1, modifiedAt: Date(timeIntervalSince1970: 1))
+    let first = ScanItemIdentity(rootID: 1, path: "/music/z.7z", archiveEntry: "z.gbs")
+    let second = ScanItemIdentity(rootID: 1, path: "/music/a.7z", archiveEntry: "a.gbs")
+    let items = [
+        ScanInventoryItem(identity: first, fingerprint: fingerprint, state: .successful, route: nil),
+        ScanInventoryItem(identity: second, fingerprint: fingerprint, state: .failed, route: nil)
+    ]
+    let urls = [
+        first: URL(fileURLWithPath: first.path),
+        second: URL(fileURLWithPath: second.path)
+    ]
+
+    let plan = ScanPlanner.makePlan(
+        mode: .retryFailed,
+        items: items,
+        sourceURLs: urls,
+        currentFingerprints: [:]
+    )
+
+    #expect(plan.count == 1)
+    #expect(plan.candidates.first?.identity == second)
+}
+
+@Test func scanResourceSchedulerReleasesPermitsAfterFailure() async throws {
+    let scheduler = ScanResourceScheduler(permits: 1)
+    do {
+        _ = try await scheduler.withPermit {
+            throw CocoaSpiceTestError.expected
+        } as Void
+        Issue.record("Expected scheduler operation to throw")
+    } catch CocoaSpiceTestError.expected {
+        // Expected; the permit must still be available below.
+    }
+
+    let value = try await scheduler.withPermit { 42 }
+    #expect(value == 42)
+}
+
+@Test func scanResourceSchedulerDoesNotRunBlockingWorkOnItsActor() async throws {
+    let scheduler = ScanResourceScheduler(permits: 2)
+    let startedAt = Date()
+
+    async let first: Int = scheduler.withPermit {
+        let deadline = Date().addingTimeInterval(0.15)
+        while Date() < deadline {}
+        return 1
+    }
+    async let second: Int = scheduler.withPermit {
+        let deadline = Date().addingTimeInterval(0.15)
+        while Date() < deadline {}
+        return 2
+    }
+
+    #expect(try await [first, second] == [1, 2])
+    #expect(Date().timeIntervalSince(startedAt) < 0.25)
+}
+
+@Test func scanOperationTimeoutReturnsBeforeThirtySecondLimitForCompletedWork() async throws {
+    let value = try await ScanOperationTimeout.run(description: "test") { 7 }
+    #expect(value == 7)
+}
+
+@Test func scanPipelineProcessesFirstJoshWSPCArchive() async throws {
+    let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/JoshW/SPC/0-9/3 Ninjas Kick Back (1994-11)(Malibu)(Sony Imagesoft)[SNES].7z")
+    guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }
+
+    let values = try archiveURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+    let candidate = ScanCandidate(
+        identity: ScanItemIdentity(rootID: 1, path: archiveURL.path, archiveEntry: nil),
+        fingerprint: ScanFingerprint(
+            fileSize: Int64(values.fileSize ?? 0),
+            modifiedAt: values.contentModificationDate ?? .distantPast
+        ),
+        sourceURL: archiveURL,
+        route: nil
+    )
+    let executor = ScanPipelineExecutor()
+    let accumulator = try await executor.process(
+        plan: ScanPlan(mode: .newScan, candidates: [candidate]),
+        persist: { _ in }
+    )
+    let summary = await accumulator.summary
+    #expect(summary.completed > 0)
+    #expect(summary.successful > 0)
+}
+
+@Test func scanPipelineProcessesFirstEightJoshWSPCArchivesConcurrently() async throws {
+    let rootURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/JoshW/SPC")
+    guard FileManager.default.fileExists(atPath: rootURL.path) else { return }
+
+    let candidates = await ScanFilesystemDiscovery.discover(
+        rootID: 1,
+        rootURL: rootURL,
+        registry: ScanCoreHandlers.registry
+    ).prefix(8)
+    #expect(candidates.count == 8)
+
+    let accumulator = try await ScanPipelineExecutor().process(
+        plan: ScanPlan(mode: .newScan, candidates: Array(candidates)),
+        persist: { _ in }
+    )
+    let summary = await accumulator.summary
+    #expect(summary.completed > 0)
+    #expect(summary.successful > 0)
+}
+
+@Test @MainActor func scanPipelineCommandLineProbe() async throws {
+    guard let rootPath = ProcessInfo.processInfo.environment["COCOASPICE_SCAN_ROOT"],
+          !rootPath.isEmpty else {
+        return
+    }
+
+    let rootURL = URL(fileURLWithPath: rootPath, isDirectory: true)
+    if ProcessInfo.processInfo.environment["COCOASPICE_SCAN_PERSIST"] == "1" {
+        let database = try LibraryDatabase()
+        try database.addRoot(path: rootURL.path)
+        guard let root = try database.loadRoots().first(where: { $0.standardizedURL == rootURL.standardizedFileURL }) else {
+            Issue.record("Could not load persisted scan root")
+            return
+        }
+        let summary = try await LibraryScanCoordinator(database: database).run(root: root, mode: .newScan) { status in
+            FileHandle.standardOutput.write(Data("\(status)\n".utf8))
+        }
+        FileHandle.standardOutput.write(Data("completed=\(summary.completed) successful=\(summary.successful) failed=\(summary.failed) unsupported=\(summary.unsupported)\n".utf8))
+        for failure in summary.failures {
+            let entry = failure.identity.archiveEntry.map { "#\($0)" } ?? ""
+            FileHandle.standardOutput.write(Data("failure [\(failure.stage.rawValue)] \(failure.identity.path)\(entry): \(failure.message)\n".utf8))
+        }
+        return
+    }
+    let candidates = await ScanFilesystemDiscovery.discover(
+        rootID: 1,
+        rootURL: rootURL,
+        registry: ScanCoreHandlers.registry
+    )
+    FileHandle.standardOutput.write(Data("discovered \(candidates.count) candidates\n".utf8))
+
+    let accumulator = try await ScanPipelineExecutor().process(
+        plan: ScanPlan(mode: .newScan, candidates: candidates),
+        progress: { current, total, detail in
+            FileHandle.standardOutput.write(Data("[\(current)/\(total)] \(detail)\n".utf8))
+        },
+        persist: { _ in }
+    )
+    let summary = await accumulator.summary
+    FileHandle.standardOutput.write(Data("completed=\(summary.completed) successful=\(summary.successful) failed=\(summary.failed) unsupported=\(summary.unsupported)\n".utf8))
+    for failure in summary.failures {
+        let entry = failure.identity.archiveEntry.map { "#\($0)" } ?? ""
+        FileHandle.standardOutput.write(Data("failure [\(failure.stage.rawValue)] \(failure.identity.path)\(entry): \(failure.message)\n".utf8))
+    }
+    #expect(summary.completed >= candidates.count)
+}
+
+@Test func scanResultAccumulatorLogsFailuresButOnlyTalliesSuccesses() async throws {
+    let fingerprint = ScanFingerprint(fileSize: 1, modifiedAt: Date(timeIntervalSince1970: 1))
+    let candidate = ScanCandidate(
+        identity: ScanItemIdentity(rootID: 1, path: "/music/song.gbs", archiveEntry: nil),
+        fingerprint: fingerprint,
+        sourceURL: URL(fileURLWithPath: "/music/song.gbs"),
+        route: nil
+    )
+    let accumulator = ScanResultAccumulator(discovered: 3)
+    try await accumulator.accept(.success(
+        candidate,
+        ScanInspection(route: ScanRoute(pluginID: "gme", formatExtension: "gbs", supportsArchiveMembers: true, supportsMultiTrack: true), tracks: [])
+    ))
+    try await accumulator.accept(.unsupported(candidate))
+    try await accumulator.accept(.failure(ScanFailure(
+        identity: candidate.identity,
+        fingerprint: candidate.fingerprint,
+        route: candidate.route,
+        stage: .metadata,
+        message: "bad metadata"
+    )))
+
+    let summary = await accumulator.summary
+    #expect(summary.discovered == 3)
+    #expect(summary.completed == 3)
+    #expect(summary.successful == 1)
+    #expect(summary.unsupported == 1)
+    #expect(summary.failed == 1)
+    #expect(summary.failures.count == 1)
+}
+
+private enum CocoaSpiceTestError: Error {
+    case expected
+}
+
+@Test func scanDiscoveryWalksNestedSupportedFilesAndArchives() async throws {
+    let rootURL = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let nestedURL = rootURL.appendingPathComponent("a/b/c", isDirectory: true)
+    try FileManager.default.createDirectory(at: nestedURL, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: rootURL) }
+
+    try Data("spc".utf8).write(to: nestedURL.appendingPathComponent("track.spc"))
+    try Data("archive".utf8).write(to: rootURL.appendingPathComponent("set.7z"))
+    try Data("ignored".utf8).write(to: nestedURL.appendingPathComponent("notes.txt"))
+
+    let result = await ScanFilesystemDiscovery.discover(
+        rootID: 1,
+        rootURL: rootURL,
+        registry: ScanCoreHandlers.registry
+    )
+    #expect(result.map { URL(fileURLWithPath: $0.identity.path).lastPathComponent } == ["track.spc", "set.7z"])
+}
+
+@Test func gbsInspectionExposesAllTracks() async throws {
+    let sampleURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/NSF/NSF/Development/GBS Rips/Metroid II - Return of Samus.gbs")
+    guard FileManager.default.fileExists(atPath: sampleURL.path) else { return }
+
+    let tracks = try await PlaybackInspection.inspectPlayableTracks(fileURL: sampleURL)
+    #expect(tracks.count == 19)
+    #expect(tracks.first?.track.trackIndex == 0)
+    #expect(tracks.last?.track.trackIndex == 18)
+    #expect(tracks.allSatisfy { $0.track.trackCount == 19 })
+}
+
+@Test func kssInspectionExposesAllTracks() async throws {
+    let sampleURL = URL(fileURLWithPath: "/tmp/cocoaspice-kss-probe/T-81087.kss")
+    guard FileManager.default.fileExists(atPath: sampleURL.path) else { return }
+
+    let tracks = try await PlaybackInspection.inspectPlayableTracks(fileURL: sampleURL)
+    #expect(tracks.count == 256)
+    #expect(tracks.first?.track.trackIndex == 0)
+    #expect(tracks.last?.track.trackIndex == 255)
+    #expect(tracks.allSatisfy { $0.track.trackCount == 256 })
+}
+
 @Test @MainActor func spectrumAnalyzerUsesFortyBands() {
     #expect(ToolbarSpectrumModel.bandCount == 40)
 }
@@ -301,6 +569,56 @@ import Testing
     let extractedURL = try ZipArchiveSupport.materializePlayableFile(for: loaded.tracks[0])
     let extractedData = try Data(contentsOf: extractedURL)
     #expect(extractedData == Data("not-a-real-spc".utf8))
+}
+
+@Test func droppedSevenZipImportCreatesArchiveTracks() async throws {
+    let sevenZipPath = "/opt/homebrew/bin/7zz"
+    guard FileManager.default.isExecutableFile(atPath: sevenZipPath) else { return }
+
+    let temporaryDirectory = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+
+    let playableURL = temporaryDirectory.appendingPathComponent("test.spc")
+    try Data("not-a-real-spc".utf8).write(to: playableURL)
+    let archiveURL = temporaryDirectory.appendingPathComponent("Drop.7z")
+
+    try runProcess(
+        executable: sevenZipPath,
+        arguments: ["a", "-bd", "-y", archiveURL.path, playableURL.lastPathComponent],
+        workingDirectory: temporaryDirectory
+    )
+
+    let loaded = await PlaylistQueueLoader.loadDroppedTracks(from: [archiveURL])
+    #expect(loaded.tracks.count == 1)
+    #expect(loaded.tracks[0].isArchiveEntry)
+    #expect(loaded.tracks[0].archiveEntryPath == "test.spc")
+
+    let extractedURL = try ZipArchiveSupport.materializePlayableFile(for: loaded.tracks[0])
+    #expect(try Data(contentsOf: extractedURL) == Data("not-a-real-spc".utf8))
+}
+
+@Test func folderQueueIncludesArchiveMembers() async throws {
+    let temporaryDirectory = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: temporaryDirectory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+
+    let playableURL = temporaryDirectory.appendingPathComponent("folder-track.spc")
+    try Data("not-a-real-spc".utf8).write(to: playableURL)
+    let archiveURL = temporaryDirectory.appendingPathComponent("Folder.zip")
+    try runProcess(
+        executable: "/usr/bin/zip",
+        arguments: ["-q", archiveURL.path, playableURL.lastPathComponent],
+        workingDirectory: temporaryDirectory
+    )
+    try FileManager.default.removeItem(at: playableURL)
+
+    let tracks = await PlaylistQueueLoader.loadTracks(in: temporaryDirectory)
+    #expect(tracks.count == 1)
+    #expect(tracks[0].isArchiveEntry)
+    #expect(tracks[0].archiveEntryPath == "folder-track.spc")
 }
 
 @Test func droppedMiniGSFImportFallsBackWithoutCrashing() async throws {

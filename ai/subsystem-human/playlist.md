@@ -19,7 +19,8 @@
 - Rows: Return starts playback of the primary selected row.
 - Rows: transport button plays or stops the row.
 - Queue: cut, paste, delete, move, and drag-reorder.
-- Files: Finder drops add supported files, folders, and ZIP archives.
+- Files: Finder drops add supported files, folders, and ZIP, 7z, or RSN archives.
+- Files: queueing a folder expands supported archive members and multi-track containers into playlist leaves.
 - Playlists: dropping an `.m3u` appends its playable entries to the current queue.
 - Playlists: `Open Playlist…` and opening an `.m3u` from Finder replace the current queue.
 
@@ -30,5 +31,5 @@
 
 ## Files
 
-- [PlaylistTableView.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlaylistTableView.swift)
-- [PlayerViewModel.swift](/Users/john/Documents/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
+- [PlaylistTableView.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlaylistTableView.swift)
+- [PlayerViewModel.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)

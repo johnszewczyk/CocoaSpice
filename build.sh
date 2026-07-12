@@ -35,9 +35,15 @@ xattr -d com.apple.quarantine "$ROOT_DIR/app-icon.png" 2>/dev/null || true
 export CLANG_MODULE_CACHE_PATH="$BUILD_DIR/clang-module-cache"
 export SWIFT_MODULECACHE_PATH="$BUILD_DIR/swift-module-cache"
 
-"$ROOT_DIR/scripts/build-libvgm.sh"
-"$ROOT_DIR/scripts/build-mgba.sh"
-"$ROOT_DIR/scripts/build-lazyusf.sh"
+if [[ ! -f "$BUILD_DIR/libvgm/bin/libvgm-player.a" ]]; then
+  "$ROOT_DIR/scripts/build-libvgm.sh"
+fi
+if [[ ! -f "$BUILD_DIR/mgba/libmgba.a" ]]; then
+  "$ROOT_DIR/scripts/build-mgba.sh"
+fi
+if [[ ! -f "$BUILD_DIR/lazyusf/liblazyusf.a" || ! -f "$BUILD_DIR/lazyusf/libpsflib.a" ]]; then
+  "$ROOT_DIR/scripts/build-lazyusf.sh"
+fi
 
 swift build \
   --package-path "$ROOT_DIR" \

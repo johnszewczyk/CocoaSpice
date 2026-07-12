@@ -2,7 +2,7 @@ import Foundation
 import SQLite3
 
 final class LibraryDatabase {
-    private static let schemaVersion = 2
+    private static let schemaVersion = 5
     private let db: OpaquePointer?
     private let dbURL: URL
 
@@ -35,6 +35,10 @@ final class LibraryDatabase {
 
         db = handle
         try execute("PRAGMA foreign_keys = ON;")
+        // The scan writes many short transactions while sidebar readers may
+        // still hold a statement. Wait for that ordinary contention instead
+        // of misreporting a healthy member as a persistence failure.
+        sqlite3_busy_timeout(handle, 5_000)
         try execute("""
         CREATE TABLE IF NOT EXISTS library_roots (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -115,24 +119,6 @@ final class LibraryDatabase {
         try execute("DELETE FROM library_roots WHERE id = ?;", bindings: [.int(id)])
     }
 
-    func purgeStorageIfEmpty() throws {
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM library_roots;", -1, &statement, nil) == SQLITE_OK else {
-            throw databaseError()
-        }
-        defer { sqlite3_finalize(statement) }
-
-        guard sqlite3_step(statement) == SQLITE_ROW else {
-            throw databaseError()
-        }
-
-        let count = sqlite3_column_int(statement, 0)
-        guard count == 0 else { return }
-
-        sqlite3_close(db)
-        try? FileManager.default.removeItem(at: dbURL)
-    }
-
     func updateRootOrder(idsInOrder: [Int64]) throws {
         for (index, id) in idsInOrder.enumerated() {
             try execute(
@@ -149,79 +135,189 @@ final class LibraryDatabase {
         )
     }
 
-    func replaceTracks(rootID: Int64, tracks: [LibraryTrackRecord]) throws {
+    func markScanCompleted(rootID: Int64, trackCount: Int) throws {
+        try execute(
+            "UPDATE library_roots SET last_scan_completed_at = ?, last_scan_track_count = ?, last_scan_error = NULL WHERE id = ?;",
+            bindings: [.double(Date().timeIntervalSince1970), .int(Int64(trackCount)), .int(rootID)]
+        )
+    }
+
+    func loadScanInventory(rootID: Int64) throws -> [ScanInventoryItem] {
+        let sql = """
+        SELECT path, archive_entry, file_size, modified_at, state, plugin_id, format_extension, supports_archive_members, supports_multi_track
+        FROM scan_items
+        WHERE root_id = ?
+        ORDER BY path ASC, archive_entry ASC;
+        """
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw databaseError()
+        }
+        defer { sqlite3_finalize(statement) }
+        sqliteBind(.int(rootID), to: statement, at: 1)
+
+        var items: [ScanInventoryItem] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            let entry = sqliteNullableString(statement, index: 1)
+            let pluginID = sqliteNullableString(statement, index: 5)
+            let route = pluginID.map {
+                ScanRoute(
+                    pluginID: $0,
+                    formatExtension: sqliteString(statement, index: 6),
+                    supportsArchiveMembers: sqlite3_column_int(statement, 7) != 0,
+                    supportsMultiTrack: sqlite3_column_int(statement, 8) != 0
+                )
+            }
+            items.append(
+                ScanInventoryItem(
+                    identity: ScanItemIdentity(
+                        rootID: rootID,
+                        path: sqliteString(statement, index: 0),
+                        archiveEntry: entry?.isEmpty == false ? entry : nil
+                    ),
+                    fingerprint: ScanFingerprint(
+                        fileSize: sqlite3_column_int64(statement, 2),
+                        modifiedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 3))
+                    ),
+                    state: ScanItemState(rawValue: sqliteString(statement, index: 4)) ?? .discovered,
+                    route: route
+                )
+            )
+        }
+        return items
+    }
+
+    func scanCompletedWithoutIssues(rootID: Int64) throws -> Bool {
+        let sql = """
+        SELECT COUNT(*), SUM(CASE WHEN state IN ('failed', 'unsupported') THEN 1 ELSE 0 END)
+        FROM scan_items WHERE root_id = ?;
+        """
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { throw databaseError() }
+        defer { sqlite3_finalize(statement) }
+        sqliteBind(.int(rootID), to: statement, at: 1)
+        guard sqlite3_step(statement) == SQLITE_ROW else { throw databaseError() }
+        return sqlite3_column_int(statement, 0) > 0 && sqlite3_column_int(statement, 1) == 0
+    }
+
+    func upsertScanItem(
+        _ item: ScanInventoryItem,
+        failure: ScanFailure? = nil
+    ) throws {
+        try execute(
+            """
+            INSERT INTO scan_items (root_id, path, archive_entry, file_size, modified_at, state, plugin_id, format_extension, supports_archive_members, supports_multi_track, failure_stage, failure_message, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(root_id, path, archive_entry) DO UPDATE SET
+                file_size = excluded.file_size,
+                modified_at = excluded.modified_at,
+                state = excluded.state,
+                plugin_id = excluded.plugin_id,
+                format_extension = excluded.format_extension,
+                supports_archive_members = excluded.supports_archive_members,
+                supports_multi_track = excluded.supports_multi_track,
+                failure_stage = excluded.failure_stage,
+                failure_message = excluded.failure_message,
+                updated_at = excluded.updated_at;
+            """,
+            bindings: [
+                .int(item.identity.rootID),
+                .text(item.identity.path),
+                .text(item.identity.archiveEntry ?? ""),
+                .int(item.fingerprint.fileSize),
+                .double(item.fingerprint.modifiedAt.timeIntervalSince1970),
+                .text(item.state.rawValue),
+                item.route.map { .text($0.pluginID) } ?? .null,
+                item.route.map { .text($0.formatExtension) } ?? .null,
+                .int(item.route?.supportsArchiveMembers == true ? 1 : 0),
+                .int(item.route?.supportsMultiTrack == true ? 1 : 0),
+                failure.map { .text($0.stage.rawValue) } ?? .null,
+                failure.map { .text($0.message) } ?? .null,
+                .double(Date().timeIntervalSince1970)
+            ]
+        )
+    }
+
+    func clearScanInventory(rootID: Int64) throws {
+        try execute("DELETE FROM scan_items WHERE root_id = ?;", bindings: [.int(rootID)])
+    }
+
+    func clearTracks(rootID: Int64) throws {
+        try execute("DELETE FROM tracks WHERE root_id = ?;", bindings: [.int(rootID)])
+    }
+
+    func persistScanTrackResults(_ results: [ScanPipelineResult]) throws {
+        let successes = results.compactMap { result -> (ScanCandidate, ScanInspection)? in
+            guard case .success(let candidate, let inspection) = result else { return nil }
+            return (candidate, inspection)
+        }
+        guard !successes.isEmpty else { return }
+
         try execute("BEGIN TRANSACTION;")
         do {
-            try execute("DELETE FROM tracks WHERE root_id = ?;", bindings: [.int(rootID)])
-
-            let trackSQL = """
-            INSERT INTO tracks (root_id, folder_path, path, filename, extension, track_index, track_count, file_size, modified_at, discovered_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-            """
-            let metadataSQL = """
-            INSERT INTO track_metadata (track_id, title, game, author, system, comment, intro_length_ms, loop_length_ms, play_length_ms, fade_length_ms, metadata_scanned_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-            """
-            let discoveredAt = Date().timeIntervalSince1970
-            let metadataScannedAt = Date().timeIntervalSince1970
-
-            var trackStatement: OpaquePointer?
-            guard sqlite3_prepare_v2(db, trackSQL, -1, &trackStatement, nil) == SQLITE_OK else {
-                throw databaseError()
-            }
-            defer { sqlite3_finalize(trackStatement) }
-
-            var metadataStatement: OpaquePointer?
-            guard sqlite3_prepare_v2(db, metadataSQL, -1, &metadataStatement, nil) == SQLITE_OK else {
-                throw databaseError()
-            }
-            defer { sqlite3_finalize(metadataStatement) }
-
-            for track in tracks {
-                sqlite3_reset(trackStatement)
-                sqlite3_clear_bindings(trackStatement)
-
-                sqliteBind(.int(rootID), to: trackStatement, at: 1)
-                sqliteBind(.text(track.folderPath), to: trackStatement, at: 2)
-                sqliteBind(.text(track.path), to: trackStatement, at: 3)
-                sqliteBind(.text(track.filename), to: trackStatement, at: 4)
-                sqliteBind(.text(track.fileExtension), to: trackStatement, at: 5)
-                sqliteBind(.int(Int64(track.trackIndex)), to: trackStatement, at: 6)
-                sqliteBind(.int(Int64(track.trackCount)), to: trackStatement, at: 7)
-                sqliteBind(.int(track.fileSize), to: trackStatement, at: 8)
-                sqliteBind(.double(track.modifiedAt.timeIntervalSince1970), to: trackStatement, at: 9)
-                sqliteBind(.double(discoveredAt), to: trackStatement, at: 10)
-
-                guard sqlite3_step(trackStatement) == SQLITE_DONE else {
-                    throw databaseError()
+            for (candidate, inspection) in successes {
+                if let archiveEntry = candidate.identity.archiveEntry {
+                    try execute(
+                        "DELETE FROM tracks WHERE root_id = ? AND path = ? AND archive_entry = ?;",
+                        bindings: [.int(candidate.identity.rootID), .text(candidate.identity.path), .text(archiveEntry)]
+                    )
+                } else {
+                    try execute(
+                        "DELETE FROM tracks WHERE root_id = ? AND path = ? AND archive_entry IS NULL;",
+                        bindings: [.int(candidate.identity.rootID), .text(candidate.identity.path)]
+                    )
                 }
 
-                let trackID = sqlite3_last_insert_rowid(db)
-                guard let metadata = track.metadata else { continue }
-
-                sqlite3_reset(metadataStatement)
-                sqlite3_clear_bindings(metadataStatement)
-                sqliteBind(.int(trackID), to: metadataStatement, at: 1)
-                sqliteBind(.text(metadata.song), to: metadataStatement, at: 2)
-                sqliteBind(.text(metadata.game), to: metadataStatement, at: 3)
-                sqliteBind(.text(metadata.author), to: metadataStatement, at: 4)
-                sqliteBind(.text(metadata.system), to: metadataStatement, at: 5)
-                sqliteBind(.text(metadata.comment), to: metadataStatement, at: 6)
-                sqliteBind(.int(Int64(metadata.introLengthMs)), to: metadataStatement, at: 7)
-                sqliteBind(.int(Int64(metadata.loopLengthMs)), to: metadataStatement, at: 8)
-                sqliteBind(.int(Int64(metadata.playLengthMs)), to: metadataStatement, at: 9)
-                sqliteBind(.int(Int64(metadata.fadeLengthMs)), to: metadataStatement, at: 10)
-                sqliteBind(.double(metadataScannedAt), to: metadataStatement, at: 11)
-
-                guard sqlite3_step(metadataStatement) == SQLITE_DONE else {
-                    throw databaseError()
+                for track in inspection.tracks {
+                    let path = candidate.identity.path
+                    let filename = candidate.identity.archiveEntry.map {
+                        URL(fileURLWithPath: $0).lastPathComponent
+                    } ?? URL(fileURLWithPath: path).lastPathComponent
+                    let extensionName = inspection.route.formatExtension
+                    let archivePath = candidate.identity.archiveEntry == nil ? nil : path
+                    try execute(
+                        """
+                        INSERT INTO tracks (root_id, folder_path, path, filename, extension, track_index, track_count, file_size, modified_at, discovered_at, archive_path, archive_entry)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                        """,
+                        bindings: [
+                            .int(candidate.identity.rootID),
+                            .text(URL(fileURLWithPath: path).deletingLastPathComponent().path),
+                            .text(path),
+                            .text(filename),
+                            .text(extensionName),
+                            .int(Int64(track.trackIndex)),
+                            .int(Int64(track.trackCount)),
+                            .int(candidate.fingerprint.fileSize),
+                            .double(candidate.fingerprint.modifiedAt.timeIntervalSince1970),
+                            .double(Date().timeIntervalSince1970),
+                            archivePath.map(SQLiteValue.text) ?? .null,
+                            candidate.identity.archiveEntry.map(SQLiteValue.text) ?? .null
+                        ]
+                    )
+                    guard let metadata = track.metadata else { continue }
+                    let trackID = try lastInsertedRowID()
+                    try execute(
+                        """
+                        INSERT INTO track_metadata (track_id, title, game, author, system, comment, intro_length_ms, loop_length_ms, play_length_ms, fade_length_ms, metadata_scanned_at)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                        """,
+                        bindings: [
+                            .int(trackID),
+                            .text(metadata.song),
+                            .text(metadata.game),
+                            .text(metadata.author),
+                            .text(metadata.system),
+                            .text(metadata.comment),
+                            .int(Int64(metadata.introLengthMs)),
+                            .int(Int64(metadata.loopLengthMs)),
+                            .int(Int64(metadata.playLengthMs)),
+                            .int(Int64(metadata.fadeLengthMs)),
+                            .double(Date().timeIntervalSince1970)
+                        ]
+                    )
                 }
             }
-
-            try execute(
-                "UPDATE library_roots SET last_scan_completed_at = ?, last_scan_track_count = ?, last_scan_error = NULL WHERE id = ?;",
-                bindings: [.double(Date().timeIntervalSince1970), .int(Int64(tracks.count)), .int(rootID)]
-            )
             try execute("COMMIT;")
         } catch {
             try? execute("ROLLBACK;")
@@ -257,7 +353,7 @@ final class LibraryDatabase {
         SELECT
             CASE
                 WHEN trim(COALESCE(m.game, '')) <> '' THEN trim(m.game)
-                ELSE t.folder_path
+                ELSE COALESCE(t.archive_path, t.folder_path)
             END AS game_name,
             trim(COALESCE(m.system, '')) AS system_name,
             COUNT(*)
@@ -280,8 +376,11 @@ final class LibraryDatabase {
             let rawName = sqliteString(statement, index: 0).trimmingCharacters(in: .whitespacesAndNewlines)
             let systemName = sqliteString(statement, index: 1).trimmingCharacters(in: .whitespacesAndNewlines)
             let name = rawName.isEmpty ? "Unknown Game" : rawName
+            let displayName = ZipArchiveSupport.canHandle(URL(fileURLWithPath: name))
+                ? URL(fileURLWithPath: name).lastPathComponent
+                : nil
             let count = Int(sqlite3_column_int(statement, 2))
-            items.append(DatabaseGameItem(name: name, systemName: systemName, trackCount: count))
+            items.append(DatabaseGameItem(name: name, systemName: systemName, trackCount: count, displayName: displayName))
         }
         return DatabaseSidebarPresentation.disambiguateGameItems(items)
     }
@@ -312,14 +411,14 @@ final class LibraryDatabase {
         defer { sqlite3_close(handle) }
 
         let sql = """
-        SELECT t.path, t.track_index, t.track_count
+        SELECT t.path, t.archive_path, t.archive_entry, t.track_index, t.track_count
         FROM tracks t
         INNER JOIN library_roots r ON r.id = t.root_id
         LEFT JOIN track_metadata m ON m.track_id = t.id
         WHERE r.is_enabled = 1
           AND CASE
                 WHEN trim(COALESCE(m.game, '')) <> '' THEN trim(m.game)
-                ELSE t.folder_path
+                ELSE COALESCE(t.archive_path, t.folder_path)
               END = ?
           AND trim(COALESCE(m.system, '')) = ?
         ORDER BY lower(COALESCE(m.title, '')) ASC, t.folder_path ASC, t.filename ASC, t.track_index ASC;
@@ -337,11 +436,7 @@ final class LibraryDatabase {
         var tracks: [TrackItem] = []
         while sqlite3_step(statement) == SQLITE_ROW {
             tracks.append(
-                TrackItem(
-                    url: URL(fileURLWithPath: sqliteString(statement, index: 0), isDirectory: false),
-                    trackIndex: Int(sqlite3_column_int(statement, 1)),
-                    trackCount: Int(sqlite3_column_int(statement, 2))
-                )
+                track(from: statement, pathIndex: 0, archivePathIndex: 1, archiveEntryIndex: 2, trackIndex: 3, trackCount: 4)
             )
         }
         return tracks
@@ -366,7 +461,7 @@ final class LibraryDatabase {
             (
                 CASE
                     WHEN trim(COALESCE(m.game, '')) <> '' THEN trim(m.game)
-                    ELSE t.folder_path
+                    ELSE COALESCE(t.archive_path, t.folder_path)
                 END = ?
                 AND trim(COALESCE(m.system, '')) = ?
             )
@@ -376,6 +471,8 @@ final class LibraryDatabase {
         let sql = """
         SELECT
             t.path,
+            t.archive_path,
+            t.archive_entry,
             t.track_index,
             t.track_count,
             COALESCE(m.title, ''),
@@ -416,21 +513,16 @@ final class LibraryDatabase {
         var widestSystemText = ""
         var widestLengthText = "—"
         while sqlite3_step(statement) == SQLITE_ROW {
-            let path = sqliteString(statement, index: 0)
-            let track = TrackItem(
-                url: URL(fileURLWithPath: path, isDirectory: false),
-                trackIndex: Int(sqlite3_column_int(statement, 1)),
-                trackCount: Int(sqlite3_column_int(statement, 2))
-            )
-            let title = sqliteString(statement, index: 3)
-            let game = sqliteString(statement, index: 4)
-            let author = sqliteString(statement, index: 5)
-            let system = sqliteString(statement, index: 6)
-            let comment = sqliteString(statement, index: 7)
-            let introLengthMs = Int(sqlite3_column_int(statement, 8))
-            let loopLengthMs = Int(sqlite3_column_int(statement, 9))
-            let playLengthMs = Int(sqlite3_column_int(statement, 10))
-            let fadeLengthMs = Int(sqlite3_column_int(statement, 11))
+            let track = track(from: statement, pathIndex: 0, archivePathIndex: 1, archiveEntryIndex: 2, trackIndex: 3, trackCount: 4)
+            let title = sqliteString(statement, index: 5)
+            let game = sqliteString(statement, index: 6)
+            let author = sqliteString(statement, index: 7)
+            let system = sqliteString(statement, index: 8)
+            let comment = sqliteString(statement, index: 9)
+            let introLengthMs = Int(sqlite3_column_int(statement, 10))
+            let loopLengthMs = Int(sqlite3_column_int(statement, 11))
+            let playLengthMs = Int(sqlite3_column_int(statement, 12))
+            let fadeLengthMs = Int(sqlite3_column_int(statement, 13))
             tracks.append(track)
             metadata[track.id] = TrackMetadata(
                 game: game,
@@ -480,6 +572,8 @@ final class LibraryDatabase {
         let sql = """
         SELECT
             t.path,
+            t.archive_path,
+            t.archive_entry,
             t.track_index,
             t.track_count,
             COALESCE(m.title, ''),
@@ -527,6 +621,8 @@ final class LibraryDatabase {
         let sql = """
         SELECT
             t.path,
+            t.archive_path,
+            t.archive_entry,
             t.track_index,
             t.track_count,
             COALESCE(m.title, ''),
@@ -732,6 +828,8 @@ final class LibraryDatabase {
         let fileSQL = """
         SELECT
             t.path,
+            t.archive_path,
+            t.archive_entry,
             t.track_index,
             t.track_count,
             COALESCE(m.title, ''),
@@ -791,16 +889,10 @@ final class LibraryDatabase {
 
         while sqlite3_step(fileStatement) == SQLITE_ROW {
             let path = sqliteString(fileStatement, index: 0)
-            let trackIndex = Int(sqlite3_column_int(fileStatement, 1))
-            let trackCount = Int(sqlite3_column_int(fileStatement, 2))
-            let title = sqliteNullableString(fileStatement, index: 3)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let game = sqliteNullableString(fileStatement, index: 4)?.trimmingCharacters(in: .whitespacesAndNewlines)
-            let rootPath = sqliteString(fileStatement, index: 5)
-            let track = TrackItem(
-                url: URL(fileURLWithPath: path, isDirectory: false),
-                trackIndex: trackIndex,
-                trackCount: trackCount
-            )
+            let title = sqliteNullableString(fileStatement, index: 5)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let game = sqliteNullableString(fileStatement, index: 6)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            let rootPath = sqliteString(fileStatement, index: 7)
+            let track = track(from: fileStatement, pathIndex: 0, archivePathIndex: 1, archiveEntryIndex: 2, trackIndex: 3, trackCount: 4)
             items.append(
                 SidebarSearchItem(
                     url: track.url,
@@ -829,6 +921,16 @@ final class LibraryDatabase {
         guard sqlite3_step(statement) == SQLITE_DONE else {
             throw databaseError()
         }
+    }
+
+    private func lastInsertedRowID() throws -> Int64 {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT last_insert_rowid();", -1, &statement, nil) == SQLITE_OK else {
+            throw databaseError()
+        }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else { throw databaseError() }
+        return sqlite3_column_int64(statement, 0)
     }
 
     private func databaseError() -> NSError {
@@ -860,21 +962,16 @@ final class LibraryDatabase {
         var widestLengthText = "—"
 
         while sqlite3_step(statement) == SQLITE_ROW {
-            let path = sqliteString(statement, index: 0)
-            let track = TrackItem(
-                url: URL(fileURLWithPath: path, isDirectory: false),
-                trackIndex: Int(sqlite3_column_int(statement, 1)),
-                trackCount: Int(sqlite3_column_int(statement, 2))
-            )
-            let title = sqliteString(statement, index: 3)
-            let game = sqliteString(statement, index: 4)
-            let author = sqliteString(statement, index: 5)
-            let system = sqliteString(statement, index: 6)
-            let comment = sqliteString(statement, index: 7)
-            let introLengthMs = Int(sqlite3_column_int(statement, 8))
-            let loopLengthMs = Int(sqlite3_column_int(statement, 9))
-            let playLengthMs = Int(sqlite3_column_int(statement, 10))
-            let fadeLengthMs = Int(sqlite3_column_int(statement, 11))
+            let track = track(from: statement, pathIndex: 0, archivePathIndex: 1, archiveEntryIndex: 2, trackIndex: 3, trackCount: 4)
+            let title = sqliteString(statement, index: 5)
+            let game = sqliteString(statement, index: 6)
+            let author = sqliteString(statement, index: 7)
+            let system = sqliteString(statement, index: 8)
+            let comment = sqliteString(statement, index: 9)
+            let introLengthMs = Int(sqlite3_column_int(statement, 10))
+            let loopLengthMs = Int(sqlite3_column_int(statement, 11))
+            let playLengthMs = Int(sqlite3_column_int(statement, 12))
+            let fadeLengthMs = Int(sqlite3_column_int(statement, 13))
 
             tracks.append(track)
             metadata[track.id] = TrackMetadata(
@@ -910,13 +1007,46 @@ final class LibraryDatabase {
         return (tracks, metadata, widthHints)
     }
 
+    private static func track(
+        from statement: OpaquePointer?,
+        pathIndex: Int32,
+        archivePathIndex: Int32,
+        archiveEntryIndex: Int32,
+        trackIndex: Int32,
+        trackCount: Int32
+    ) -> TrackItem {
+        let path = sqliteString(statement, index: pathIndex)
+        let index = Int(sqlite3_column_int(statement, trackIndex))
+        let count = Int(sqlite3_column_int(statement, trackCount))
+        if let archivePath = sqliteNullableString(statement, index: archivePathIndex),
+           let archiveEntry = sqliteNullableString(statement, index: archiveEntryIndex),
+           !archivePath.isEmpty,
+           !archiveEntry.isEmpty {
+            return TrackItem(
+                archiveURL: URL(fileURLWithPath: archivePath, isDirectory: false),
+                entryPath: archiveEntry,
+                trackIndex: index,
+                trackCount: count
+            )
+        }
+        return TrackItem(
+            url: URL(fileURLWithPath: path, isDirectory: false),
+            trackIndex: index,
+            trackCount: count
+        )
+    }
+
     private func migrateSchemaIfNeeded() throws {
         let version = try userVersion()
+        if version < 4 {
+            try execute("DROP TABLE IF EXISTS track_metadata;")
+            try execute("DROP TABLE IF EXISTS tracks;")
+            try createTrackTables()
+        }
+        if version < 5 {
+            try createScanTables()
+        }
         guard version < Self.schemaVersion else { return }
-
-        try execute("DROP TABLE IF EXISTS track_metadata;")
-        try execute("DROP TABLE IF EXISTS tracks;")
-        try createTrackTables()
         try setUserVersion(Self.schemaVersion)
     }
 
@@ -934,7 +1064,9 @@ final class LibraryDatabase {
             file_size INTEGER NOT NULL,
             modified_at REAL NOT NULL,
             discovered_at REAL NOT NULL,
-            UNIQUE(path, track_index),
+            archive_path TEXT,
+            archive_entry TEXT,
+            UNIQUE(path, archive_entry, track_index),
             FOREIGN KEY(root_id) REFERENCES library_roots(id) ON DELETE CASCADE
         );
         """)
@@ -954,6 +1086,30 @@ final class LibraryDatabase {
             FOREIGN KEY(track_id) REFERENCES tracks(id) ON DELETE CASCADE
         );
         """)
+    }
+
+    private func createScanTables() throws {
+        try execute("""
+        CREATE TABLE IF NOT EXISTS scan_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            root_id INTEGER NOT NULL,
+            path TEXT NOT NULL,
+            archive_entry TEXT NOT NULL DEFAULT '',
+            file_size INTEGER NOT NULL,
+            modified_at REAL NOT NULL,
+            state TEXT NOT NULL,
+            plugin_id TEXT,
+            format_extension TEXT,
+            supports_archive_members INTEGER NOT NULL DEFAULT 0,
+            supports_multi_track INTEGER NOT NULL DEFAULT 0,
+            failure_stage TEXT,
+            failure_message TEXT,
+            updated_at REAL NOT NULL,
+            UNIQUE(root_id, path, archive_entry),
+            FOREIGN KEY(root_id) REFERENCES library_roots(id) ON DELETE CASCADE
+        );
+        """)
+        try execute("CREATE INDEX IF NOT EXISTS scan_items_state_index ON scan_items(root_id, state);")
     }
 
     private func userVersion() throws -> Int {

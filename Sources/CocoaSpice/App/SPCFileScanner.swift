@@ -29,24 +29,6 @@ enum SPCFileScanner {
             .map { TrackItem(url: $0) }
     }
 
-    static func recursiveTracks(in rootURL: URL) -> [URL] {
-        guard let enumerator = FileManager.default.enumerator(
-            at: rootURL,
-            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey, .contentModificationDateKey],
-            options: [.skipsHiddenFiles]
-        ) else {
-            return []
-        }
-
-        var urls: [URL] = []
-        for case let url as URL in enumerator {
-            guard supportedExtensions.contains(url.pathExtension.lowercased()) else { continue }
-            urls.append(url)
-        }
-
-        return urls.sorted { $0.path.localizedStandardCompare($1.path) == .orderedAscending }
-    }
-
     static func searchSidebarItems(in rootURL: URL, query: String, limit: Int = 250) -> [SidebarSearchItem] {
         let terms = query
             .lowercased()
