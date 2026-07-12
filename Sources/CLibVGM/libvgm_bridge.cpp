@@ -4,6 +4,9 @@
 #include <cstdlib>
 #include <cstring>
 #include <string>
+#include <vector>
+
+#include <zlib.h>
 
 #include "player/playera.hpp"
 #include "player/droplayer.hpp"
@@ -26,6 +29,7 @@ struct LibVGMPlayerHandle {
     UINT8* fileData = nullptr;
     size_t fileSize = 0;
     std::string baseDirectory;
+    std::string lastLogMessage;
     bool trackEnded = false;
 };
 
@@ -193,6 +197,20 @@ UINT8 playbackEventCallback(PlayerBase* player, void* userParam, UINT8 eventType
     return 0x00;
 }
 
+void playbackLogCallback(
+    void* userParam,
+    PlayerBase* player,
+    UINT8 level,
+    UINT8 srcType,
+    const char* srcTag,
+    const char* message
+) {
+    LibVGMPlayerHandle* handle = static_cast<LibVGMPlayerHandle*>(userParam);
+    if (handle != nullptr && message != nullptr) {
+        handle->lastLogMessage = message;
+    }
+}
+
 DATA_LOADER* fileRequestCallback(void* userParam, PlayerBase* player, const char* fileName) {
     LibVGMPlayerHandle* handle = static_cast<LibVGMPlayerHandle*>(userParam);
     if (fileName == nullptr || handle == nullptr) {
@@ -258,7 +276,42 @@ int32_t configurePlayer(
     handle->player.RegisterPlayerEngine(new GYMPlayer);
     handle->player.SetEventCallback(playbackEventCallback, handle);
     handle->player.SetFileReqCallback(fileRequestCallback, handle);
+    handle->player.SetLogCallback(playbackLogCallback, handle);
     return 0;
+}
+
+bool inflateGzipPayload(
+    const UINT8* compressedData,
+    size_t compressedSize,
+    std::vector<UINT8>& decompressedData,
+    char** errorMessage
+) {
+    z_stream stream {};
+    stream.next_in = const_cast<Bytef*>(reinterpret_cast<const Bytef*>(compressedData));
+    stream.avail_in = static_cast<uInt>(compressedSize);
+    if (inflateInit2(&stream, 16 + MAX_WBITS) != Z_OK) {
+        setError(errorMessage, "libvgm could not initialize VGZ decompression.");
+        return false;
+    }
+
+    decompressedData.resize(64 * 1024);
+    int status = Z_OK;
+    while (status == Z_OK) {
+        if (stream.total_out == decompressedData.size()) {
+            decompressedData.resize(decompressedData.size() * 2);
+        }
+        stream.next_out = reinterpret_cast<Bytef*>(decompressedData.data() + stream.total_out);
+        stream.avail_out = static_cast<uInt>(decompressedData.size() - stream.total_out);
+        status = inflate(&stream, Z_NO_FLUSH);
+    }
+    inflateEnd(&stream);
+
+    if (status != Z_STREAM_END) {
+        setError(errorMessage, "libvgm could not decompress this VGZ file.");
+        return false;
+    }
+    decompressedData.resize(stream.total_out);
+    return true;
 }
 
 int32_t loadFileIntoMemory(LibVGMPlayerHandle* handle, const char* path, char** errorMessage) {
@@ -301,6 +354,23 @@ int32_t loadFileIntoMemory(LibVGMPlayerHandle* handle, const char* path, char** 
         return 1;
     }
 
+    const bool isGzip = fileSize >= 2 && handle->fileData[0] == 0x1F && handle->fileData[1] == 0x8B;
+    if (isGzip) {
+        std::vector<UINT8> decompressedData;
+        if (!inflateGzipPayload(handle->fileData, static_cast<size_t>(fileSize), decompressedData, errorMessage)) {
+            return 1;
+        }
+        UINT8* decodedData = static_cast<UINT8*>(std::malloc(decompressedData.size()));
+        if (decodedData == nullptr) {
+            setError(errorMessage, "libvgm could not allocate decompressed VGZ data.");
+            return 1;
+        }
+        std::memcpy(decodedData, decompressedData.data(), decompressedData.size());
+        std::free(handle->fileData);
+        handle->fileData = decodedData;
+        fileSize = static_cast<long>(decompressedData.size());
+    }
+
     handle->fileSize = static_cast<size_t>(fileSize);
     handle->loader = MemoryLoader_Init(handle->fileData, static_cast<unsigned int>(handle->fileSize));
     if (handle->loader == nullptr) {
@@ -314,8 +384,22 @@ int32_t loadFileIntoMemory(LibVGMPlayerHandle* handle, const char* path, char** 
         return 1;
     }
 
-    if (handle->player.LoadFile(handle->loader) != 0x00) {
-        setError(errorMessage, "libvgm could not decode this VGM-family file.");
+    const UINT8 loadStatus = handle->player.LoadFile(handle->loader);
+    if (loadStatus != 0x00) {
+        char signature[16] {};
+        std::snprintf(
+            signature,
+            sizeof(signature),
+            "%02X%02X%02X%02X",
+            handle->fileSize > 0 ? handle->fileData[0] : 0,
+            handle->fileSize > 1 ? handle->fileData[1] : 0,
+            handle->fileSize > 2 ? handle->fileData[2] : 0,
+            handle->fileSize > 3 ? handle->fileData[3] : 0
+        );
+        const std::string detail = handle->lastLogMessage.empty()
+            ? "libvgm could not decode this VGM-family file (status " + std::to_string(loadStatus) + ", header " + signature + ")."
+            : "libvgm could not decode this VGM-family file: " + handle->lastLogMessage;
+        setError(errorMessage, detail);
         return 1;
     }
 

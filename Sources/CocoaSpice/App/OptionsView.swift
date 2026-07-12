@@ -213,6 +213,9 @@ struct OptionsView: View {
                     Button("Add Folders…") {
                         model.chooseLibraryScanRoots()
                     }
+                    Button("Trim Missing") {
+                        model.trimMissingLibrary()
+                    }
                     Spacer()
                 }
             }
@@ -294,10 +297,6 @@ struct OptionsView: View {
                     Button("Retry") { model.retryFailedLibraryRoot(root.id) }
                     Button("Log") { model.openLibraryScanLog(root.id) }
                         .disabled(!model.hasLibraryScanLog(root.id))
-                    Button("Up") { model.moveLibraryScanRootUp(root.id) }
-                        .disabled(!model.canMoveLibraryScanRootUp(root.id))
-                    Button("Down") { model.moveLibraryScanRootDown(root.id) }
-                        .disabled(!model.canMoveLibraryScanRootDown(root.id))
                     Button("Del") { model.removeLibraryScanRoot(root.id) }
                 }
             }
@@ -307,7 +306,12 @@ struct OptionsView: View {
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                     .lineLimit(1)
-                if model.libraryScanRootIsClean(root) {
+                if model.libraryScanRootNeedsRescan(root) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.yellow)
+                        .accessibilityLabel("Missing files were trimmed; rescan to discover changed content")
+                } else if model.libraryScanRootIsClean(root) {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.green)

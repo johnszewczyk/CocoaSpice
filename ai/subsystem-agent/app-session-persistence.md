@@ -21,6 +21,7 @@
 - Playlist column order, visibility, and widths restore through the shared persistence helper rather than direct view-level `UserDefaults` reads.
 - Library scan roots are loaded from SQLite rather than `UserDefaults`.
 - Launch restores playback preferences, library scan roots, persisted playlist state, then sidebar mode and root context.
+- Launch activates CocoaSpice so its first window is brought to the front.
 - Options close writes the current preference bundle explicitly.
 - Session playlist and sidebar selection context are saved on app termination or main-window close rather than being rewritten on ordinary selection movement.
 

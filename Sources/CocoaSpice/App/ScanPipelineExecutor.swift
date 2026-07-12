@@ -63,7 +63,7 @@ struct ScanPipelineExecutor: Sendable {
     ) async throws -> ScanResultAccumulator {
         let accumulator = ScanResultAccumulator(discovered: plan.count)
         let cursor = ScanPlanCursor(count: plan.candidates.count)
-        let completed = ScanCompletionCounter()
+        let completionCounter = ScanCompletionCounter()
         let workerCount = min(
             ZipArchiveSupport.archiveProcessConcurrency,
             max(1, plan.candidates.count)
@@ -75,8 +75,6 @@ struct ScanPipelineExecutor: Sendable {
                     while let index = cursor.take() {
                         try Task.checkCancellation()
                         let candidate = plan.candidates[index]
-                        let started = completed.increment()
-                        progress(started, plan.count, "Starting \(candidate.identityDescription)")
                         let results = await self.process(candidate)
                         for result in results {
                             let acceptedResult = await MainActor.run { () -> ScanPipelineResult in
@@ -94,7 +92,8 @@ struct ScanPipelineExecutor: Sendable {
                         let identityDescription = candidate.identity.archiveEntry.map {
                             "\(candidate.identity.path)#\($0)"
                         } ?? candidate.identity.path
-                        progress(started, plan.count, "Completed \(identityDescription)")
+                        let completed = completionCounter.increment()
+                        progress(completed, plan.count, "Completed \(identityDescription)")
                     }
                 }
             }

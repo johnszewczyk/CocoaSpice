@@ -216,12 +216,16 @@ enum ZipArchiveSupport {
         switch archiveKind(for: archiveURL) {
         case .zip:
             let data = try runProcess(
-                executable: try executable(named: "zipinfo"),
-                arguments: ["-1", archiveURL.path]
+                executable: try executable(named: "7zz"),
+                arguments: ["l", "-mmt=1", "-slt", "-ba", archiveURL.path]
             )
             return String(decoding: data, as: UTF8.self)
                 .split(whereSeparator: \.isNewline)
-                .map(String.init)
+                .compactMap { line in
+                    let value = String(line)
+                    guard value.hasPrefix("Path = ") else { return nil }
+                    return String(value.dropFirst("Path = ".count))
+                }
         case .sevenZip:
             let data = try runProcess(
                 executable: try executable(named: "7zz"),

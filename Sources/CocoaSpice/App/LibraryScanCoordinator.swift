@@ -15,16 +15,18 @@ final class LibraryScanCoordinator {
     func run(
         root: LibraryScanRoot,
         mode: ScanMode,
-        report: @escaping @MainActor @Sendable (String) -> Void = { _ in }
+        report: @escaping @MainActor @Sendable (String) -> Void = { _ in },
+        progress: @escaping @MainActor @Sendable (Int, Int) -> Void = { _, _ in }
     ) async throws -> ScanSummary {
         let operationName = mode == .retryFailed ? "retry" : "scan"
         report("Starting \(operationName): \(root.standardizedURL.lastPathComponent)")
         try database.markScanStarted(rootID: root.id)
         if mode == .newScan {
-            // Scan inventory is a report of the latest attempt. Keep the
-            // playable library intact, but remove stale failures so a clean
-            // completed rescan can accurately report a clean root.
+            // A new scan is a replacement inventory. Retaining old tracks
+            // here would surface entries whose file or archive member no
+            // longer exists after a source changes.
             try database.clearScanInventory(rootID: root.id)
+            try database.clearTracks(rootID: root.id)
         }
         report("Discovering supported files recursively: \(root.standardizedURL.lastPathComponent)…")
         let discovered = await ScanFilesystemDiscovery.discover(
@@ -54,11 +56,13 @@ final class LibraryScanCoordinator {
         }
 
         report("Planned \(selected.count) files for \(operationName)…")
+        progress(0, selected.count)
+        let progressReporter = ScanProgressReporter(report: report, progress: progress)
         let accumulator = try await executor.process(
             plan: ScanPlan(mode: mode, candidates: selected),
             progress: { current, total, detail in
                 Task { @MainActor in
-                    report("Scanning \(current)/\(total): \(detail)")
+                    progressReporter.update(current: current, total: total, detail: detail)
                 }
             },
             persist: { [database] result in
@@ -76,5 +80,35 @@ final class LibraryScanCoordinator {
         }
         try database.markScanCompleted(rootID: root.id, trackCount: trackCount)
         return summary
+    }
+}
+
+@MainActor
+private final class ScanProgressReporter {
+    private let report: @MainActor @Sendable (String) -> Void
+    private let progress: @MainActor @Sendable (Int, Int) -> Void
+    private var lastReportedCurrent = -1
+    private var lastReportDate = Date.distantPast
+
+    init(
+        report: @escaping @MainActor @Sendable (String) -> Void,
+        progress: @escaping @MainActor @Sendable (Int, Int) -> Void
+    ) {
+        self.report = report
+        self.progress = progress
+    }
+
+    func update(current: Int, total: Int, detail: String) {
+        progress(current, total)
+
+        let now = Date()
+        let reachedEnd = current >= total
+        let advancedEnough = current - lastReportedCurrent >= 25
+        guard current == 1 || reachedEnd || advancedEnough || now.timeIntervalSince(lastReportDate) >= 0.5 else {
+            return
+        }
+        lastReportedCurrent = current
+        lastReportDate = now
+        report("Scanning \(current)/\(total): \(detail)")
     }
 }

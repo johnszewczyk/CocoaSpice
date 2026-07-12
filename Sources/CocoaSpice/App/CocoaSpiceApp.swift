@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 @main
@@ -8,6 +9,9 @@ struct CocoaSpiceApp: App {
         if let iconURL = Bundle.main.url(forResource: "AppIcon", withExtension: "png"),
            let iconImage = NSImage(contentsOf: iconURL) {
             NSApplication.shared.applicationIconImage = iconImage
+        }
+        DispatchQueue.main.async {
+            NSApplication.shared.activate(ignoringOtherApps: true)
         }
     }
 

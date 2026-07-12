@@ -63,7 +63,7 @@ final class LibraryDatabase {
         let sql = """
         SELECT id, path, is_enabled, display_order, last_scan_started_at, last_scan_completed_at, last_scan_track_count, last_scan_error
         FROM library_roots
-        ORDER BY display_order ASC, id ASC;
+        ORDER BY lower(path) ASC, path ASC;
         """
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
@@ -244,6 +244,42 @@ final class LibraryDatabase {
 
     func clearTracks(rootID: Int64) throws {
         try execute("DELETE FROM tracks WHERE root_id = ?;", bindings: [.int(rootID)])
+    }
+
+    func indexedSources() throws -> [LibraryIndexedSource] {
+        let sql = """
+        SELECT DISTINCT root_id, path
+        FROM tracks
+        ORDER BY path ASC;
+        """
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { throw databaseError() }
+        defer { sqlite3_finalize(statement) }
+
+        var sources: [LibraryIndexedSource] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            sources.append(LibraryIndexedSource(
+                rootID: sqlite3_column_int64(statement, 0),
+                path: sqliteString(statement, index: 1),
+                archiveEntry: nil
+            ))
+        }
+        return sources
+    }
+
+    func trimMissingPaths(_ sources: [LibraryIndexedSource]) throws {
+        guard !sources.isEmpty else { return }
+        try execute("BEGIN TRANSACTION;")
+        do {
+            for source in sources {
+                try execute("DELETE FROM tracks WHERE root_id = ? AND path = ?;", bindings: [.int(source.rootID), .text(source.path)])
+                try execute("DELETE FROM scan_items WHERE root_id = ? AND path = ?;", bindings: [.int(source.rootID), .text(source.path)])
+            }
+            try execute("COMMIT;")
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
     }
 
     func persistScanTrackResults(_ results: [ScanPipelineResult]) throws {

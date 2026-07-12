@@ -149,6 +149,7 @@ final class PlayerViewModel {
     var playlistMetadataLoadToken = 0
     var libraryScanStatus: String?
     private(set) var cleanLibraryScanRootIDs: Set<Int64> = []
+    private(set) var trimmedLibraryScanRootIDs: Set<Int64> = []
     private(set) var libraryScanInProgress = false
 
     var enabledLibraryRootURLs: [URL] {
@@ -235,6 +236,9 @@ final class PlayerViewModel {
             libraryDatabase = nil
             libraryScanStatus = "Library database unavailable: \(error.localizedDescription)"
         }
+        trimmedLibraryScanRootIDs = Set(
+            UserDefaults.standard.array(forKey: "trimmedLibraryScanRootIDs")?.compactMap { ($0 as? NSNumber)?.int64Value } ?? []
+        )
         toolbarSpectrum.gradientStartColor = spectrumGradientStartColor
         toolbarSpectrum.gradientEndColor = spectrumGradientEndColor
         toolbarSpectrum.peakColor = spectrumPeakColor
@@ -407,6 +411,66 @@ final class PlayerViewModel {
         runModernLibraryScan(for: [root], mode: .retryFailed)
     }
 
+    func trimMissingLibrary() {
+        guard !libraryScanInProgress,
+              let libraryDatabase else { return }
+        let sources = (try? libraryDatabase.indexedSources()) ?? []
+        let progressWindow = LibraryScanProgressWindowController(
+            title: "CocoaSpice Library Integrity",
+            onCancel: { [weak self] in self?.stopLibraryScan() }
+        )
+        libraryScanGeneration += 1
+        let generation = libraryScanGeneration
+        libraryScanInProgress = true
+        libraryScanProgressWindow = progressWindow
+        progressWindow.show()
+        progressWindow.append("Checking \(sources.count) indexed source files…")
+
+        libraryScanTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                progressWindow.close()
+                if self.libraryScanProgressWindow === progressWindow {
+                    self.libraryScanProgressWindow = nil
+                }
+                if generation == self.libraryScanGeneration {
+                    self.libraryScanInProgress = false
+                }
+            }
+            let integrityTask = Task.detached(priority: .utility) {
+                await LibraryIntegrityChecker.check(
+                    sources: sources,
+                    progress: { current, total, detail in
+                        Task { @MainActor in
+                            progressWindow.setProgress(current: current, total: total)
+                            if current == 1 || current == total || current.isMultiple(of: 100) {
+                                progressWindow.append("Checking \(current)/\(total): \(detail)")
+                            }
+                        }
+                    }
+                )
+            }
+            let result = await withTaskCancellationHandler {
+                await integrityTask.value
+            } onCancel: {
+                integrityTask.cancel()
+            }
+            guard generation == self.libraryScanGeneration, !Task.isCancelled else { return }
+            do {
+                try libraryDatabase.trimMissingPaths(result.missingSources)
+                self.trimmedLibraryScanRootIDs.formUnion(result.missingSources.map(\.rootID))
+                self.persistTrimmedLibraryRootIDs()
+                self.reloadLibraryScanRoots()
+                self.reloadDatabaseGameItems()
+                self.libraryScanStatus = "Trim Missing • \(result.checkedCount) sources checked • \(result.missingSources.count) missing removed"
+                progressWindow.append("Removed \(result.missingSources.count) missing entries.")
+            } catch {
+                self.libraryScanStatus = "Integrity check failed: \(error.localizedDescription)"
+                progressWindow.append(self.libraryScanStatus ?? "Integrity check failed.")
+            }
+        }
+    }
+
     func rescanEnabledLibraryRoots() {
         runModernLibraryScan(for: libraryScanRoots.filter(\.isEnabled), mode: .newScan)
     }
@@ -452,6 +516,8 @@ final class PlayerViewModel {
                     let summary = try await coordinator.run(root: root, mode: mode) { [weak self] status in
                         self?.libraryScanStatus = status
                         progressWindow.append(status)
+                    } progress: { current, total in
+                        progressWindow.setProgress(current: current, total: total)
                     }
                     guard generation == self.libraryScanGeneration else { return }
                     let issues = summary.failures.map {
@@ -461,6 +527,8 @@ final class PlayerViewModel {
                     // while a successful archive can yield many playable leaves.
                     LibraryScanLogStore.write(root: root, startedAt: root.lastScanStartedAt ?? Date(), completedFileCount: summary.discovered, totalFileCount: summary.discovered, issues: issues)
                     self.libraryScanStatus = "\(mode.rawValue.capitalized) scan \(root.standardizedURL.lastPathComponent) • \(summary.successful) successful • \(summary.failed) failed • \(summary.unsupported) unsupported"
+                    self.trimmedLibraryScanRootIDs.remove(root.id)
+                    self.persistTrimmedLibraryRootIDs()
                     self.reloadLibraryScanRoots()
                     self.reloadDatabaseGameItems()
                 } catch is CancellationError {
@@ -1436,6 +1504,10 @@ final class PlayerViewModel {
         cleanLibraryScanRootIDs.contains(root.id) && root.lastScanError == nil
     }
 
+    func libraryScanRootNeedsRescan(_ root: LibraryScanRoot) -> Bool {
+        trimmedLibraryScanRootIDs.contains(root.id)
+    }
+
     var preFadeReadout: String {
         PlaylistPresentation.formatTime(effectivePreFadeSeconds)
     }
@@ -1712,6 +1784,8 @@ final class PlayerViewModel {
             cleanLibraryScanRootIDs = Set(libraryScanRoots.compactMap { root in
                 root.lastScanCompletedAt != nil && LibraryScanLogStore.reportsNoIssues(rootID: root.id) ? root.id : nil
             })
+            trimmedLibraryScanRootIDs.formIntersection(Set(libraryScanRoots.map(\.id)))
+            persistTrimmedLibraryRootIDs()
         } catch {
             libraryScanStatus = "Could not load scan roots: \(error.localizedDescription)"
         }
@@ -1732,6 +1806,10 @@ final class PlayerViewModel {
         try? libraryDatabase?.updateRootOrder(idsInOrder: libraryScanRoots.map(\.id))
         reloadLibraryScanRoots()
         syncActiveRootToLibraryScanRoots()
+    }
+
+    private func persistTrimmedLibraryRootIDs() {
+        UserDefaults.standard.set(trimmedLibraryScanRootIDs.map { NSNumber(value: $0) }, forKey: "trimmedLibraryScanRootIDs")
     }
 
     private func syncActiveRootToLibraryScanRoots(preferredRoot: URL? = nil) {

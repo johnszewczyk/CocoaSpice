@@ -3,11 +3,10 @@
 ## Database
 
 - Scan roots: add and manage folders used by the database.
-- Scanning: shows completed files over total files, estimated remaining time, issue count, and the current filename.
-- Scanning: shows preparation and discovered-file status before item processing begins.
-- Scanning: can be stopped from the database status bar while a scan is active.
-- Database setup and scan-root save failures appear in the database status area.
-- Library paths expose Rescan, Log, Up, Down, and Del actions; Log opens the latest scan issue report.
+- Scanning: opens a dedicated dialog with a bottom progress bar and `current / total` count on the left, plus a Cancel button on the right.
+- The Library Paths section provides one `Trim Missing` action for the whole library. It checks only whether each unique indexed source path exists, then removes all entries backed by missing paths. It does not open archives or read metadata.
+- Library paths are automatically sorted by path and expose Scan, Retry, Log, and Del actions; Log opens the latest scan issue report.
+- Library paths show a small green check at the end of the path line when the latest scan reported no issues. If Trim Missing removed entries for a path, the same native check is yellow until that path is freshly scanned.
 
 ## Playback
 
@@ -24,7 +23,7 @@
 ## Window
 
 - Options opens in a native titled macOS window.
-- The window is 900pt wide, starts at 600pt tall, keeps its width fixed, and allows additional vertical space.
+- The window is 1280pt wide and 720pt tall.
 - The sidebar contains Database, Interface, and Playback components in alphabetical order.
 
 ## Files

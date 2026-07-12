@@ -4,6 +4,8 @@ import AppKit
 final class LibraryScanProgressWindowController {
     private let window: NSWindow
     private let textView: NSTextView
+    private let progressIndicator = NSProgressIndicator()
+    private let progressLabel = NSTextField(labelWithString: "0 / 0")
     private let onCancel: () -> Void
     private let cancelTarget: ActionTarget
 
@@ -27,11 +29,30 @@ final class LibraryScanProgressWindowController {
         cancelButton.target = cancelTarget
         cancelButton.action = #selector(ActionTarget.invoke)
 
-        let stack = NSStackView(views: [scrollView, cancelButton])
+        progressIndicator.isIndeterminate = false
+        progressIndicator.minValue = 0
+        progressIndicator.maxValue = 1
+        progressIndicator.controlSize = .small
+        progressIndicator.translatesAutoresizingMaskIntoConstraints = false
+
+        progressLabel.font = NSFont.monospacedDigitSystemFont(ofSize: 12, weight: .regular)
+        progressLabel.textColor = .secondaryLabelColor
+
+        let spacer = NSView()
+        spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
+        spacer.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        let bottomBar = NSStackView(views: [progressIndicator, progressLabel, spacer, cancelButton])
+        bottomBar.orientation = .horizontal
+        bottomBar.alignment = .centerY
+        bottomBar.spacing = 8
+        progressIndicator.widthAnchor.constraint(equalToConstant: 150).isActive = true
+        cancelButton.setContentHuggingPriority(.required, for: .horizontal)
+
+        let stack = NSStackView(views: [scrollView, bottomBar])
         stack.orientation = .vertical
         stack.spacing = 10
         stack.edgeInsets = NSEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
-        cancelButton.setContentHuggingPriority(.required, for: .vertical)
+        bottomBar.setContentHuggingPriority(.required, for: .vertical)
 
         window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 800, height: 520),
@@ -54,6 +75,14 @@ final class LibraryScanProgressWindowController {
         formatter.dateFormat = "HH:mm:ss"
         textView.string += "[\(formatter.string(from: Date()))] \(message)\n"
         textView.scrollToEndOfDocument(nil)
+    }
+
+    func setProgress(current: Int, total: Int) {
+        let safeTotal = max(total, 0)
+        let safeCurrent = min(max(current, 0), safeTotal)
+        progressLabel.stringValue = "\(safeCurrent) / \(safeTotal)"
+        progressIndicator.maxValue = Double(max(safeTotal, 1))
+        progressIndicator.doubleValue = Double(safeCurrent)
     }
 
     func close() {
