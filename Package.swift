@@ -127,7 +127,7 @@ let package = Package(
         ),
         .testTarget(
             name: "CocoaSpiceTests",
-            dependencies: ["CocoaSpice"]
+            dependencies: ["CocoaSpice", "C2SF"]
         )
     ],
     swiftLanguageModes: [.v6]

@@ -1,4 +1,5 @@
 import AppKit
+import C2SF
 import Foundation
 import Testing
 @testable import CocoaSpice
@@ -26,6 +27,26 @@ import Testing
 @Test func twoSFUsesItsDedicatedDecoderRoute() {
     #expect(GMEFormatSupport.playbackBackend(forPathExtension: "2SF") == .twoSF)
     #expect(GMEFormatSupport.playbackBackend(forPathExtension: "mini2sf") == .twoSF)
+}
+
+@Test func twoSFReconfigurationKeepsTheReplacementCoreAlive() {
+    let fileURL = URL(fileURLWithPath: "/tmp/cocoaspice-2sf-repro/01 Prologue.mini2sf")
+    guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+
+    var errorMessage: UnsafeMutablePointer<CChar>?
+    let handle = fileURL.path.withCString { twosf_player_create($0, 44_100, &errorMessage) }
+    defer { if let handle { twosf_player_destroy(handle) } }
+    defer { if let errorMessage { twosf_error_message_free(errorMessage) } }
+    guard let handle else {
+        Issue.record("Could not open local 2SF reproduction fixture")
+        return
+    }
+
+    #expect(twosf_player_configure(handle, 115_000, 5_000, &errorMessage) == 0)
+    var samples = [Int16](repeating: 0, count: 2_048)
+    var rendered: Int32 = 0
+    #expect(twosf_player_render_s16(handle, 1_024, &samples, &rendered, &errorMessage) == 0)
+    #expect(rendered > 0)
 }
 
 @Test func supportedExtensionsPreserveLegacyS98Compatibility() {

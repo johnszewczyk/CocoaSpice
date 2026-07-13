@@ -117,6 +117,9 @@ bool recreate(TwoSFPlayer *state, char **errorMessage) {
     try {
         std::unordered_set<std::string> dependencies;
         if (!validateDependencies(state->path, dependencies, 0, errorMessage)) return false;
+        // The 2SF core owns process-global DS state. Destroying an old player
+        // after loading its replacement tears down the replacement as well.
+        state->player.reset();
         auto player = std::make_unique<XSFPlayer_2SF>(state->path);
         player->SetSampleRate(state->sampleRate);
         if (state->playLengthMs >= 0 && state->fadeLengthMs >= 0) {
