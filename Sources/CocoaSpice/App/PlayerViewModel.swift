@@ -766,7 +766,7 @@ final class PlayerViewModel {
                 seekPreviewSeconds = 0
                 didAutoAdvanceForCurrentTrack = false
             }
-            playlist = tracks
+            playlist = Self.deduplicatedTracks(tracks)
             syncManualPlaylistOrder()
             reapplyPlaylistSortIfNeeded()
             if let currentTrack,
@@ -796,8 +796,8 @@ final class PlayerViewModel {
         seedMetadataCache: [String: TrackMetadata] = [:],
         widthHints: PlaylistColumnWidthHints? = nil
     ) {
-        let existing = Set(playlist.map(\.id))
-        let uniqueTracks = tracks.filter { !existing.contains($0.id) }
+        var existing = Set(playlist.map(\.id))
+        let uniqueTracks = tracks.filter { existing.insert($0.id).inserted }
         guard !uniqueTracks.isEmpty else {
             statusText = status
             return
@@ -1765,9 +1765,16 @@ final class PlayerViewModel {
     }
 
     private func syncManualPlaylistOrder() {
-        playlistManualOrder = Dictionary(
-            uniqueKeysWithValues: playlist.enumerated().map { ($1.id, $0) }
-        )
+        var order: [TrackItem.ID: Int] = [:]
+        for (index, track) in playlist.enumerated() where order[track.id] == nil {
+            order[track.id] = index
+        }
+        playlistManualOrder = order
+    }
+
+    private static func deduplicatedTracks(_ tracks: [TrackItem]) -> [TrackItem] {
+        var seen = Set<TrackItem.ID>()
+        return tracks.filter { seen.insert($0.id).inserted }
     }
 
     private func reloadLibraryScanRoots() {

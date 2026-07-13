@@ -44,7 +44,10 @@ static struct
     int xfs_load, sync_type;
 } sndifwork = {std::vector<uint8_t>(), 0, 0, 0, 0, 0, 0};
 
-static void SNDIFDeInit() { }
+static void SNDIFDeInit()
+{
+    buffer_rope.clear();
+}
 
 static int SNDIFInit(int buffersize)
 {
