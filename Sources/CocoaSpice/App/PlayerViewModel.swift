@@ -168,6 +168,8 @@ final class PlayerViewModel {
     private(set) var trimmedLibraryScanRootIDs: Set<Int64> = []
     private(set) var libraryScanInProgress = false
     private(set) var libraryScanProgressByRootID: [Int64: LibraryScanProgress] = [:]
+    private(set) var trimMissingProgress: LibraryScanProgress?
+    private(set) var trimMissingCurrentPath: String?
 
     var enabledLibraryRootURLs: [URL] {
         libraryScanRoots
@@ -394,22 +396,40 @@ final class PlayerViewModel {
     func trimMissingLibrary() {
         guard !libraryScanInProgress,
               let libraryDatabase else { return }
-        let sources = (try? libraryDatabase.indexedSources()) ?? []
+        let sources: [LibraryIndexedSource]
+        do {
+            sources = try libraryDatabase.indexedSources()
+        } catch {
+            libraryScanStatus = "Trim Missing failed to read the library: \(error.localizedDescription)"
+            return
+        }
         libraryScanGeneration += 1
         let generation = libraryScanGeneration
         libraryScanInProgress = true
+        trimMissingProgress = LibraryScanProgress(current: 0, total: sources.count)
+        trimMissingCurrentPath = nil
+        libraryScanStatus = "Trim Missing • checking \(sources.count) sources…"
 
         libraryScanTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
                 if generation == self.libraryScanGeneration {
                     self.libraryScanInProgress = false
+                    self.trimMissingProgress = nil
+                    self.trimMissingCurrentPath = nil
                 }
             }
             let integrityTask = Task.detached(priority: .utility) {
                 await LibraryIntegrityChecker.check(
                     sources: sources,
-                    progress: { _, _, _ in }
+                    progress: { current, total, path in
+                        Task { @MainActor [weak self] in
+                            guard let self, generation == self.libraryScanGeneration else { return }
+                            self.trimMissingProgress = LibraryScanProgress(current: current, total: total)
+                            self.trimMissingCurrentPath = path
+                            self.libraryScanStatus = "Trim Missing • \(current) of \(total) sources checked"
+                        }
+                    }
                 )
             }
             let result = await withTaskCancellationHandler {

@@ -218,7 +218,30 @@ struct OptionsView: View {
                     Button("Trim Missing") {
                         model.trimMissingLibrary()
                     }
+                    .disabled(model.libraryScanInProgress)
                     Spacer()
+                }
+
+                if let progress = model.trimMissingProgress {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("Trim Missing • \(progress.current) of \(progress.total) sources checked")
+                            .font(.system(size: 12))
+                        ProgressView(value: progress.fraction)
+                            .progressViewStyle(.linear)
+                        if let path = model.trimMissingCurrentPath {
+                            Text(URL(fileURLWithPath: path).lastPathComponent)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(10)
+                    .background(Color.white.opacity(0.06))
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                } else if let status = model.libraryScanStatus {
+                    Text(status)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
 
