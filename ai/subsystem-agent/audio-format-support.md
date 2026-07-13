@@ -12,6 +12,7 @@ This is the current admission matrix for file discovery, database scanning, play
 | `libvgm` | `gym`, `s98`, `vgm`, `vgz` | Supported member is inspected or materialized from a supported archive. VGZ input is gzip-inflated before decoder intake. |
 | Highly Complete | `gsf`, `minigsf` | Supported member is materialized when archive-backed. |
 | `lazyusf2` | `usf`, `miniusf` | Archive-backed playback and scanning materialize the complete archive set, preserving miniUSF dependency files. |
+| `2sf2wav` | `2sf`, `mini2sf` | Archive-backed playback materializes the complete archive set, preserving archive-relative 2SF libraries. Metadata scanning reads PSF tags directly. |
 
 ## Supported Containers
 

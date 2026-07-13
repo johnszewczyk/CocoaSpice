@@ -18,6 +18,14 @@ import Testing
     #expect(SPCFileScanner.supportedExtensions.contains("minigsf"))
     #expect(SPCFileScanner.supportedExtensions.contains("usf"))
     #expect(SPCFileScanner.supportedExtensions.contains("miniusf"))
+    #expect(SPCFileScanner.supportedExtensions.contains("2sf"))
+    #expect(SPCFileScanner.supportedExtensions.contains("mini2sf"))
+    #expect(!SPCFileScanner.supportedExtensions.contains("nds"))
+}
+
+@Test func twoSFUsesItsDedicatedDecoderRoute() {
+    #expect(GMEFormatSupport.playbackBackend(forPathExtension: "2SF") == .twoSF)
+    #expect(GMEFormatSupport.playbackBackend(forPathExtension: "mini2sf") == .twoSF)
 }
 
 @Test func supportedExtensionsPreserveLegacyS98Compatibility() {

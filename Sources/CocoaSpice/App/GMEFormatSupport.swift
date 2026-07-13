@@ -5,6 +5,7 @@ enum PlaybackDecoderBackend: Sendable {
     case libvgm
     case highlyComplete
     case lazyUSF
+    case twoSF
 }
 
 struct PlaybackDecoderModule: Sendable {
@@ -42,13 +43,19 @@ enum GMEFormatSupport {
         "miniusf"
     ]
 
+    static let twoSFSupportedExtensions: Set<String> = [
+        "2sf",
+        "mini2sf"
+    ]
+
     // Static modules are the current plugin boundary. A future dynamically loaded
     // module can provide the same extension and backend registration contract.
     static let modules: [PlaybackDecoderModule] = [
         PlaybackDecoderModule(backend: .gme, supportedExtensions: libGMESupportedExtensions),
         PlaybackDecoderModule(backend: .libvgm, supportedExtensions: libVGMSupportedExtensions),
         PlaybackDecoderModule(backend: .highlyComplete, supportedExtensions: highlyCompleteSupportedExtensions),
-        PlaybackDecoderModule(backend: .lazyUSF, supportedExtensions: lazyUSFSupportedExtensions)
+        PlaybackDecoderModule(backend: .lazyUSF, supportedExtensions: lazyUSFSupportedExtensions),
+        PlaybackDecoderModule(backend: .twoSF, supportedExtensions: twoSFSupportedExtensions)
     ]
 
     static let supportedExtensions: Set<String> = Set(modules.flatMap(\.supportedExtensions))

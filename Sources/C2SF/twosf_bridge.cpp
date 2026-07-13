@@ -8,6 +8,7 @@
 #include <cstring>
 #include <memory>
 #include <string>
+#include <unordered_set>
 #include <vector>
 
 #include "sseqplayer/XSFFile.h"
@@ -69,8 +70,53 @@ void readMetadata(const XSFFile &file, twosf_metadata_t *metadata) {
     metadata->fade_length_ms = milliseconds(tag(file, "fade"));
 }
 
+bool isSafeRelativeDependency(const std::string &value) {
+    if (value.empty() || value[0] == '/' || value[0] == '\\' || value.find(':') != std::string::npos) return false;
+    size_t start = 0;
+    while (start < value.size()) {
+        const size_t end = value.find_first_of("/\\", start);
+        if (value.substr(start, end - start) == "..") return false;
+        if (end == std::string::npos) break;
+        start = end + 1;
+    }
+    return true;
+}
+
+std::string parentDirectory(const std::string &path) {
+    const size_t separator = path.find_last_of("/\\");
+    return separator == std::string::npos ? "" : path.substr(0, separator + 1);
+}
+
+bool validateDependencies(const std::string &path, std::unordered_set<std::string> &visited, int depth, char **errorMessage) {
+    if (depth > 16) {
+        setError(errorMessage, "2SF dependency chain is too deep.");
+        return false;
+    }
+    if (!visited.insert(path).second) return true;
+
+    try {
+        XSFFile file(path, 4, 8);
+        for (int index = 1; index <= 9; ++index) {
+            const std::string name = index == 1 ? "_lib" : "_lib" + std::to_string(index);
+            if (!file.GetTagExists(name.c_str())) continue;
+            const std::string dependency = file.GetTagValue(name.c_str());
+            if (!isSafeRelativeDependency(dependency)) {
+                setError(errorMessage, "2SF dependency path must stay within its set: " + dependency);
+                return false;
+            }
+            if (!validateDependencies(parentDirectory(path) + dependency, visited, depth + 1, errorMessage)) return false;
+        }
+        return true;
+    } catch (const std::exception &error) {
+        setError(errorMessage, error.what());
+        return false;
+    }
+}
+
 bool recreate(TwoSFPlayer *state, char **errorMessage) {
     try {
+        std::unordered_set<std::string> dependencies;
+        if (!validateDependencies(state->path, dependencies, 0, errorMessage)) return false;
         auto player = std::make_unique<XSFPlayer_2SF>(state->path);
         player->SetSampleRate(state->sampleRate);
         if (state->playLengthMs >= 0 && state->fadeLengthMs >= 0) {

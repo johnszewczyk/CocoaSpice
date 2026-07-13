@@ -2,8 +2,19 @@ import Foundation
 import CLibVGM
 import CHighlyComplete
 import CLazyUSF
+import C2SF
 
 private enum HighlyCompleteBridgeGate {
+    private static let lock = NSLock()
+
+    static func withLock<T>(_ operation: () throws -> T) rethrows -> T {
+        lock.lock()
+        defer { lock.unlock() }
+        return try operation()
+    }
+}
+
+enum TwoSFBridgeGate {
     private static let lock = NSLock()
 
     static func withLock<T>(_ operation: () throws -> T) rethrows -> T {
@@ -41,6 +52,8 @@ enum PlaybackDecoderFactory {
             return try HighlyCompleteDecoder(track: track, sampleRate: sampleRate)
         case .lazyUSF:
             return try LazyUSFDecoder(track: track, sampleRate: sampleRate)
+        case .twoSF:
+            return try TwoSFDecoder(track: track, sampleRate: sampleRate)
         }
     }
 
@@ -54,6 +67,8 @@ enum PlaybackDecoderFactory {
             return try HighlyCompleteFileInspector(fileURL: fileURL)
         case .lazyUSF:
             return try LazyUSFFileInspector(fileURL: fileURL)
+        case .twoSF:
+            return try TwoSFFileInspector(fileURL: fileURL)
         }
     }
 

@@ -67,6 +67,13 @@ enum ScanCoreHandlers {
             supportedExtensions: GMEFormatSupport.lazyUSFSupportedExtensions,
             supportsMultiTrack: true,
             priority: 10
+        ),
+        ScanPluginDescriptor(
+            pluginID: "twosf",
+            displayName: "2SF",
+            supportedExtensions: GMEFormatSupport.twoSFSupportedExtensions,
+            supportsMultiTrack: false,
+            priority: 10
         )
     ])
 
@@ -74,7 +81,8 @@ enum ScanCoreHandlers {
         DecoderCoreScanHandler(descriptor: registryDescriptor("gme")),
         DecoderCoreScanHandler(descriptor: registryDescriptor("libvgm")),
         DecoderCoreScanHandler(descriptor: registryDescriptor("highly-complete")),
-        DecoderCoreScanHandler(descriptor: registryDescriptor("lazyusf"))
+        DecoderCoreScanHandler(descriptor: registryDescriptor("lazyusf")),
+        DecoderCoreScanHandler(descriptor: registryDescriptor("twosf"))
     ])
 
     private static func registryDescriptor(_ pluginID: String) -> ScanPluginDescriptor {
@@ -103,6 +111,14 @@ enum ScanCoreHandlers {
                 displayName: "Highly Complete",
                 supportedExtensions: GMEFormatSupport.highlyCompleteSupportedExtensions,
                 supportsMultiTrack: true,
+                priority: 10
+            )
+        case "twosf":
+            return ScanPluginDescriptor(
+                pluginID: "twosf",
+                displayName: "2SF",
+                supportedExtensions: GMEFormatSupport.twoSFSupportedExtensions,
+                supportsMultiTrack: false,
                 priority: 10
             )
         default:

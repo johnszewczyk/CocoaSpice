@@ -77,9 +77,11 @@ enum ZipArchiveSupport {
             return url
         case .zipEntry(let archiveURL, let entryPath):
             let extensionName = URL(fileURLWithPath: entryPath).pathExtension.lowercased()
-            if extensionName == "usf" || extensionName == "miniusf" {
+            if extensionName == "usf" || extensionName == "miniusf" || extensionName == "2sf" || extensionName == "mini2sf" {
                 let setURL = try materializeArchive(at: archiveURL)
-                try prepareLazyUSFDependencies(in: setURL)
+                if extensionName == "usf" || extensionName == "miniusf" {
+                    try prepareLazyUSFDependencies(in: setURL)
+                }
                 return archiveMemberURL(in: setURL, entryPath: entryPath)
             }
             return try materializeEntry(archiveURL: archiveURL, entryPath: entryPath)

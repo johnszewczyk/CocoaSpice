@@ -15,6 +15,7 @@
 - Backend modules expose app-owned PCM, metadata, seeking, and timing hooks; the player model must not call decoder-specific C APIs directly.
 - `libvgm` now owns `vgm`, `vgz`, `gym`, and `s98`.
 - `Highly Complete` now owns `gsf` and `minigsf`.
+- The vendored `2sf2wav` core owns `2sf` and `mini2sf` through `C2SF`. Its bridge is serialized because the underlying DS core uses shared global state.
 - File inspection and playback share the same backend-routing table, so scan results, playlist import, and playback no longer disagree about VGM-family ownership.
 - `libvgm` is wrapped behind a small C bridge target so the Swift app can stay mostly ignorant of C++ details.
 - `Highly Complete` is also wrapped behind a local native bridge target, using `psflib` plus a headless `mGBA` core for GBA-audio execution.
@@ -31,7 +32,7 @@
 - Prefer adding new decoder backends under the existing playback abstractions instead of branching the view model.
 - Treat `Highly Complete` as a real backend subsystem, not as a one-off `minigsf` exception.
 - Do not assume all decoder backends share identical threading or sample-rate behavior.
-- The planned Nintendo DS 2SF route is documented separately; it requires its own DS-native bridge and LazyUSF-style archive dependency-set materialization.
+- 2SF archive playback materializes the complete archive set before bridge creation so `_lib` dependencies resolve beside the selected file.
 
 ## Files
 
@@ -42,5 +43,4 @@
 - [libvgm_bridge.cpp](/Users/john/Downloads/Code/CocoaSpice/Sources/CLibVGM/libvgm_bridge.cpp)
 - [highlycomplete_bridge.h](/Users/john/Downloads/Code/CocoaSpice/Sources/CHighlyComplete/include/highlycomplete_bridge.h)
 - [highlycomplete_bridge.cpp](/Users/john/Downloads/Code/CocoaSpice/Sources/CHighlyComplete/highlycomplete_bridge.cpp)
-- [audio-highly-complete-gsf-backend.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-gsf-backend.md)
-- [audio-2sf-backend-plan.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-2sf-backend-plan.md)
+- [twosf_bridge.cpp](/Users/john/Downloads/Code/CocoaSpice/Sources/C2SF/twosf_bridge.cpp)
