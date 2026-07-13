@@ -24,6 +24,9 @@ fi
 if [[ ! -x "$ROOT_DIR/scripts/build-lazyusf.sh" ]]; then
   chmod +x "$ROOT_DIR/scripts/build-lazyusf.sh"
 fi
+if [[ ! -x "$ROOT_DIR/scripts/build-2sf.sh" ]]; then
+  chmod +x "$ROOT_DIR/scripts/build-2sf.sh"
+fi
 
 mkdir -p "$BUILD_DIR" "$DIST_DIR"
 
@@ -43,6 +46,9 @@ if [[ ! -f "$BUILD_DIR/mgba/libmgba.a" ]]; then
 fi
 if [[ ! -f "$BUILD_DIR/lazyusf/liblazyusf.a" || ! -f "$BUILD_DIR/lazyusf/libpsflib.a" ]]; then
   "$ROOT_DIR/scripts/build-lazyusf.sh"
+fi
+if [[ ! -f "$BUILD_DIR/2sf/lib2sf.a" ]]; then
+  "$ROOT_DIR/scripts/build-2sf.sh"
 fi
 
 swift build \

@@ -13,6 +13,10 @@ vendor/lazyusf2/*.a
 vendor/lazyusf2/bench
 vendor/lazyusf2/dumpresampled
 
+# Generated 2sf2wav objects and archives
+vendor/2sf2wav/**/*.o
+vendor/2sf2wav/*.a
+
 # Local editor and OS metadata
 .idea/
 .vscode/

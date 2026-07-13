@@ -11,6 +11,10 @@ Support must cover direct files, folder scans, drag/drop, M3U entries, ZIP/7z ar
 
 Do **not** add raw `.nds` ROM playback or advertise `.nds` as supported input.
 
+## Phase 0 Status
+
+`2sf2wav` is the selected GPL-compatible core. Its DeSmuME-derived emulator sources provide the required `.2sf` / `.mini2sf` PSF dependency loader and a non-Windows build path. Prove its standalone macOS build and direct/dependent fixture playback before adding CocoaSpice routing or a bridge.
+
 ## Current App Architecture
 
 Playback is backend-routed. Existing backend ownership:

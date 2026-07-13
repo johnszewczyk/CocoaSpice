@@ -15,4 +15,11 @@ CocoaSpice embeds third-party decoder and emulator code. Source and notices are 
 - Source: `vendor/psflib/`
 - License and attribution: preserve the source as imported and audit its upstream licensing before distributing CocoaSpice binaries.
 
+## 2sf2wav
+
+- Purpose: Nintendo DS 2SF and mini2SF decoding.
+- Source: `vendor/2sf2wav/`
+- Upstream: [ahigerd/2sf2wav](https://bitbucket.org/ahigerd/2sf2wav)
+- License: GPL-2.0-or-later, as stated in the bundled DeSmuME-derived source headers. CocoaSpice builds its interpreter-only core on Apple Silicon and preserves the upstream source with its local portability changes.
+
 Distribution of CocoaSpice must preserve the applicable source, copyright, and license obligations for all bundled dependencies.
