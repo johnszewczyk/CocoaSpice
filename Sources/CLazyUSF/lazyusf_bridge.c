@@ -3,6 +3,7 @@
 #include "psflib.h"
 #include "usf/usf.h"
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -91,6 +92,19 @@ static void set_error(char **error_message, const char *message) {
     *error_message = copy_string(message ? message : "USF decoder failure.");
 }
 
+static void clear_player_strings(lazyusf_player_t *player) {
+    free(player->title);
+    free(player->game);
+    free(player->system);
+    free(player->artist);
+    free(player->comment);
+    player->title = NULL;
+    player->game = NULL;
+    player->system = NULL;
+    player->artist = NULL;
+    player->comment = NULL;
+}
+
 lazyusf_player_handle_t lazyusf_player_create(const char *path, int32_t sample_rate, char **error_message) {
     lazyusf_player_t *player = (lazyusf_player_t *)calloc(1, sizeof(*player));
     if (!player) { set_error(error_message, "Could not allocate USF decoder state."); return NULL; }
@@ -113,8 +127,35 @@ void lazyusf_player_destroy(lazyusf_player_handle_t handle) {
     lazyusf_player_t *player = (lazyusf_player_t *)handle;
     if (!player) return;
     if (player->state) { usf_shutdown(player->state); free(player->state); }
-    free(player->title); free(player->game); free(player->system); free(player->artist); free(player->comment);
+    clear_player_strings(player);
     free(player);
+}
+
+int32_t lazyusf_inspect_metadata(const char *path, lazyusf_metadata_t *metadata, char **error_message) {
+    lazyusf_player_t inspector = {0};
+    if (!path || !metadata) {
+        set_error(error_message, "USF metadata inspection requires a file path.");
+        return -1;
+    }
+    if (psf_load(path, &file_callbacks, 0x21, NULL, NULL, info_callback, &inspector, 0) <= 0) {
+        int error_code = errno;
+        if (error_code) {
+            snprintf(inspector.error, sizeof(inspector.error), "Could not read USF tags: %s.", strerror(error_code));
+        }
+        set_error(error_message, inspector.error[0] ? inspector.error : "Could not read USF tags.");
+        clear_player_strings(&inspector);
+        return -1;
+    }
+    memset(metadata, 0, sizeof(*metadata));
+    metadata->title = copy_string(inspector.title);
+    metadata->game = copy_string(inspector.game);
+    metadata->system = copy_string(inspector.system ? inspector.system : "Nintendo 64");
+    metadata->artist = copy_string(inspector.artist);
+    metadata->comment = copy_string(inspector.comment);
+    metadata->play_length_ms = inspector.play_length_ms;
+    metadata->fade_length_ms = inspector.fade_length_ms;
+    clear_player_strings(&inspector);
+    return 0;
 }
 
 int32_t lazyusf_player_read_metadata(lazyusf_player_handle_t handle, lazyusf_metadata_t *metadata, char **error_message) {

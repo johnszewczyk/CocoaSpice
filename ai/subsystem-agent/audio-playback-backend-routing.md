@@ -11,6 +11,7 @@
 - `PlaybackEngine` now builds a decoder through a backend-routing factory rather than instantiating `libgme` directly.
 - `libgme` remains the backend for container and dump formats such as `spc`, `nsf`, `nsfe`, `gbs`, `hes`, `kss`, `sap`, and `ay`.
 - `lazyusf2` owns `usf` and `miniusf` through the `CLazyUSF` bridge; keep its PSF-chain loading and N64 emulation behind that bridge.
+- LazyUSF scanning reads each file's PSF tags without constructing the emulator or loading its dependency chain; full chain loading remains playback-only.
 - Backend modules expose app-owned PCM, metadata, seeking, and timing hooks; the player model must not call decoder-specific C APIs directly.
 - `libvgm` now owns `vgm`, `vgz`, `gym`, and `s98`.
 - `Highly Complete` now owns `gsf` and `minigsf`.
@@ -30,6 +31,7 @@
 - Prefer adding new decoder backends under the existing playback abstractions instead of branching the view model.
 - Treat `Highly Complete` as a real backend subsystem, not as a one-off `minigsf` exception.
 - Do not assume all decoder backends share identical threading or sample-rate behavior.
+- The planned Nintendo DS 2SF route is documented separately; it requires its own DS-native bridge and LazyUSF-style archive dependency-set materialization.
 
 ## Files
 
@@ -41,3 +43,4 @@
 - [highlycomplete_bridge.h](/Users/john/Downloads/Code/CocoaSpice/Sources/CHighlyComplete/include/highlycomplete_bridge.h)
 - [highlycomplete_bridge.cpp](/Users/john/Downloads/Code/CocoaSpice/Sources/CHighlyComplete/highlycomplete_bridge.cpp)
 - [audio-highly-complete-gsf-backend.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-gsf-backend.md)
+- [audio-2sf-backend-plan.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-2sf-backend-plan.md)

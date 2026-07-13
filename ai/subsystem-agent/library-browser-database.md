@@ -8,6 +8,8 @@
 
 ## Current State
 
+- Track identity is root-scoped: `tracks` is unique on root, source path, archive member, and subtrack index. This permits an intentionally overlapping root (for example, `JoshW` and `JoshW/USF`) to index the same archive without turning valid tracks into persistence failures.
+
 - The sidebar database browser is a scanned persistent browser, not a raw filesystem tree.
 - The sidebar displays a dense flat list of games derived from scanned metadata.
 - Sidebar game buckets are keyed by `game title + system`, not title alone, so cross-platform name collisions stay separate.
@@ -34,6 +36,7 @@
 
 - [DatabaseSidebarPresentation.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarPresentation.swift)
 - [LibraryDatabase.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase.swift)
+- [LibraryDatabase+Schema.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase+Schema.swift)
 - [LibraryModels.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryModels.swift)
 - [MainView.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
 - [PlaylistQueueLoader.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlaylistQueueLoader.swift)

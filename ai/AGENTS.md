@@ -24,7 +24,7 @@
 ## DOCS POLICY
 
 - Agent operations are guided by constitutional documents.
-- Agents document new features and maps to code in "subsystem" docs.
+- Document user-facing behavior in `subsystem-human/` and engineering constraints in `subsystem-agent/`.
 
 ### NAMED FILES
 
@@ -34,16 +34,25 @@
 - `subsystem-agent/` protects engineering notes by ownership and constraint boundary.
 - `Docs/` is the human-side folder. Not default intake.
 
-### Subsytem Notes
+### Subsystem Notes
 
-The subsystem folder details the app's code, divided into components, in human language as lists of features and critical behavior/engineering facts only.
+Projects maintain two explicitly different subsystem note families:
+
+- `subsystem-human/` records sparse, implemented user-facing behavior.
+- `subsystem-agent/` records engineering ownership, invariants, lifecycle, concurrency, and failure boundaries.
 
 - Document current state only.
-- Not changelogs, history, or maintenance reports..
+- Do not write changelogs, investigation stories, or maintenance reports.
 
-## Subsystem Pattern
+## Human Subsystem Pattern
 
 - Group by human-facing component or behavior boundary.
-- List implemented features before engineering notes.
-- Document only non-standard behavior.
-- Update the subsystem doc that owns changed behavior.
+- Use plain-language headings such as `Display`, `Selection`, `Playback`, and `Persistence`.
+- List only implemented user-facing behavior.
+- Update the human note that owns the changed behavior.
+
+## Agent Subsystem Pattern
+
+- Group by engineering ownership or constraint boundary.
+- Use focused headings such as `Scope`, `Ownership`, `Invariants`, `Lifecycle`, `Concurrency`, `Failure Boundaries`, and `Files`.
+- Document only the current constraints needed to make safe changes.

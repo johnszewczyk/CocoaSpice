@@ -20,6 +20,7 @@ typedef struct {
 
 lazyusf_player_handle_t lazyusf_player_create(const char *path, int32_t sample_rate, char **error_message);
 void lazyusf_player_destroy(lazyusf_player_handle_t handle);
+int32_t lazyusf_inspect_metadata(const char *path, lazyusf_metadata_t *metadata, char **error_message);
 int32_t lazyusf_player_read_metadata(lazyusf_player_handle_t handle, lazyusf_metadata_t *metadata, char **error_message);
 int32_t lazyusf_player_render_s16(lazyusf_player_handle_t handle, int32_t requested_frames, int16_t *samples, int32_t *rendered_frames, char **error_message);
 int32_t lazyusf_player_seek_milliseconds(lazyusf_player_handle_t handle, int32_t milliseconds, char **error_message);

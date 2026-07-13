@@ -16,7 +16,9 @@ final class LibraryScanCoordinator {
         root: LibraryScanRoot,
         mode: ScanMode,
         report: @escaping @MainActor @Sendable (String) -> Void = { _ in },
-        progress: @escaping @MainActor @Sendable (Int, Int) -> Void = { _, _ in }
+        progress: @escaping @MainActor @Sendable (Int, Int) -> Void = { _, _ in },
+        activity: @escaping @MainActor @Sendable (Int, Int, String) -> Void = { _, _, _ in },
+        issue: @escaping @MainActor @Sendable (String) -> Void = { _ in }
     ) async throws -> ScanSummary {
         let operationName = mode == .retryFailed ? "retry" : "scan"
         report("Starting \(operationName): \(root.standardizedURL.lastPathComponent)")
@@ -57,12 +59,19 @@ final class LibraryScanCoordinator {
 
         report("Planned \(selected.count) files for \(operationName)…")
         progress(0, selected.count)
-        let progressReporter = ScanProgressReporter(report: report, progress: progress)
+        let progressReporter = ScanProgressReporter(report: report, progress: progress, activity: activity)
         let accumulator = try await executor.process(
             plan: ScanPlan(mode: mode, candidates: selected),
             progress: { current, total, detail in
                 Task { @MainActor in
                     progressReporter.update(current: current, total: total, detail: detail)
+                }
+            },
+            issue: { failure in
+                let archiveEntry = failure.identity.archiveEntry.map { "#\($0)" } ?? ""
+                let line = "\(failure.identity.path)\(archiveEntry): \(failure.stage.rawValue): \(failure.message)"
+                Task { @MainActor in
+                    issue(line)
                 }
             },
             persist: { [database] result in
@@ -79,6 +88,15 @@ final class LibraryScanCoordinator {
             return partialResult + inspection.tracks.count
         }
         try database.markScanCompleted(rootID: root.id, trackCount: trackCount)
+        let issues = summary.failures.map {
+            "\($0.identity.path)\($0.identity.archiveEntry.map { "#\($0)" } ?? ""): \($0.stage.rawValue): \($0.message)"
+        }
+        // Progress is measured in scan candidates (files/archives), while a
+        // successful archive can yield many playable leaves.
+        LibraryScanLogStore.write(
+            rootID: root.id,
+            issues: issues
+        )
         return summary
     }
 }
@@ -87,15 +105,18 @@ final class LibraryScanCoordinator {
 private final class ScanProgressReporter {
     private let report: @MainActor @Sendable (String) -> Void
     private let progress: @MainActor @Sendable (Int, Int) -> Void
+    private let activity: @MainActor @Sendable (Int, Int, String) -> Void
     private var lastReportedCurrent = -1
     private var lastReportDate = Date.distantPast
 
     init(
         report: @escaping @MainActor @Sendable (String) -> Void,
-        progress: @escaping @MainActor @Sendable (Int, Int) -> Void
+        progress: @escaping @MainActor @Sendable (Int, Int) -> Void,
+        activity: @escaping @MainActor @Sendable (Int, Int, String) -> Void
     ) {
         self.report = report
         self.progress = progress
+        self.activity = activity
     }
 
     func update(current: Int, total: Int, detail: String) {
@@ -109,6 +130,7 @@ private final class ScanProgressReporter {
         }
         lastReportedCurrent = current
         lastReportDate = now
+        activity(current, total, detail)
         report("Scanning \(current)/\(total): \(detail)")
     }
 }

@@ -44,36 +44,21 @@ enum LibraryScanLogStore {
         FileManager.default.fileExists(atPath: fileURL(rootID: rootID).path)
     }
 
-    static func reportsNoIssues(rootID: Int64) -> Bool {
-        guard let contents = try? String(contentsOf: fileURL(rootID: rootID), encoding: .utf8) else { return false }
-        return contents.contains("\nIssues: 0\n")
+    static func read(rootID: Int64) -> [String] {
+        guard let contents = try? String(contentsOf: fileURL(rootID: rootID), encoding: .utf8) else {
+            return []
+        }
+        return contents.split(whereSeparator: \.isNewline).map(String.init)
     }
 
     static func write(
-        root: LibraryScanRoot,
-        startedAt: Date,
-        completedFileCount: Int,
-        totalFileCount: Int,
+        rootID: Int64,
         issues: [String]
     ) {
-        let fileURL = fileURL(rootID: root.id)
-        let dateFormatter = ISO8601DateFormatter()
-        var lines = [
-            "CocoaSpice Library Scan Log",
-            "Root: \(root.path)",
-            "Started: \(dateFormatter.string(from: startedAt))",
-            "Completed: \(dateFormatter.string(from: Date()))",
-            "Files: \(completedFileCount)/\(totalFileCount)",
-            "Issues: \(issues.count)",
-            ""
-        ]
-
+        let fileURL = fileURL(rootID: rootID)
         if issues.isEmpty {
-            lines.append("No issues reported.")
-        } else {
-            lines.append(contentsOf: issues.enumerated().map { index, issue in
-                "\(index + 1). \(issue)"
-            })
+            remove(rootID: rootID)
+            return
         }
 
         do {
@@ -81,7 +66,7 @@ enum LibraryScanLogStore {
                 at: fileURL.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
-            try lines.joined(separator: "\n").appending("\n").write(
+            try issues.joined(separator: "\n").appending("\n").write(
                 to: fileURL,
                 atomically: true,
                 encoding: .utf8

@@ -493,6 +493,37 @@ private enum CocoaSpiceTestError: Error {
     #expect(items[0].searchableName.contains("nes"))
 }
 
+@MainActor
+@Test func databaseSidebarSearchPreservesSelection() {
+    let sidebar = DatabaseSidebarState()
+    let selected = DatabaseGameItem(name: "Actraiser", systemName: "SNES", trackCount: 18)
+    let other = DatabaseGameItem(name: "Mega Man", systemName: "NES", trackCount: 10)
+    sidebar.replaceGameItems([selected, other])
+    sidebar.selectedGameID = selected.id
+    sidebar.selectedGameIDs = [selected.id]
+
+    sidebar.searchText = "Mega"
+
+    #expect(sidebar.visibleGameItems == [other])
+    #expect(sidebar.selectedGameID == selected.id)
+    #expect(sidebar.selectedGameIDs == [selected.id])
+}
+
+@MainActor
+@Test func databaseSidebarReloadDropsRemovedSelection() {
+    let sidebar = DatabaseSidebarState()
+    let selected = DatabaseGameItem(name: "Actraiser", systemName: "SNES", trackCount: 18)
+    let remaining = DatabaseGameItem(name: "Mega Man", systemName: "NES", trackCount: 10)
+    sidebar.replaceGameItems([selected, remaining])
+    sidebar.selectedGameID = selected.id
+    sidebar.selectedGameIDs = [selected.id]
+
+    sidebar.replaceGameItems([remaining])
+
+    #expect(sidebar.selectedGameID == nil)
+    #expect(sidebar.selectedGameIDs.isEmpty)
+}
+
 @Test func persistedTrackIdentityRoundTripsMultiTrackLeaf() {
     let original = TrackItem(
         url: URL(fileURLWithPath: "/tmp/test.nsf"),

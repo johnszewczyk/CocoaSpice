@@ -3,15 +3,16 @@
 ## Database
 
 - Scan roots: add and manage folders used by the database.
-- Scanning: opens a dedicated dialog with a bottom progress bar and `current / total` count on the left, plus a Cancel button on the right.
+- Scanning: each active library path shows its own label-free 200pt progress bar at the bottom-right of that path's panel.
 - The Library Paths section provides one `Trim Missing` action for the whole library. It checks only whether each unique indexed source path exists, then removes all entries backed by missing paths. It does not open archives or read metadata.
-- Library paths are automatically sorted by path and expose Scan, Retry, Log, and Del actions; Log opens the latest scan issue report.
-- Library paths show a small green check at the end of the path line when the latest scan reported no issues. If Trim Missing removed entries for a path, the same native check is yellow until that path is freshly scanned.
+- Library paths are automatically sorted by path and expose Scan, Retry, Log, and Del actions. Log shows current scan progress and errors while active, and reopens the latest completed scan details afterward.
+- The path is the top detail; current scan state is below it, and last-scan date/count is right-aligned. A green check means a complete non-empty scan, yellow means some files did not process completely (or Trim Missing changed the path), and red means the scan found no playable files.
 
 ## Playback
 
 - Long Play: enable shared extended playback.
 - Duration: set a manual playback target.
+- Library Behavior: Playlist Follows Cursor and Double-Click Enqueues are playback controls.
 
 ## Interface
 

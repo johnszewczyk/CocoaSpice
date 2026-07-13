@@ -324,8 +324,7 @@ enum ZipArchiveSupport {
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
 
-        let outputURL = FileManager.default.temporaryDirectory
-            .appendingPathComponent("CocoaSpice-process-\(UUID().uuidString)", isDirectory: false)
+        let outputURL = try processOutputURL()
         FileManager.default.createFile(atPath: outputURL.path, contents: nil)
         let outputHandle = try FileHandle(forWritingTo: outputURL)
         defer {
@@ -337,12 +336,16 @@ enum ZipArchiveSupport {
         process.standardError = stderr
 
         try process.run()
+        let errorReadHandle = stderr.fileHandleForReading
+        try stderr.fileHandleForWriting.close()
 
         let errorCollector = ProcessOutputCollector()
         let readers = DispatchGroup()
         readers.enter()
         DispatchQueue.global(qos: .utility).async {
-            errorCollector.set(stderr.fileHandleForReading.readDataToEndOfFile())
+            let data = errorReadHandle.readDataToEndOfFile()
+            try? errorReadHandle.close()
+            errorCollector.set(data)
             readers.leave()
         }
 
@@ -402,12 +405,16 @@ enum ZipArchiveSupport {
         let stderr = Pipe()
         process.standardError = stderr
         try process.run()
+        let errorReadHandle = stderr.fileHandleForReading
+        try stderr.fileHandleForWriting.close()
 
         let errorCollector = ProcessOutputCollector()
         let readers = DispatchGroup()
         readers.enter()
         DispatchQueue.global(qos: .utility).async {
-            errorCollector.set(stderr.fileHandleForReading.readDataToEndOfFile())
+            let data = errorReadHandle.readDataToEndOfFile()
+            try? errorReadHandle.close()
+            errorCollector.set(data)
             readers.leave()
         }
 
@@ -435,6 +442,19 @@ enum ZipArchiveSupport {
                 message: errorText.isEmpty ? "exit code \(process.terminationStatus)" : errorText
             )
         }
+    }
+
+    private static func processOutputURL() throws -> URL {
+        let directoryURL = cacheRootURL()
+            .appendingPathComponent("Process", isDirectory: true)
+        try FileManager.default.createDirectory(
+            at: directoryURL,
+            withIntermediateDirectories: true
+        )
+        return directoryURL.appendingPathComponent(
+            "CocoaSpice-process-\(UUID().uuidString)",
+            isDirectory: false
+        )
     }
 }
 

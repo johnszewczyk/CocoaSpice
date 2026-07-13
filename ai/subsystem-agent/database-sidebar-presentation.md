@@ -13,7 +13,7 @@
 - Sidebar filtering runs in memory over loaded game rows rather than issuing live recursive filesystem work.
 - Game selection status text is standardized as `name • N tracks`.
 - Library scan-root status text is standardized as enabled state, display order, indexed track count, and last completed scan time or error.
-- Sidebar presentation helpers now live in a dedicated helper rather than inline throughout the main view model.
+- Sidebar presentation state owns loaded rows, the visible filtered subset, and native selection independently from queue and playback state.
 
 ## Rules
 
@@ -24,6 +24,7 @@
 ## Files
 
 - [DatabaseSidebarPresentation.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarPresentation.swift)
+- [DatabaseSidebarState.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarState.swift)
 - [MainView.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
 - [PlayerViewModel.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
 - [LibraryModels.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryModels.swift)

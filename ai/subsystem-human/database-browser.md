@@ -10,6 +10,7 @@
 
 - Search: filters the loaded database list.
 - Search: uses the same sidebar list rather than a separate results surface.
+- Search: preserves the active database selection when the query changes.
 
 ## Selection
 

@@ -533,7 +533,7 @@ final class LazyUSFDecoder: AudioTrackDecoder {
         return String(cString: pointer)
     }
 
-    private static func throwIfNeeded(_ status: Int32, errorMessage: UnsafeMutablePointer<CChar>?) throws {
+    static func throwIfNeeded(_ status: Int32, errorMessage: UnsafeMutablePointer<CChar>?) throws {
         defer { freeErrorMessage(errorMessage) }
         guard status == 0 else {
             if let errorMessage { throw SPCDecoderError.library(String(cString: errorMessage)) }
@@ -549,14 +549,21 @@ final class LazyUSFDecoder: AudioTrackDecoder {
 
 final class LazyUSFFileInspector: AudioFileInspector {
     let trackCount = 1
-    private let decoder: LazyUSFDecoder
+    private let trackMetadata: TrackMetadata
 
     init(fileURL: URL) throws {
-        decoder = try LazyUSFDecoder(track: TrackItem(url: fileURL), sampleRate: 44_100)
+        var rawMetadata = lazyusf_metadata_t()
+        defer { lazyusf_metadata_clear(&rawMetadata) }
+        var errorMessage: UnsafeMutablePointer<CChar>?
+        let status = fileURL.path.withCString { path in
+            lazyusf_inspect_metadata(path, &rawMetadata, &errorMessage)
+        }
+        try LazyUSFDecoder.throwIfNeeded(status, errorMessage: errorMessage)
+        trackMetadata = LazyUSFDecoder.trackMetadata(from: rawMetadata)
     }
 
     func metadata(trackIndex: Int) throws -> TrackMetadata {
         guard trackIndex == 0 else { throw SPCDecoderError.library("USF files expose a single playable track.") }
-        return try decoder.metadata()
+        return trackMetadata
     }
 }

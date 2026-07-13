@@ -2,8 +2,8 @@ import Foundation
 import SQLite3
 
 final class LibraryDatabase {
-    private static let schemaVersion = 5
-    private let db: OpaquePointer?
+    static let schemaVersion = 6
+    let db: OpaquePointer?
     private let dbURL: URL
 
     var databaseURL: URL { dbURL }
@@ -57,89 +57,6 @@ final class LibraryDatabase {
 
     deinit {
         sqlite3_close(db)
-    }
-
-    func loadRoots() throws -> [LibraryScanRoot] {
-        let sql = """
-        SELECT id, path, is_enabled, display_order, last_scan_started_at, last_scan_completed_at, last_scan_track_count, last_scan_error
-        FROM library_roots
-        ORDER BY lower(path) ASC, path ASC;
-        """
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw databaseError()
-        }
-        defer { sqlite3_finalize(statement) }
-
-        var roots: [LibraryScanRoot] = []
-        while sqlite3_step(statement) == SQLITE_ROW {
-            roots.append(
-                LibraryScanRoot(
-                    id: sqlite3_column_int64(statement, 0),
-                    path: string(statement, index: 1),
-                    isEnabled: sqlite3_column_int(statement, 2) != 0,
-                    displayOrder: Int(sqlite3_column_int(statement, 3)),
-                    lastScanStartedAt: date(statement, index: 4),
-                    lastScanCompletedAt: date(statement, index: 5),
-                    lastScanTrackCount: Int(sqlite3_column_int(statement, 6)),
-                    lastScanError: nullableString(statement, index: 7)
-                )
-            )
-        }
-        return roots
-    }
-
-    func addRoot(path: String) throws {
-        let now = Date().timeIntervalSince1970
-        let nextOrder = try loadRoots().count
-        try execute(
-            """
-            INSERT INTO library_roots (path, is_enabled, display_order, created_at)
-            VALUES (?, 1, ?, ?)
-            ON CONFLICT(path) DO UPDATE SET
-                is_enabled = 1,
-                path = excluded.path;
-            """,
-            bindings: [
-                .text(path),
-                .int(Int64(nextOrder)),
-                .double(now)
-            ]
-        )
-    }
-
-    func setRootEnabled(id: Int64, isEnabled: Bool) throws {
-        try execute(
-            "UPDATE library_roots SET is_enabled = ? WHERE id = ?;",
-            bindings: [.int(isEnabled ? 1 : 0), .int(id)]
-        )
-    }
-
-    func deleteRoot(id: Int64) throws {
-        try execute("DELETE FROM library_roots WHERE id = ?;", bindings: [.int(id)])
-    }
-
-    func updateRootOrder(idsInOrder: [Int64]) throws {
-        for (index, id) in idsInOrder.enumerated() {
-            try execute(
-                "UPDATE library_roots SET display_order = ? WHERE id = ?;",
-                bindings: [.int(Int64(index)), .int(id)]
-            )
-        }
-    }
-
-    func markScanStarted(rootID: Int64) throws {
-        try execute(
-            "UPDATE library_roots SET last_scan_started_at = ?, last_scan_error = NULL WHERE id = ?;",
-            bindings: [.double(Date().timeIntervalSince1970), .int(rootID)]
-        )
-    }
-
-    func markScanCompleted(rootID: Int64, trackCount: Int) throws {
-        try execute(
-            "UPDATE library_roots SET last_scan_completed_at = ?, last_scan_track_count = ?, last_scan_error = NULL WHERE id = ?;",
-            bindings: [.double(Date().timeIntervalSince1970), .int(Int64(trackCount)), .int(rootID)]
-        )
     }
 
     func loadScanInventory(rootID: Int64) throws -> [ScanInventoryItem] {
@@ -943,7 +860,7 @@ final class LibraryDatabase {
         return items
     }
 
-    private func execute(_ sql: String, bindings: [SQLiteValue] = []) throws {
+    func execute(_ sql: String, bindings: [SQLiteValue] = []) throws {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
             throw databaseError()
@@ -969,7 +886,7 @@ final class LibraryDatabase {
         return sqlite3_column_int64(statement, 0)
     }
 
-    private func databaseError() -> NSError {
+    func databaseError() -> NSError {
         Self.databaseError(handle: db)
     }
 
@@ -1072,109 +989,16 @@ final class LibraryDatabase {
         )
     }
 
-    private func migrateSchemaIfNeeded() throws {
-        let version = try userVersion()
-        if version < 4 {
-            try execute("DROP TABLE IF EXISTS track_metadata;")
-            try execute("DROP TABLE IF EXISTS tracks;")
-            try createTrackTables()
-        }
-        if version < 5 {
-            try createScanTables()
-        }
-        guard version < Self.schemaVersion else { return }
-        try setUserVersion(Self.schemaVersion)
-    }
-
-    private func createTrackTables() throws {
-        try execute("""
-        CREATE TABLE IF NOT EXISTS tracks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            root_id INTEGER NOT NULL,
-            folder_path TEXT NOT NULL,
-            path TEXT NOT NULL,
-            filename TEXT NOT NULL,
-            extension TEXT NOT NULL,
-            track_index INTEGER NOT NULL DEFAULT 0,
-            track_count INTEGER NOT NULL DEFAULT 1,
-            file_size INTEGER NOT NULL,
-            modified_at REAL NOT NULL,
-            discovered_at REAL NOT NULL,
-            archive_path TEXT,
-            archive_entry TEXT,
-            UNIQUE(path, archive_entry, track_index),
-            FOREIGN KEY(root_id) REFERENCES library_roots(id) ON DELETE CASCADE
-        );
-        """)
-        try execute("""
-        CREATE TABLE IF NOT EXISTS track_metadata (
-            track_id INTEGER PRIMARY KEY,
-            title TEXT NOT NULL DEFAULT '',
-            game TEXT NOT NULL DEFAULT '',
-            author TEXT NOT NULL DEFAULT '',
-            system TEXT NOT NULL DEFAULT '',
-            comment TEXT NOT NULL DEFAULT '',
-            intro_length_ms INTEGER NOT NULL DEFAULT 0,
-            loop_length_ms INTEGER NOT NULL DEFAULT 0,
-            play_length_ms INTEGER NOT NULL DEFAULT 0,
-            fade_length_ms INTEGER NOT NULL DEFAULT 0,
-            metadata_scanned_at REAL NOT NULL,
-            FOREIGN KEY(track_id) REFERENCES tracks(id) ON DELETE CASCADE
-        );
-        """)
-    }
-
-    private func createScanTables() throws {
-        try execute("""
-        CREATE TABLE IF NOT EXISTS scan_items (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            root_id INTEGER NOT NULL,
-            path TEXT NOT NULL,
-            archive_entry TEXT NOT NULL DEFAULT '',
-            file_size INTEGER NOT NULL,
-            modified_at REAL NOT NULL,
-            state TEXT NOT NULL,
-            plugin_id TEXT,
-            format_extension TEXT,
-            supports_archive_members INTEGER NOT NULL DEFAULT 0,
-            supports_multi_track INTEGER NOT NULL DEFAULT 0,
-            failure_stage TEXT,
-            failure_message TEXT,
-            updated_at REAL NOT NULL,
-            UNIQUE(root_id, path, archive_entry),
-            FOREIGN KEY(root_id) REFERENCES library_roots(id) ON DELETE CASCADE
-        );
-        """)
-        try execute("CREATE INDEX IF NOT EXISTS scan_items_state_index ON scan_items(root_id, state);")
-    }
-
-    private func userVersion() throws -> Int {
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, "PRAGMA user_version;", -1, &statement, nil) == SQLITE_OK else {
-            throw databaseError()
-        }
-        defer { sqlite3_finalize(statement) }
-
-        guard sqlite3_step(statement) == SQLITE_ROW else {
-            throw databaseError()
-        }
-        return Int(sqlite3_column_int(statement, 0))
-    }
-
-    private func setUserVersion(_ version: Int) throws {
-        try execute("PRAGMA user_version = \(version);")
-    }
-
-    private func string(_ statement: OpaquePointer?, index: Int32) -> String {
+    func string(_ statement: OpaquePointer?, index: Int32) -> String {
         sqliteString(statement, index: index)
     }
 
-    private func nullableString(_ statement: OpaquePointer?, index: Int32) -> String? {
+    func nullableString(_ statement: OpaquePointer?, index: Int32) -> String? {
         guard let cString = sqlite3_column_text(statement, index) else { return nil }
         return String(cString: cString)
     }
 
-    private func date(_ statement: OpaquePointer?, index: Int32) -> Date? {
+    func date(_ statement: OpaquePointer?, index: Int32) -> Date? {
         guard sqlite3_column_type(statement, index) != SQLITE_NULL else { return nil }
         return Date(timeIntervalSince1970: sqlite3_column_double(statement, index))
     }
@@ -1237,7 +1061,7 @@ private func formatLengthText(playLengthMs: Int) -> String {
     return String(format: "%d:%02d", minutes, remainder)
 }
 
-private enum SQLiteValue {
+enum SQLiteValue {
     case int(Int64)
     case double(Double)
     case text(String)

@@ -118,6 +118,8 @@ struct OptionsView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
+
+            libraryBehaviorCard
         }
     }
 
@@ -220,35 +222,38 @@ struct OptionsView: View {
                 }
             }
 
-            sectionCard(title: "Library Behavior") {
-                Toggle(isOn: Binding(
-                    get: { model.playlistFollowsCursor },
-                    set: { model.setPlaylistFollowsCursorEnabled($0) }
-                )) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Playlist Follows Cursor")
-                            .foregroundStyle(.white)
-                        Text("Selecting a folder immediately replaces the current playlist with that folder.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .toggleStyle(.checkbox)
+        }
+    }
 
-                Toggle(isOn: Binding(
-                    get: { model.sidebarDoubleClickAction == .enqueue },
-                    set: { model.sidebarDoubleClickAction = $0 ? .enqueue : .playNow }
-                )) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Double-Click Enqueues")
-                            .foregroundStyle(.white)
-                        Text("Double-click only adds items to the playlist.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
+    private var libraryBehaviorCard: some View {
+        sectionCard(title: "Library Behavior") {
+            Toggle(isOn: Binding(
+                get: { model.playlistFollowsCursor },
+                set: { model.setPlaylistFollowsCursorEnabled($0) }
+            )) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Playlist Follows Cursor")
+                        .foregroundStyle(.white)
+                    Text("Selecting a folder immediately replaces the current playlist with that folder.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
                 }
-                .toggleStyle(.checkbox)
             }
+            .toggleStyle(.checkbox)
+
+            Toggle(isOn: Binding(
+                get: { model.sidebarDoubleClickAction == .enqueue },
+                set: { model.sidebarDoubleClickAction = $0 ? .enqueue : .playNow }
+            )) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Double-Click Enqueues")
+                        .foregroundStyle(.white)
+                    Text("Double-click only adds items to the playlist.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .toggleStyle(.checkbox)
         }
     }
 
@@ -286,8 +291,9 @@ struct OptionsView: View {
                 .labelsHidden()
                 .toggleStyle(.checkbox)
 
-                Text(model.libraryScanRootStatusText(root))
-                    .foregroundStyle(.white)
+                Text(root.path)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
                     .lineLimit(1)
 
                 Spacer()
@@ -301,16 +307,31 @@ struct OptionsView: View {
                 }
             }
 
-            HStack {
-                Text(root.path)
+            HStack(spacing: 10) {
+                Text(model.libraryScanRootDetailText(root))
                     .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
                     .lineLimit(1)
-                if model.libraryScanRootNeedsRescan(root) {
+                Spacer()
+                if let progress = model.libraryScanProgressFraction(for: root.id) {
+                    ProgressView(value: progress)
+                        .progressViewStyle(.linear)
+                        .frame(width: 200)
+                } else {
+                    Text(model.libraryScanRootStatusText(root))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+                if model.libraryScanRootIsEmpty(root) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.red)
+                        .accessibilityLabel("Scan completed with no playable files")
+                } else if model.libraryScanRootNeedsRescan(root) || model.libraryScanRootHasIssues(root) {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.yellow)
-                        .accessibilityLabel("Missing files were trimmed; rescan to discover changed content")
+                        .accessibilityLabel("Scan completed with issues; see Log for details")
                 } else if model.libraryScanRootIsClean(root) {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.system(size: 13, weight: .medium))

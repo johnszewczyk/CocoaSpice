@@ -59,6 +59,7 @@ struct ScanPipelineExecutor: Sendable {
     func process(
         plan: ScanPlan,
         progress: @escaping @Sendable (Int, Int, String) -> Void = { _, _, _ in },
+        issue: @escaping @Sendable (ScanFailure) -> Void = { _ in },
         persist: @escaping @MainActor @Sendable (ScanPipelineResult) throws -> Void
     ) async throws -> ScanResultAccumulator {
         let accumulator = ScanResultAccumulator(discovered: plan.count)
@@ -88,6 +89,9 @@ struct ScanPipelineExecutor: Sendable {
                                 }
                             }
                             try await accumulator.accept(acceptedResult)
+                            if case .failure(let failure) = acceptedResult {
+                                issue(failure)
+                            }
                         }
                         let identityDescription = candidate.identity.archiveEntry.map {
                             "\(candidate.identity.path)#\($0)"
