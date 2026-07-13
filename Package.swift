@@ -10,6 +10,8 @@ let libMGBABuildDirectory = "\(rootPath)/.build/mgba"
 let libMGBAVendorDirectory = "\(rootPath)/vendor/mgba"
 let lazyUSFBuildDirectory = "\(rootPath)/.build/lazyusf"
 let lazyUSFVendorDirectory = "\(rootPath)/vendor/lazyusf2"
+let twoSFBuildDirectory = "\(rootPath)/.build/2sf"
+let twoSFVendorDirectory = "\(rootPath)/vendor/2sf2wav"
 
 let package = Package(
     name: "CocoaSpice",
@@ -94,13 +96,25 @@ let package = Package(
             ]
         ),
         .target(
+            name: "C2SF",
+            path: "Sources/C2SF",
+            publicHeadersPath: "include",
+            cxxSettings: [
+                .unsafeFlags(["-I\(twoSFVendorDirectory)", "-I\(twoSFVendorDirectory)/desmume", "-I\(twoSFVendorDirectory)/sseqplayer"])
+            ],
+            linkerSettings: [
+                .unsafeFlags(["\(twoSFBuildDirectory)/lib2sf.a"]),
+                .linkedLibrary("z")
+            ]
+        ),
+        .target(
             name: "CPlaybackAudio",
             path: "Sources/CPlaybackAudio",
             publicHeadersPath: "include"
         ),
         .executableTarget(
             name: "CocoaSpice",
-            dependencies: ["CGME", "CLibVGM", "CHighlyComplete", "CLazyUSF", "CPlaybackAudio"],
+            dependencies: ["CGME", "CLibVGM", "CHighlyComplete", "CLazyUSF", "C2SF", "CPlaybackAudio"],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("AudioToolbox"),

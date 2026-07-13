@@ -15,6 +15,8 @@ Do **not** add raw `.nds` ROM playback or advertise `.nds` as supported input.
 
 `2sf2wav` is the selected GPL-compatible core. Its DeSmuME-derived emulator sources provide the required `.2sf` / `.mini2sf` PSF dependency loader and a non-Windows build path. Prove its standalone macOS build and direct/dependent fixture playback before adding CocoaSpice routing or a bridge.
 
+The interpreter-only static core and the narrow `C2SF` bridge now build and link in CocoaSpice. The bridge owns metadata, dependency-chain loading, PCM rendering, seek-by-replay, frame accounting, and teardown. It remains unregistered while archive dependency-set materialization and fixture coverage are added.
+
 ## Current App Architecture
 
 Playback is backend-routed. Existing backend ownership:
