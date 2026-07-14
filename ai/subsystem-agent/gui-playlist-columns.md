@@ -8,7 +8,7 @@
 
 ## Current State
 
-- Current columns are transport, index, file, title, game, author, system, and length.
+- Current columns are transport, index, file, title, game, author, system, path, and length.
 - Metadata-backed columns fall back to filename or parent-folder text when metadata is absent.
 - Column visibility, order, and width are persisted in `UserDefaults`.
 - Sort column and sort direction are persisted separately from column layout state.

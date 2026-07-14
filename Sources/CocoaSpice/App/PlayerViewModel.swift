@@ -53,6 +53,7 @@ final class PlayerViewModel {
         case game
         case author
         case system
+        case path
         case length
 
         var id: String { rawValue }
@@ -65,6 +66,7 @@ final class PlayerViewModel {
             case .game: "Game"
             case .author: "Author"
             case .system: "System"
+            case .path: "Path"
             case .length: "Length"
             }
         }
@@ -2160,7 +2162,7 @@ final class PlayerViewModel {
     private func playlistSortDependsOnMetadata(_ column: PlaylistSortColumn?) -> Bool {
         guard let column else { return false }
         switch column {
-        case .index, .file:
+        case .index, .file, .path:
             return false
         case .title, .game, .author, .system, .length:
             return true
@@ -2186,6 +2188,8 @@ final class PlayerViewModel {
     func lengthText(for track: TrackItem) -> String {
         PlaylistPresentation.lengthText(for: metadataCache[track.id])
     }
+
+    func pathText(for track: TrackItem) -> String { track.statusPathText }
 
     func indexText(for track: TrackItem) -> String {
         guard let index = playlist.firstIndex(of: track) else { return "—" }

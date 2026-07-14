@@ -75,6 +75,7 @@ struct PlaylistTableView: NSViewRepresentable {
             case game
             case author
             case system
+            case path
             case length
 
             var title: String {
@@ -86,6 +87,7 @@ struct PlaylistTableView: NSViewRepresentable {
                 case .game: "Game"
                 case .author: "Author"
                 case .system: "System"
+                case .path: "Path"
                 case .length: "Length"
                 }
             }
@@ -99,6 +101,7 @@ struct PlaylistTableView: NSViewRepresentable {
                 case .game: 220
                 case .author: 150
                 case .system: 80
+                case .path: 320
                 case .length: 70
                 }
             }
@@ -110,6 +113,7 @@ struct PlaylistTableView: NSViewRepresentable {
                 case .file, .title, .game: 120
                 case .author: 90
                 case .system: 60
+                case .path: 160
                 case .length: 60
                 }
             }
@@ -134,6 +138,8 @@ struct PlaylistTableView: NSViewRepresentable {
                     .author
                 case .system:
                     .system
+                case .path:
+                    .path
                 case .length:
                     .length
                 }
@@ -323,6 +329,8 @@ struct PlaylistTableView: NSViewRepresentable {
                     return configuredTextCell(in: tableView, row: row, identifier: column.rawValue, text: model.authorText(for: track), isCurrentTrack: model.currentTrack?.id == track.id)
                 case .system:
                     return configuredTextCell(in: tableView, row: row, identifier: column.rawValue, text: model.systemText(for: track), isCurrentTrack: model.currentTrack?.id == track.id)
+                case .path:
+                    return configuredTextCell(in: tableView, row: row, identifier: column.rawValue, text: model.pathText(for: track), isCurrentTrack: model.currentTrack?.id == track.id)
                 case .length:
                     return configuredTextCell(in: tableView, row: row, identifier: column.rawValue, text: model.lengthText(for: track), isCurrentTrack: model.currentTrack?.id == track.id, monospace: true)
                 }
@@ -828,6 +836,8 @@ struct PlaylistTableView: NSViewRepresentable {
                 hints.authorText
             case .system:
                 hints.systemText
+            case .path:
+                nil
             case .length:
                 hints.lengthText
             }
@@ -849,6 +859,8 @@ struct PlaylistTableView: NSViewRepresentable {
                 model.authorText(for: track)
             case .system:
                 model.systemText(for: track)
+            case .path:
+                model.pathText(for: track)
             case .length:
                 model.lengthText(for: track)
             }

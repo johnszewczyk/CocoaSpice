@@ -3,7 +3,7 @@
 ## Display
 
 - Display: file metadata in a headed table.
-- Columns: transport, index, file, title, game, author, system, and length.
+- Columns: transport, index, file, title, game, author, system, path, and length.
 - Columns: missing metadata falls back to useful file or folder text.
 - Columns: drag-and-drop resize.
 - Columns: double-click a divider to auto-size to current content.
