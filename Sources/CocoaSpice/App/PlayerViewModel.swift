@@ -87,11 +87,12 @@ final class PlayerViewModel {
     var selectedFolderPath: String?
     var librarySelectedFolderPath: String?
     let databaseSidebar = DatabaseSidebarState()
+    private var sidebarSearchPersistenceWorkItem: DispatchWorkItem?
     var sidebarSearchText: String {
         get { databaseSidebar.searchText }
         set {
             databaseSidebar.searchText = newValue
-            UserDefaults.standard.set(newValue, forKey: AppDefaultsKey.sidebarSearchText)
+            scheduleSidebarSearchPersistence()
         }
     }
     var databaseSidebarFontSize: CGFloat = 12
@@ -1959,6 +1960,8 @@ final class PlayerViewModel {
     }
 
     func saveSessionStateNow() {
+        sidebarSearchPersistenceWorkItem?.cancel()
+        sidebarSearchPersistenceWorkItem = nil
         AppSessionPersistence.saveSessionState(
             playlist: playlist,
             selectedTrackID: selectedTrackID,
@@ -1975,6 +1978,17 @@ final class PlayerViewModel {
             visibility: pendingPlaylistColumnVisibility,
             widths: pendingPlaylistColumnWidths
         )
+    }
+
+    private func scheduleSidebarSearchPersistence() {
+        sidebarSearchPersistenceWorkItem?.cancel()
+        let text = sidebarSearchText
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self, self.sidebarSearchText == text else { return }
+            UserDefaults.standard.set(text, forKey: AppDefaultsKey.sidebarSearchText)
+        }
+        sidebarSearchPersistenceWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
     }
 
     private func restorePlaylistColumnState() {
