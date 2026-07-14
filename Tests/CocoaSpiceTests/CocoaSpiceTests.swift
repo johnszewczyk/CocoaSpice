@@ -653,6 +653,28 @@ private enum CocoaSpiceTestError: Error {
     #expect(restored == original)
 }
 
+@Test func restoredSessionKeepsArchiveBackedTracks() throws {
+    let suiteName = "CocoaSpiceTests.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        Issue.record("Failed to create isolated UserDefaults suite")
+        return
+    }
+    defaults.removePersistentDomain(forName: suiteName)
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    let archiveURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("7z")
+    try Data().write(to: archiveURL)
+    defer { try? FileManager.default.removeItem(at: archiveURL) }
+    let track = TrackItem(archiveURL: archiveURL, entryPath: "Music/song.spc")
+    defaults.set([track.persistedValue], forKey: AppDefaultsKey.persistedPlaylistPaths)
+
+    let restored = AppSessionPersistence.restoreSessionState(
+        defaults: defaults,
+        supportedExtensions: ["spc"]
+    )
+    #expect(restored?.tracks == [track])
+}
+
 @Test func playlistM3URoundTripsArchiveLeaf() throws {
     let temporaryDirectory = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)

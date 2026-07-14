@@ -201,7 +201,7 @@ enum AppSessionPersistence {
         let tracks = values
             .compactMap(TrackItem.fromPersistedValue)
             .filter { fileManager.fileExists(atPath: $0.url.path) }
-            .filter { supportedExtensions.contains($0.url.pathExtension.lowercased()) }
+            .filter { supportedExtensions.contains($0.playablePathExtension) }
 
         guard !tracks.isEmpty else { return nil }
 

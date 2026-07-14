@@ -89,7 +89,10 @@ final class PlayerViewModel {
     let databaseSidebar = DatabaseSidebarState()
     var sidebarSearchText: String {
         get { databaseSidebar.searchText }
-        set { databaseSidebar.searchText = newValue }
+        set {
+            databaseSidebar.searchText = newValue
+            UserDefaults.standard.set(newValue, forKey: AppDefaultsKey.sidebarSearchText)
+        }
     }
     var databaseSidebarFontSize: CGFloat = 12
     var databaseSidebarTextColor: DatabaseSidebarTextColor = .primary
@@ -2143,7 +2146,16 @@ final class PlayerViewModel {
                 librarySelectedFolderPath = restoredSelection
             }
         } else {
-            clearLibraryState()
+            rootURL = nil
+            selectedFolderPath = nil
+            librarySelectedFolderPath = nil
+            databaseSidebar.clear()
+            browsedFolderTracks = []
+            if playlist.isEmpty {
+                statusText = "No library paths configured."
+            } else {
+                statusText = "Restored playlist."
+            }
         }
     }
 
