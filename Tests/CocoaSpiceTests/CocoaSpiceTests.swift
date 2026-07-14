@@ -812,12 +812,14 @@ private enum CocoaSpiceTestError: Error {
     let legacyOnlyPreferences = AppSessionPersistence.restorePlaybackPreferences(defaults: defaults)
     #expect(!legacyOnlyPreferences.longPlayEnabled)
     #expect(legacyOnlyPreferences.manualPreFadeSeconds == nil)
+    #expect(!legacyOnlyPreferences.sidebarSystemMode)
 
     defaults.set(true, forKey: AppDefaultsKey.longPlayEnabled)
     defaults.set(240, forKey: AppDefaultsKey.manualPreFadeSeconds)
     defaults.set("0.100000,0.200000,0.300000,1.000000", forKey: AppDefaultsKey.spectrumGradientStartColor)
     defaults.set("0.900000,0.800000,0.700000,1.000000", forKey: AppDefaultsKey.spectrumGradientEndColor)
     defaults.set("0.400000,0.500000,0.600000,1.000000", forKey: AppDefaultsKey.spectrumPeakColor)
+    defaults.set(true, forKey: AppDefaultsKey.sidebarSystemMode)
 
     let unifiedPreferences = AppSessionPersistence.restorePlaybackPreferences(defaults: defaults)
     #expect(unifiedPreferences.longPlayEnabled)
@@ -825,6 +827,7 @@ private enum CocoaSpiceTestError: Error {
     #expect(unifiedPreferences.spectrumGradientStartColor == "0.100000,0.200000,0.300000,1.000000")
     #expect(unifiedPreferences.spectrumGradientEndColor == "0.900000,0.800000,0.700000,1.000000")
     #expect(unifiedPreferences.spectrumPeakColor == "0.400000,0.500000,0.600000,1.000000")
+    #expect(unifiedPreferences.sidebarSystemMode)
 }
 
 @Test func legacyPreferencesMigrateToCocoaSpiceKeys() {

@@ -178,6 +178,12 @@ struct OptionsView: View {
                     .frame(width: 72, alignment: .trailing)
                 }
 
+                Toggle("System Mode", isOn: Binding(
+                    get: { model.sidebarSystemMode },
+                    set: { model.setSidebarSystemMode($0) }
+                ))
+                .help("Group the sidebar into expandable System → Game trees.")
+
                 HStack {
                     Spacer()
                     Button("Reset") {

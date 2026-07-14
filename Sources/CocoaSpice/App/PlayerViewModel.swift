@@ -91,6 +91,8 @@ final class PlayerViewModel {
     }
     var databaseSidebarFontSize: CGFloat = 12
     var databaseSidebarTextColor: DatabaseSidebarTextColor = .primary
+    var sidebarSystemMode = false
+    private(set) var expandedDatabaseSystems: Set<String> = []
     var playlistSearchText: String = "" {
         didSet {
             scheduleVisiblePlaylistRefresh()
@@ -970,6 +972,7 @@ final class PlayerViewModel {
             lastAudioExportDirectoryPath: lastAudioExportDirectoryURL?.path,
             databaseSidebarFontSize: databaseSidebarFontSize
             ,databaseSidebarTextColor: databaseSidebarTextColor.rawValue
+            ,sidebarSystemMode: sidebarSystemMode
         )
     }
 
@@ -981,6 +984,26 @@ final class PlayerViewModel {
     func setDatabaseSidebarTextColor(_ color: DatabaseSidebarTextColor) {
         databaseSidebarTextColor = color
         savePreferencesNow()
+    }
+
+    func setSidebarSystemMode(_ enabled: Bool) {
+        sidebarSystemMode = enabled
+        if enabled {
+            expandedDatabaseSystems = Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
+        }
+        savePreferencesNow()
+    }
+
+    func toggleDatabaseSystemExpansion(_ systemName: String) {
+        if expandedDatabaseSystems.contains(systemName) {
+            expandedDatabaseSystems.remove(systemName)
+        } else {
+            expandedDatabaseSystems.insert(systemName)
+        }
+    }
+
+    func sidebarSystemName(for item: DatabaseGameItem) -> String {
+        item.systemName.isEmpty ? "Unknown System" : item.systemName
     }
 
     func exportTracksToAAC(_ tracks: [TrackItem]) {
@@ -1813,6 +1836,9 @@ final class PlayerViewModel {
 
     private func reloadDatabaseGameItems() {
         databaseSidebar.replaceGameItems((try? libraryDatabase?.loadGameItems()) ?? [])
+        if sidebarSystemMode, expandedDatabaseSystems.isEmpty {
+            expandedDatabaseSystems = Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
+        }
     }
 
     private func persistLibraryScanRootOrder() {
@@ -1905,6 +1931,10 @@ final class PlayerViewModel {
         }
         if let storedSidebarTextColor = preferences.databaseSidebarTextColor.flatMap(DatabaseSidebarTextColor.init(rawValue:)) {
             databaseSidebarTextColor = storedSidebarTextColor
+        }
+        sidebarSystemMode = preferences.sidebarSystemMode
+        if sidebarSystemMode {
+            expandedDatabaseSystems = Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
         }
         if let storedSortColumn = preferences.playlistSortColumnRawValue.flatMap(PlaylistSortColumn.init(rawValue:)) {
             playlistSortColumn = storedSortColumn
