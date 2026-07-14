@@ -49,6 +49,42 @@ import Testing
     #expect(rendered > 0)
 }
 
+@Test func twoSFReplacementReleasesThePreviousGlobalCoreFirst() {
+    let fileURL = URL(fileURLWithPath: "/tmp/cocoaspice-2sf-repro/01 Prologue.mini2sf")
+    guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+
+    TwoSFBridgeGate.withLock {
+        var firstError: UnsafeMutablePointer<CChar>?
+        var first = fileURL.path.withCString { twosf_player_create($0, 44_100, &firstError) }
+        defer {
+            if let first { twosf_player_destroy(first) }
+            if let firstError { twosf_error_message_free(firstError) }
+        }
+        guard let existing = first else {
+            Issue.record("Could not open local 2SF reproduction fixture")
+            return
+        }
+
+        twosf_player_destroy(existing)
+        first = nil
+        var replacementError: UnsafeMutablePointer<CChar>?
+        let replacement = fileURL.path.withCString { twosf_player_create($0, 44_100, &replacementError) }
+        defer {
+            if let replacement { twosf_player_destroy(replacement) }
+            if let replacementError { twosf_error_message_free(replacementError) }
+        }
+        guard let replacement else {
+            Issue.record("Could not reload local 2SF reproduction fixture")
+            return
+        }
+
+        var samples = [Int16](repeating: 0, count: 2_048)
+        var rendered: Int32 = 0
+        #expect(twosf_player_render_s16(replacement, 1_024, &samples, &rendered, &replacementError) == 0)
+        #expect(rendered > 0)
+    }
+}
+
 @Test func archiveMiniGSFLoadsItsSiblingLibrary() throws {
     let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/JoshW/GSF/Ace Combat Advance (2005-02-23)(Human Soft)(Namco)[GBA].7z")
     guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }

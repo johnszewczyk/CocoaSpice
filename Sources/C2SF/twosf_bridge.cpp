@@ -137,7 +137,6 @@ bool recreate(TwoSFPlayer *state, char **errorMessage) {
         std::vector<uint8_t> warmup(static_cast<size_t>(warmupFrames) * 4);
         unsigned ignoredFrames = 0;
         player->FillBuffer(warmup, ignoredFrames);
-        player->SeekTop();
         state->player = std::move(player);
         state->playedFrames = 0;
         state->ended = false;

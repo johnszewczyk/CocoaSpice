@@ -54,6 +54,11 @@ final class NativePlaybackSession: @unchecked Sendable {
             refillTimer?.cancel()
             refillTimer = nil
             output.prepareForRestart()
+            // The 2SF player owns process-global DS state. Release the old
+            // decoder before constructing its replacement, otherwise the old
+            // decoder's teardown can corrupt the newly loaded DS core.
+            self.stream = nil
+            currentTrack = nil
 
             let stream = try PlaybackStreamSession(
                 track: track,
