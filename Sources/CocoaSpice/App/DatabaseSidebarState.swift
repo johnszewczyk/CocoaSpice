@@ -10,6 +10,7 @@ final class DatabaseSidebarState {
     }
     private(set) var gameItems: [DatabaseGameItem] = []
     private(set) var visibleGameItems: [DatabaseGameItem] = []
+    private(set) var contentRevision = 0
     var selectedGameID: String?
     var selectedGameIDs: Set<String> = []
 
@@ -25,6 +26,7 @@ final class DatabaseSidebarState {
     func clear() {
         gameItems = []
         visibleGameItems = []
+        contentRevision &+= 1
         clearSelection()
     }
 
@@ -38,5 +40,6 @@ final class DatabaseSidebarState {
             gameItems,
             query: searchText
         )
+        contentRevision &+= 1
     }
 }

@@ -297,7 +297,9 @@ private struct DatabaseGameListView: NSViewRepresentable {
         private weak var tableView: DatabaseGameNativeTableView?
         private var reloadScheduled = false
         private var cachedSidebarRows: [SidebarRow] = []
-        private var lastRowSignature: [String] = []
+        private var lastSidebarContentRevision = -1
+        private var lastSidebarSystemMode: Bool?
+        private var lastExpandedSystems: Set<String>?
         private var lastSelectionIDs: Set<String> = []
         private var lastFontSize: CGFloat?
         private var lastTextColor: PlayerViewModel.DatabaseSidebarTextColor?
@@ -321,32 +323,34 @@ private struct DatabaseGameListView: NSViewRepresentable {
 
         func reload() {
             guard let tableView else { return }
-            let rows = makeSidebarRows()
-            let rowSignature = rows.map { row in
-                switch row {
-                case .system(let name, let isExpanded): "system:\(name):\(isExpanded)"
-                case .game(let item): "game:\(item.id):\(item.name):\(item.displayName)"
-                }
-            }
-            let needsContentReload = rowSignature != lastRowSignature
+            let sidebarContentRevision = model.databaseSidebar.contentRevision
+            let expandedSystems = model.expandedDatabaseSystems
+            let sidebarDataChanged = sidebarContentRevision != lastSidebarContentRevision
+                || model.sidebarSystemMode != lastSidebarSystemMode
+                || expandedSystems != lastExpandedSystems
+            let needsContentReload = sidebarDataChanged
                 || sidebarFontSize != lastFontSize
                 || sidebarTextColor != lastTextColor
                 || sidebarMonospace != lastMonospace
             let selectionChanged = model.selectedDatabaseGameIDs != lastSelectionIDs
             guard needsContentReload || selectionChanged else { return }
 
-            lastRowSignature = rowSignature
             lastSelectionIDs = model.selectedDatabaseGameIDs
             lastFontSize = sidebarFontSize
             lastTextColor = sidebarTextColor
             lastMonospace = sidebarMonospace
 
+            if sidebarDataChanged {
+                cachedSidebarRows = makeSidebarRows()
+                lastSidebarContentRevision = sidebarContentRevision
+                lastSidebarSystemMode = model.sidebarSystemMode
+                lastExpandedSystems = expandedSystems
+            }
+
             guard needsContentReload else {
                 syncSelection(in: tableView)
                 return
             }
-
-            cachedSidebarRows = rows
 
             guard !reloadScheduled else { return }
             reloadScheduled = true
