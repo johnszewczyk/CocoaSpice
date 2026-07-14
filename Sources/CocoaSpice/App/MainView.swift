@@ -42,7 +42,7 @@ struct MainView: View {
                     NativeSearchField(
                         text: $model.sidebarSearchText,
                         placeholder: "Search Database",
-                        debounceInterval: 0.02
+                        debounceInterval: 0
                     )
                     .padding(.horizontal, 8)
                     .padding(.top, 0)

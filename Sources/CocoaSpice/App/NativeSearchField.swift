@@ -19,6 +19,7 @@ struct NativeSearchField: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSSearchField, context: Context) {
+        context.coordinator.update(parent: self, field: nsView)
         nsView.placeholderString = placeholder
         if nsView.stringValue != text {
             nsView.stringValue = text
@@ -31,6 +32,14 @@ struct NativeSearchField: NSViewRepresentable {
 
         init(_ parent: NativeSearchField) {
             self.parent = parent
+        }
+
+        func update(parent: NativeSearchField, field: NSSearchField) {
+            self.parent = parent
+            if field.stringValue != parent.text {
+                debounceWorkItem?.cancel()
+                debounceWorkItem = nil
+            }
         }
 
         func controlTextDidChange(_ notification: Notification) {
@@ -46,6 +55,10 @@ struct NativeSearchField: NSViewRepresentable {
             } else {
                 DispatchQueue.main.asyncAfter(deadline: .now() + parent.debounceInterval, execute: workItem)
             }
+        }
+
+        deinit {
+            debounceWorkItem?.cancel()
         }
     }
 }
