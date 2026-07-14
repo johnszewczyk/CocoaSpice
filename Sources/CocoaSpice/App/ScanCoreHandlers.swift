@@ -9,18 +9,6 @@ struct DecoderCoreScanHandler: ScanFormatHandler {
     private static let inspectionGate = ScanResourceScheduler(permits: 1)
 
     func inspect(fileURL: URL, route: ScanRoute) async throws -> ScanInspection {
-        // SPC metadata lives in a fixed header. Avoid opening libgme for every
-        // 64 KiB SPC member during a library scan.
-        if route.formatExtension == "spc" {
-            return ScanInspection(
-                route: route,
-                tracks: [ScanTrackMetadata(
-                    trackIndex: 0,
-                    trackCount: 1,
-                    metadata: SPCHeaderMetadata.read(from: fileURL)
-                )]
-            )
-        }
         let tracks = try await Self.inspectionGate.withPermit {
             try await Task.detached(priority: .utility) {
                 let inspector = try PlaybackDecoderFactory.makeInspector(fileURL: fileURL)

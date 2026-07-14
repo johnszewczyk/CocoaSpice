@@ -61,7 +61,7 @@ import Testing
     #expect(chunk.frameCount > 0)
 }
 
-@Test func lazySPCInspectionSuppliesThePlaybackDuration() throws {
+@Test func scannedSPCInspectionSuppliesThePlaybackDuration() async throws {
     let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/JoshW/SPC/0-9/3 Ninjas Kick Back (1994-11)(Malibu)(Sony Imagesoft)[SNES].7z")
     guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }
     guard let entry = try ZipArchiveSupport.listPlayableEntries(
@@ -72,11 +72,24 @@ import Testing
         return
     }
 
-    let decoder = try SPCDecoder(
-        track: TrackItem(archiveURL: archiveURL, entryPath: entry.entryPath),
-        sampleRate: 44_100
+    guard let route = ScanCoreHandlers.registry.route(for: "spc", archiveMember: true) else {
+        Issue.record("SPC should be registered for archive scanning")
+        return
+    }
+    let materializedURL = try ZipArchiveSupport.materializeEntry(
+        archiveURL: archiveURL,
+        entryPath: entry.entryPath
     )
-    #expect(try decoder.metadata().playLengthMs > 0)
+    let inspection = try await DecoderCoreScanHandler(descriptor: ScanPluginDescriptor(
+        pluginID: "gme",
+        displayName: "Game Music Emu",
+        supportedExtensions: GMEFormatSupport.libGMESupportedExtensions,
+        supportsMultiTrack: true,
+        priority: 10
+    ))
+        .inspect(fileURL: materializedURL, route: route)
+    let duration = inspection.tracks.first?.metadata?.playLengthMs ?? 0
+    #expect(duration > 0)
 }
 
 @Test func supportedExtensionsPreserveLegacyS98Compatibility() {

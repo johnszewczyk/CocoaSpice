@@ -1699,14 +1699,8 @@ final class PlayerViewModel {
             return
         }
 
-        // SPC header scans intentionally avoid decoder startup, so they do not
-        // carry libgme's computed playback length. Once a game is opened, fill
-        // that one missing duration lazily without delaying the playlist.
-        let tracksNeedingInspection = tracks.filter { track in
-            guard let metadata = cachedMetadata[track.id] else { return true }
-            return track.playablePathExtension == "spc" && metadata.playLengthMs <= 0
-        }
-        if tracksNeedingInspection.isEmpty {
+        let missingTracks = tracks.filter { cachedMetadata[$0.id] == nil }
+        if missingTracks.isEmpty {
             if playlistColumnWidthHints == nil {
                 playlistColumnWidthHints = Self.buildPlaylistColumnWidthHints(
                     tracks: tracks,
@@ -1721,7 +1715,7 @@ final class PlayerViewModel {
             guard let self else { return }
             var resolvedMetadata = cachedMetadata
             await withTaskGroup(of: (String, TrackMetadata?).self) { group in
-                for track in tracksNeedingInspection {
+                for track in missingTracks {
                     group.addTask {
                         let metadata = try? await PlaybackInspection.inspectMetadata(track: track)
                         return (track.id, metadata)
