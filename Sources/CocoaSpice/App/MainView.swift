@@ -296,6 +296,7 @@ private struct DatabaseGameListView: NSViewRepresentable {
         var sidebarMonospace: Bool
         private weak var tableView: DatabaseGameNativeTableView?
         private var reloadScheduled = false
+        private var cachedSidebarRows: [SidebarRow] = []
         private var lastRowSignature: [String] = []
         private var lastSelectionIDs: Set<String> = []
         private var lastFontSize: CGFloat?
@@ -320,7 +321,8 @@ private struct DatabaseGameListView: NSViewRepresentable {
 
         func reload() {
             guard let tableView else { return }
-            let rowSignature = sidebarRows.map { row in
+            let rows = makeSidebarRows()
+            let rowSignature = rows.map { row in
                 switch row {
                 case .system(let name, let isExpanded): "system:\(name):\(isExpanded)"
                 case .game(let item): "game:\(item.id):\(item.name):\(item.displayName)"
@@ -344,6 +346,8 @@ private struct DatabaseGameListView: NSViewRepresentable {
                 return
             }
 
+            cachedSidebarRows = rows
+
             guard !reloadScheduled else { return }
             reloadScheduled = true
 
@@ -356,7 +360,7 @@ private struct DatabaseGameListView: NSViewRepresentable {
         }
 
         private func syncSelection(in tableView: NSTableView) {
-            let rows = IndexSet(sidebarRows.enumerated().compactMap { index, row in
+            let rows = IndexSet(cachedSidebarRows.enumerated().compactMap { index, row in
                 row.game.flatMap { model.selectedDatabaseGameIDs.contains($0.id) ? index : nil }
             })
 
@@ -373,7 +377,7 @@ private struct DatabaseGameListView: NSViewRepresentable {
         }
 
         func numberOfRows(in tableView: NSTableView) -> Int {
-            sidebarRows.count
+            cachedSidebarRows.count
         }
 
         func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
@@ -381,8 +385,8 @@ private struct DatabaseGameListView: NSViewRepresentable {
         }
 
         func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
-            guard row >= 0, row < sidebarRows.count else { return false }
-            if case .system(let systemName, _) = sidebarRows[row] {
+            guard row >= 0, row < cachedSidebarRows.count else { return false }
+            if case .system(let systemName, _) = cachedSidebarRows[row] {
                 model.toggleDatabaseSystemExpansion(systemName)
                 reload()
                 return false
@@ -391,8 +395,8 @@ private struct DatabaseGameListView: NSViewRepresentable {
         }
 
         func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-            guard row >= 0, row < sidebarRows.count else { return nil }
-            let rowItem = sidebarRows[row]
+            guard row >= 0, row < cachedSidebarRows.count else { return nil }
+            let rowItem = cachedSidebarRows[row]
             let identifier = NSUserInterfaceItemIdentifier("DatabaseGameCell")
             let cell = tableView.makeView(withIdentifier: identifier, owner: nil) as? NSTableCellView ?? {
                 let cell = NSTableCellView()
@@ -441,8 +445,8 @@ private struct DatabaseGameListView: NSViewRepresentable {
 
         func tableViewSelectionDidChange(_ notification: Notification) {
             guard let tableView else { return }
-            let rows = tableView.selectedRowIndexes.filter { $0 >= 0 && $0 < sidebarRows.count }
-            let items = rows.compactMap { sidebarRows[$0].game }
+            let rows = tableView.selectedRowIndexes.filter { $0 >= 0 && $0 < cachedSidebarRows.count }
+            let items = rows.compactMap { cachedSidebarRows[$0].game }
             let ids = items.map(\.id)
             let primaryID = items.last?.id
             model.selectDatabaseGames(ids: ids, primaryID: primaryID)
@@ -452,13 +456,13 @@ private struct DatabaseGameListView: NSViewRepresentable {
         @objc func handleDoubleAction(_ sender: Any?) {
             guard let tableView else { return }
             let row = tableView.clickedRow >= 0 ? tableView.clickedRow : tableView.selectedRow
-            guard row >= 0, row < sidebarRows.count else { return }
-            if case .system(let systemName, _) = sidebarRows[row] {
+            guard row >= 0, row < cachedSidebarRows.count else { return }
+            if case .system(let systemName, _) = cachedSidebarRows[row] {
                 model.toggleDatabaseSystemExpansion(systemName)
                 reload()
                 return
             }
-            guard let item = sidebarRows[row].game else { return }
+            guard let item = cachedSidebarRows[row].game else { return }
             switch model.sidebarDoubleClickAction {
             case .playNow:
                 model.activateDatabaseGame(item, replace: true)
@@ -472,8 +476,8 @@ private struct DatabaseGameListView: NSViewRepresentable {
         }
 
         func makeRowMenu(clickedRow: Int) -> NSMenu? {
-            guard clickedRow >= 0, clickedRow < sidebarRows.count,
-                  let item = sidebarRows[clickedRow].game else { return nil }
+            guard clickedRow >= 0, clickedRow < cachedSidebarRows.count,
+                  let item = cachedSidebarRows[clickedRow].game else { return nil }
             let menu = NSMenu(title: "Actions")
 
             let playNow = NSMenuItem(title: "Set as Playlist", action: #selector(handlePlayNow(_:)), keyEquivalent: "")
@@ -508,7 +512,7 @@ private struct DatabaseGameListView: NSViewRepresentable {
             tableView.reloadData(forRowIndexes: rows, columnIndexes: columns)
         }
 
-        private var sidebarRows: [SidebarRow] {
+        private func makeSidebarRows() -> [SidebarRow] {
             let items = model.visibleDatabaseGameItems
             guard model.sidebarSystemMode else { return items.map(SidebarRow.game) }
 
