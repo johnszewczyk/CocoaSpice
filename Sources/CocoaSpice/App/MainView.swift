@@ -296,6 +296,11 @@ private struct DatabaseGameListView: NSViewRepresentable {
         var sidebarMonospace: Bool
         private weak var tableView: DatabaseGameNativeTableView?
         private var reloadScheduled = false
+        private var lastRowSignature: [String] = []
+        private var lastSelectionIDs: Set<String> = []
+        private var lastFontSize: CGFloat?
+        private var lastTextColor: PlayerViewModel.DatabaseSidebarTextColor?
+        private var lastMonospace: Bool?
 
         init(
             model: PlayerViewModel,
@@ -315,7 +320,30 @@ private struct DatabaseGameListView: NSViewRepresentable {
 
         func reload() {
             guard let tableView else { return }
-            tableView.rowHeight = sidebarFontSize + 5
+            let rowSignature = sidebarRows.map { row in
+                switch row {
+                case .system(let name, let isExpanded): "system:\(name):\(isExpanded)"
+                case .game(let item): "game:\(item.id):\(item.name):\(item.displayName)"
+                }
+            }
+            let needsContentReload = rowSignature != lastRowSignature
+                || sidebarFontSize != lastFontSize
+                || sidebarTextColor != lastTextColor
+                || sidebarMonospace != lastMonospace
+            let selectionChanged = model.selectedDatabaseGameIDs != lastSelectionIDs
+            guard needsContentReload || selectionChanged else { return }
+
+            lastRowSignature = rowSignature
+            lastSelectionIDs = model.selectedDatabaseGameIDs
+            lastFontSize = sidebarFontSize
+            lastTextColor = sidebarTextColor
+            lastMonospace = sidebarMonospace
+
+            guard needsContentReload else {
+                syncSelection(in: tableView)
+                return
+            }
+
             guard !reloadScheduled else { return }
             reloadScheduled = true
 
