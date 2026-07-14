@@ -61,6 +61,24 @@ import Testing
     #expect(chunk.frameCount > 0)
 }
 
+@Test func lazySPCInspectionSuppliesThePlaybackDuration() throws {
+    let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/JoshW/SPC/0-9/3 Ninjas Kick Back (1994-11)(Malibu)(Sony Imagesoft)[SNES].7z")
+    guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }
+    guard let entry = try ZipArchiveSupport.listPlayableEntries(
+        in: archiveURL,
+        supportedExtensions: ["spc"]
+    ).first else {
+        Issue.record("Expected an SPC entry in the local fixture archive")
+        return
+    }
+
+    let decoder = try SPCDecoder(
+        track: TrackItem(archiveURL: archiveURL, entryPath: entry.entryPath),
+        sampleRate: 44_100
+    )
+    #expect(try decoder.metadata().playLengthMs > 0)
+}
+
 @Test func supportedExtensionsPreserveLegacyS98Compatibility() {
     #expect(SPCFileScanner.supportedExtensions.contains("s98"))
 }
