@@ -4,7 +4,6 @@ import SwiftUI
 struct OptionsView: View {
     @Bindable var model: PlayerViewModel
     @State private var longPlayTimeText = ""
-    @State private var sidebarFontSizeText = "11"
     @State private var selection: OptionsSection = .database
 
     private enum OptionsSection: String, CaseIterable, Identifiable {
@@ -67,7 +66,6 @@ struct OptionsView: View {
         .frame(width: 1280, height: 720)
         .onAppear {
             longPlayTimeText = Self.formatTime(model.manualPreFadeSeconds)
-            sidebarFontSizeText = Self.formatFontSize(model.databaseSidebarFontSize)
         }
         .onDisappear {
             model.savePreferencesNow()
@@ -148,24 +146,26 @@ struct OptionsView: View {
                     .foregroundStyle(.secondary)
 
                 HStack {
-                    Text("Font size (pt)")
+                    Text("Font Size")
                     Spacer()
-                    TextField("12", text: $sidebarFontSizeText)
-                        .textFieldStyle(.plain)
-                        .multilineTextAlignment(.trailing)
-                        .font(.system(.body, design: .monospaced))
-                        .frame(width: 72)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 6)
-                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.08)))
-                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white.opacity(0.12), lineWidth: 1))
-                        .onSubmit(applySidebarFontSizeText)
+                    Picker("Font Size", selection: Binding(
+                        get: { Int(model.databaseSidebarFontSize) },
+                        set: { model.setDatabaseSidebarFontSize(CGFloat($0)) }
+                    )) {
+                        ForEach(6...18, id: \.self) { size in
+                            Text("\(size)").tag(size)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .controlSize(.large)
+                    .frame(width: 64)
                 }
 
                 HStack {
-                    Text("Text color")
+                    Text("Font Color")
                     Spacer()
-                    Picker("Text color", selection: Binding(
+                    Picker("Font Color", selection: Binding(
                         get: { model.databaseSidebarTextColor },
                         set: { model.setDatabaseSidebarTextColor($0) }
                     )) {
@@ -175,23 +175,43 @@ struct OptionsView: View {
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)
-                    .frame(width: 72, alignment: .trailing)
+                    .controlSize(.large)
+                    .frame(width: 64)
                 }
 
-                Toggle("System Mode", isOn: Binding(
-                    get: { model.sidebarSystemMode },
-                    set: { model.setSidebarSystemMode($0) }
-                ))
-                .help("Group the sidebar into expandable System → Game trees.")
+                HStack {
+                    Text("Monospace Font")
+                    Spacer()
+                    Toggle("", isOn: Binding(
+                        get: { model.databaseSidebarMonospaceFont },
+                        set: { model.setDatabaseSidebarMonospaceFont($0) }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.checkbox)
+                }
+
+                HStack {
+                    Text("Group by Console")
+                    Spacer()
+                    Toggle("", isOn: Binding(
+                        get: { model.sidebarSystemMode },
+                        set: { model.setSidebarSystemMode($0) }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.checkbox)
+                    .help("Group the sidebar into expandable System → Game trees.")
+                }
 
                 HStack {
                     Spacer()
                     Button("Reset") {
                         model.setDatabaseSidebarFontSize(12)
                         model.setDatabaseSidebarTextColor(.primary)
-                        sidebarFontSizeText = "12"
+                        model.setDatabaseSidebarMonospaceFont(false)
+                        model.setSidebarSystemMode(false)
                     }
-                    .frame(width: 72, alignment: .trailing)
+                    .controlSize(.large)
+                    .frame(width: 64)
                 }
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
@@ -380,17 +400,6 @@ struct OptionsView: View {
         model.manualPreFadeSeconds = max(30, parsedSeconds)
         model.handleManualPlaySecondsChanged()
         longPlayTimeText = Self.formatTime(model.manualPreFadeSeconds)
-    }
-
-    private func applySidebarFontSizeText() {
-        let parsed = Double(sidebarFontSizeText.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 12
-        guard parsed.isFinite else { return }
-        model.setDatabaseSidebarFontSize(CGFloat(parsed))
-        sidebarFontSizeText = Self.formatFontSize(model.databaseSidebarFontSize)
-    }
-
-    private static func formatFontSize(_ size: CGFloat) -> String {
-        size == size.rounded() ? String(Int(size)) : String(format: "%.1f", size)
     }
 
     private static func formatTime(_ totalSeconds: Int) -> String {

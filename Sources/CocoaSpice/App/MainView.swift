@@ -74,7 +74,8 @@ struct MainView: View {
                         DatabaseGameListView(
                             model: model,
                             sidebarFontSize: model.databaseSidebarFontSize,
-                            sidebarTextColor: model.databaseSidebarTextColor
+                            sidebarTextColor: model.databaseSidebarTextColor,
+                            sidebarMonospace: model.databaseSidebarMonospaceFont
                         )
                     }
                 }
@@ -223,12 +224,14 @@ private struct DatabaseGameListView: NSViewRepresentable {
     @Bindable var model: PlayerViewModel
     let sidebarFontSize: CGFloat
     let sidebarTextColor: PlayerViewModel.DatabaseSidebarTextColor
+    let sidebarMonospace: Bool
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
             model: model,
             sidebarFontSize: sidebarFontSize,
-            sidebarTextColor: sidebarTextColor
+            sidebarTextColor: sidebarTextColor,
+            sidebarMonospace: sidebarMonospace
         )
     }
 
@@ -271,6 +274,7 @@ private struct DatabaseGameListView: NSViewRepresentable {
         context.coordinator.model = model
         context.coordinator.sidebarFontSize = sidebarFontSize
         context.coordinator.sidebarTextColor = sidebarTextColor
+        context.coordinator.sidebarMonospace = sidebarMonospace
         context.coordinator.reload()
     }
 
@@ -289,12 +293,20 @@ private struct DatabaseGameListView: NSViewRepresentable {
         @Bindable var model: PlayerViewModel
         var sidebarFontSize: CGFloat
         var sidebarTextColor: PlayerViewModel.DatabaseSidebarTextColor
+        var sidebarMonospace: Bool
         private weak var tableView: DatabaseGameNativeTableView?
+        private var reloadScheduled = false
 
-        init(model: PlayerViewModel, sidebarFontSize: CGFloat, sidebarTextColor: PlayerViewModel.DatabaseSidebarTextColor) {
+        init(
+            model: PlayerViewModel,
+            sidebarFontSize: CGFloat,
+            sidebarTextColor: PlayerViewModel.DatabaseSidebarTextColor,
+            sidebarMonospace: Bool
+        ) {
             self._model = Bindable(model)
             self.sidebarFontSize = sidebarFontSize
             self.sidebarTextColor = sidebarTextColor
+            self.sidebarMonospace = sidebarMonospace
         }
 
         func attach(tableView: DatabaseGameNativeTableView) {
@@ -304,8 +316,18 @@ private struct DatabaseGameListView: NSViewRepresentable {
         func reload() {
             guard let tableView else { return }
             tableView.rowHeight = sidebarFontSize + 5
-            tableView.reloadData()
+            guard !reloadScheduled else { return }
+            reloadScheduled = true
 
+            DispatchQueue.main.async { [weak self, weak tableView] in
+                guard let self, let tableView else { return }
+                self.reloadScheduled = false
+                tableView.reloadData()
+                self.syncSelection(in: tableView)
+            }
+        }
+
+        private func syncSelection(in tableView: NSTableView) {
             let rows = IndexSet(sidebarRows.enumerated().compactMap { index, row in
                 row.game.flatMap { model.selectedDatabaseGameIDs.contains($0.id) ? index : nil }
             })
@@ -368,10 +390,14 @@ private struct DatabaseGameListView: NSViewRepresentable {
             switch rowItem {
             case .system(let systemName, let isExpanded):
                 cell.textField?.stringValue = "\(isExpanded ? "▾" : "▸")  \(systemName)"
-                cell.textField?.font = .boldSystemFont(ofSize: sidebarFontSize)
+                cell.textField?.font = sidebarMonospace
+                    ? .monospacedSystemFont(ofSize: sidebarFontSize, weight: .semibold)
+                    : .boldSystemFont(ofSize: sidebarFontSize)
             case .game(let item):
                 cell.textField?.stringValue = model.sidebarSystemMode ? "    \(item.name)" : item.displayName
-                cell.textField?.font = .systemFont(ofSize: sidebarFontSize)
+                cell.textField?.font = sidebarMonospace
+                    ? .monospacedSystemFont(ofSize: sidebarFontSize, weight: .regular)
+                    : .systemFont(ofSize: sidebarFontSize)
             }
             cell.textField?.textColor = resolvedSidebarTextColor(sidebarTextColor)
             return cell

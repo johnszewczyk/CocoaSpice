@@ -25,6 +25,7 @@ enum AppDefaultsKey {
     static let playlistColumnWidths = "CocoaSpice.playlistColumnWidths"
     static let databaseSidebarFontSize = "CocoaSpice.databaseSidebarFontSize"
     static let databaseSidebarTextColor = "CocoaSpice.databaseSidebarTextColor"
+    static let databaseSidebarMonospaceFont = "CocoaSpice.databaseSidebarMonospaceFont"
     static let sidebarSystemMode = "CocoaSpice.sidebarSystemMode"
 }
 
@@ -41,6 +42,7 @@ struct RestoredPlaybackPreferences {
     let playlistSortDirectionRawValue: String?
     let databaseSidebarFontSize: Double?
     let databaseSidebarTextColor: String?
+    let databaseSidebarMonospaceFont: Bool
     let sidebarSystemMode: Bool
 }
 
@@ -69,7 +71,7 @@ enum AppSessionPersistence {
             "sidebarDoubleClickAction", "playlistFollowsCursor", "lastAudioExportDirectoryPath",
             "playlistSortColumn", "playlistSortDirection", "persistedPlaylistPaths",
             "persistedSelectedTrackPath", "persistedCurrentTrackPath", "playlistColumnOrder",
-            "playlistColumnVisibility", "playlistColumnWidths", "databaseSidebarFontSize", "databaseSidebarTextColor", "sidebarSystemMode"
+            "playlistColumnVisibility", "playlistColumnWidths", "databaseSidebarFontSize", "databaseSidebarTextColor", "databaseSidebarMonospaceFont", "sidebarSystemMode"
         ]
 
         for suffix in keys {
@@ -99,9 +101,10 @@ enum AppSessionPersistence {
             lastAudioExportDirectoryPath: defaults.string(forKey: AppDefaultsKey.lastAudioExportDirectoryPath),
             playlistSortColumnRawValue: defaults.string(forKey: AppDefaultsKey.playlistSortColumn),
             playlistSortDirectionRawValue: defaults.string(forKey: AppDefaultsKey.playlistSortDirection),
-            databaseSidebarFontSize: defaults.object(forKey: AppDefaultsKey.databaseSidebarFontSize) as? Double
-            ,databaseSidebarTextColor: defaults.string(forKey: AppDefaultsKey.databaseSidebarTextColor)
-            ,sidebarSystemMode: defaults.object(forKey: AppDefaultsKey.sidebarSystemMode) as? Bool ?? false
+            databaseSidebarFontSize: defaults.object(forKey: AppDefaultsKey.databaseSidebarFontSize) as? Double,
+            databaseSidebarTextColor: defaults.string(forKey: AppDefaultsKey.databaseSidebarTextColor),
+            databaseSidebarMonospaceFont: defaults.object(forKey: AppDefaultsKey.databaseSidebarMonospaceFont) as? Bool ?? false,
+            sidebarSystemMode: defaults.object(forKey: AppDefaultsKey.sidebarSystemMode) as? Bool ?? false
         )
     }
 
@@ -137,6 +140,7 @@ enum AppSessionPersistence {
         lastAudioExportDirectoryPath: String?,
         databaseSidebarFontSize: CGFloat,
         databaseSidebarTextColor: String,
+        databaseSidebarMonospaceFont: Bool,
         sidebarSystemMode: Bool,
         defaults: UserDefaults = .standard
     ) {
@@ -150,6 +154,7 @@ enum AppSessionPersistence {
         defaults.set(lastAudioExportDirectoryPath, forKey: AppDefaultsKey.lastAudioExportDirectoryPath)
         defaults.set(Double(databaseSidebarFontSize), forKey: AppDefaultsKey.databaseSidebarFontSize)
         defaults.set(databaseSidebarTextColor, forKey: AppDefaultsKey.databaseSidebarTextColor)
+        defaults.set(databaseSidebarMonospaceFont, forKey: AppDefaultsKey.databaseSidebarMonospaceFont)
         defaults.set(sidebarSystemMode, forKey: AppDefaultsKey.sidebarSystemMode)
     }
 

@@ -91,6 +91,7 @@ final class PlayerViewModel {
     }
     var databaseSidebarFontSize: CGFloat = 12
     var databaseSidebarTextColor: DatabaseSidebarTextColor = .primary
+    var databaseSidebarMonospaceFont = false
     var sidebarSystemMode = false
     private(set) var expandedDatabaseSystems: Set<String> = []
     var playlistSearchText: String = "" {
@@ -970,19 +971,25 @@ final class PlayerViewModel {
             spectrumPeakColor: spectrumPeakColor,
             sidebarDoubleClickActionRawValue: sidebarDoubleClickAction.rawValue,
             lastAudioExportDirectoryPath: lastAudioExportDirectoryURL?.path,
-            databaseSidebarFontSize: databaseSidebarFontSize
-            ,databaseSidebarTextColor: databaseSidebarTextColor.rawValue
-            ,sidebarSystemMode: sidebarSystemMode
+            databaseSidebarFontSize: databaseSidebarFontSize,
+            databaseSidebarTextColor: databaseSidebarTextColor.rawValue,
+            databaseSidebarMonospaceFont: databaseSidebarMonospaceFont,
+            sidebarSystemMode: sidebarSystemMode
         )
     }
 
     func setDatabaseSidebarFontSize(_ size: CGFloat) {
-        databaseSidebarFontSize = size
+        databaseSidebarFontSize = min(max(size.rounded(), 6), 18)
         savePreferencesNow()
     }
 
     func setDatabaseSidebarTextColor(_ color: DatabaseSidebarTextColor) {
         databaseSidebarTextColor = color
+        savePreferencesNow()
+    }
+
+    func setDatabaseSidebarMonospaceFont(_ enabled: Bool) {
+        databaseSidebarMonospaceFont = enabled
         savePreferencesNow()
     }
 
@@ -1927,11 +1934,12 @@ final class PlayerViewModel {
             lastAudioExportDirectoryURL = URL(fileURLWithPath: lastAudioExportDirectoryPath, isDirectory: true).standardizedFileURL
         }
         if let storedSidebarFontSize = preferences.databaseSidebarFontSize {
-            databaseSidebarFontSize = CGFloat(storedSidebarFontSize)
+            databaseSidebarFontSize = min(max(CGFloat(storedSidebarFontSize).rounded(), 6), 18)
         }
         if let storedSidebarTextColor = preferences.databaseSidebarTextColor.flatMap(DatabaseSidebarTextColor.init(rawValue:)) {
             databaseSidebarTextColor = storedSidebarTextColor
         }
+        databaseSidebarMonospaceFont = preferences.databaseSidebarMonospaceFont
         sidebarSystemMode = preferences.sidebarSystemMode
         if sidebarSystemMode {
             expandedDatabaseSystems = Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
