@@ -10,7 +10,7 @@ This is the current admission matrix for file discovery, database scanning, play
 | --- | --- | --- |
 | `libgme` | `ay`, `gbs`, `hes`, `kss`, `nsf`, `nsfe`, `sap`, `spc` | Supported member is inspected or materialized from a supported archive. SPC metadata scanning uses its header path. |
 | `libvgm` | `gym`, `s98`, `vgm`, `vgz` | Supported member is inspected or materialized from a supported archive. VGZ input is gzip-inflated before decoder intake. |
-| Highly Complete | `gsf`, `minigsf` | Supported member is materialized when archive-backed. |
+| Highly Complete | `gsf`, `minigsf` | Archive-backed playback materializes the complete archive set, preserving miniGSF library dependencies. |
 | `lazyusf2` | `usf`, `miniusf` | Archive-backed playback and scanning materialize the complete archive set, preserving miniUSF dependency files. |
 | `2sf2wav` | `2sf`, `mini2sf` | Archive-backed playback materializes the complete archive set, preserving archive-relative 2SF libraries. Metadata scanning reads PSF tags directly. |
 

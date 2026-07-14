@@ -49,6 +49,18 @@ import Testing
     #expect(rendered > 0)
 }
 
+@Test func archiveMiniGSFLoadsItsSiblingLibrary() throws {
+    let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/JoshW/GSF/Ace Combat Advance (2005-02-23)(Human Soft)(Namco)[GBA].7z")
+    guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }
+
+    let decoder = try HighlyCompleteDecoder(
+        track: TrackItem(archiveURL: archiveURL, entryPath: "01 BGM #01.minigsf"),
+        sampleRate: 44_100
+    )
+    let chunk = try decoder.decode(frameCount: 1_024)
+    #expect(chunk.frameCount > 0)
+}
+
 @Test func supportedExtensionsPreserveLegacyS98Compatibility() {
     #expect(SPCFileScanner.supportedExtensions.contains("s98"))
 }

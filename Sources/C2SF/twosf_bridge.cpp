@@ -130,6 +130,14 @@ bool recreate(TwoSFPlayer *state, char **errorMessage) {
             return false;
         }
         player->SeekTop();
+        // The DS core emits a short boot transient before the music driver's
+        // first stable buffer. Consume it internally instead of sending it to
+        // the shared playback queue as audible junk.
+        const int32_t warmupFrames = std::max<int32_t>(1, state->sampleRate / 8);
+        std::vector<uint8_t> warmup(static_cast<size_t>(warmupFrames) * 4);
+        unsigned ignoredFrames = 0;
+        player->FillBuffer(warmup, ignoredFrames);
+        player->SeekTop();
         state->player = std::move(player);
         state->playedFrames = 0;
         state->ended = false;
