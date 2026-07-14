@@ -19,6 +19,7 @@
 - Spectrum analyzer: choose base, peak, and cap colors.
 - Database sidebar: set the sidebar font size in points.
 - Database sidebar: choose primary, secondary, or tertiary text color.
+- Database sidebar: enable a monospaced font or Console View grouping.
 - Reset restores the database sidebar to the default primary 12pt appearance.
 
 ## Window

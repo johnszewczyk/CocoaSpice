@@ -3,13 +3,15 @@
 ## Display
 
 - Database: scanned game-music library in the left pane.
-- Rows: dense list of games grouped by game title and system.
+- Rows: dense list of scanned games by default.
+- Console View: Options can group games under expandable console headings.
 - Rows: show track counts and scan-root status.
 
 ## Search
 
 - Search: filters the loaded database list.
 - Search: uses the same sidebar list rather than a separate results surface.
+- Search: matches game titles; console headings organize the results but are not an additional search field.
 - Search: preserves the active database selection when the query changes.
 
 ## Selection

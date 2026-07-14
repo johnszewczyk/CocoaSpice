@@ -22,6 +22,8 @@
 - M3U drops decode relative paths from the playlist directory and append playable entries to the current queue.
 - Menu and Finder opening of an M3U replaces the current queue through the same explicit open path.
 - Queue edits include cut, paste, delete, move, and drag-reorder.
+- Background playlist inspection publishes completed metadata incrementally so visible rows update before a large queue has fully hydrated.
+- Cached SPC metadata with no play length is incomplete and is reinspected during playlist hydration.
 
 ## Rules
 
@@ -29,6 +31,7 @@
 - Queue edits should not stop the currently playing track by themselves.
 - Archive import is read-only: it materializes members for inspection/queue identity without mutating the source archive.
 - Keep the playing glyph attached to the actual playing track, not the most recently selected row.
+- Coalesce metadata-table refreshes; do not wait for the entire inspection task before displaying completed durations.
 
 ## Files
 

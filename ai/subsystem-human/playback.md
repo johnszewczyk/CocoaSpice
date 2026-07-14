@@ -2,7 +2,7 @@
 
 ## Formats
 
-- Playback: SPC, NSF, NSFE, GBS, HES, KSS, AY, SAP, VGM, VGZ, GYM, S98, GSF, miniGSF, USF, and miniUSF files.
+- Playback: SPC, NSF, NSFE, GBS, HES, KSS, AY, SAP, VGM, VGZ, GYM, S98, GSF, miniGSF, USF, miniUSF, 2SF, and mini2SF files.
 - Playback does not currently accept standard audio files such as MP3, AAC/M4A, ALAC, FLAC, or WAV.
 
 ## Playback Controls
@@ -13,6 +13,7 @@
 - Playback: starts through a streamed audio path.
 - Archives: supported game-music files can play from ZIP, 7z, and RSN containers; the selected member is materialized into the cache.
 - USF archives: USF and miniUSF playback materializes the complete archive set so miniUSF dependency files remain available.
+- 2SF archives: 2SF and mini2SF playback materializes the complete archive set so mini2SF library dependencies remain available.
 - Seeking: supports forward and backward movement.
 - Audio output: resumes at the current position after an output-device change when playback was active.
 
