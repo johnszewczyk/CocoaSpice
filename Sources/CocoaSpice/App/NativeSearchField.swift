@@ -26,6 +26,7 @@ struct NativeSearchField: NSViewRepresentable {
         }
     }
 
+    @MainActor
     final class Coordinator: NSObject, NSSearchFieldDelegate {
         var parent: NativeSearchField
         private var debounceWorkItem: DispatchWorkItem?
@@ -55,10 +56,6 @@ struct NativeSearchField: NSViewRepresentable {
             } else {
                 DispatchQueue.main.asyncAfter(deadline: .now() + parent.debounceInterval, execute: workItem)
             }
-        }
-
-        deinit {
-            debounceWorkItem?.cancel()
         }
     }
 }
