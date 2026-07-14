@@ -117,6 +117,22 @@ final class LibraryDatabase {
         return sqlite3_column_int(statement, 0) > 0 && sqlite3_column_int(statement, 1) == 0
     }
 
+    func scanResultTally(rootID: Int64) throws -> (successful: Int, total: Int) {
+        let sql = """
+        SELECT
+            SUM(CASE WHEN state = 'successful' THEN 1 ELSE 0 END),
+            COUNT(*)
+        FROM scan_items
+        WHERE root_id = ?;
+        """
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else { throw databaseError() }
+        defer { sqlite3_finalize(statement) }
+        sqliteBind(.int(rootID), to: statement, at: 1)
+        guard sqlite3_step(statement) == SQLITE_ROW else { throw databaseError() }
+        return (Int(sqlite3_column_int(statement, 0)), Int(sqlite3_column_int(statement, 1)))
+    }
+
     func upsertScanItem(
         _ item: ScanInventoryItem,
         failure: ScanFailure? = nil

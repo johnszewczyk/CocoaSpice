@@ -158,8 +158,6 @@ struct OptionsView: View {
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)
-                    .controlSize(.large)
-                    .frame(width: 64)
                 }
 
                 HStack {
@@ -175,8 +173,6 @@ struct OptionsView: View {
                     }
                     .labelsHidden()
                     .pickerStyle(.menu)
-                    .controlSize(.large)
-                    .frame(width: 64)
                 }
 
                 HStack {
@@ -210,8 +206,6 @@ struct OptionsView: View {
                         model.setDatabaseSidebarMonospaceFont(false)
                         model.setSidebarSystemMode(false)
                     }
-                    .controlSize(.large)
-                    .frame(width: 64)
                 }
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }

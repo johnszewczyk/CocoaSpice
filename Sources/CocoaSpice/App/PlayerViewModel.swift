@@ -1529,8 +1529,9 @@ final class PlayerViewModel {
         if libraryScanRootIsEmpty(root) {
             return "Scan completed with no playable files"
         }
-        if LibraryScanLogStore.exists(rootID: root.id) {
-            return "Scan completed with issues"
+        if root.lastScanCompletedAt != nil,
+           let tally = try? libraryDatabase?.scanResultTally(rootID: root.id) {
+            return "Scan completed • \(tally.successful) / \(tally.total) successful"
         }
         return root.lastScanCompletedAt == nil ? "Ready to scan" : "Scan completed"
     }
