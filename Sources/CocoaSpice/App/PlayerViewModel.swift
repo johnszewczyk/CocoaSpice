@@ -206,6 +206,7 @@ final class PlayerViewModel {
     private var queueBuildTask: Task<Void, Never>?
     private var visiblePlaylistTask: Task<Void, Never>?
     private var audioExportTask: Task<Void, Never>?
+    private var playlistMetadataRefreshWorkItem: DispatchWorkItem?
     private var playlistLoadGeneration = 0
     private var playbackRequestGeneration = 0
     private var folderSelectionGeneration = 0
@@ -1736,7 +1737,14 @@ final class PlayerViewModel {
             return
         }
 
-        let missingTracks = tracks.filter { cachedMetadata[$0.id] == nil }
+        let missingTracks = tracks.filter { track in
+            guard let metadata = cachedMetadata[track.id] else { return true }
+
+            // Older database scans may have cached SPC tags but no duration.
+            // Reinspect those rows so the playlist gets the libgme play length
+            // without requiring selection or playback.
+            return track.playablePathExtension == "spc" && metadata.playLengthMs <= 0
+        }
         if missingTracks.isEmpty {
             if playlistColumnWidthHints == nil {
                 playlistColumnWidthHints = Self.buildPlaylistColumnWidthHints(
@@ -1796,6 +1804,19 @@ final class PlayerViewModel {
 
     private func updatePlaylistMetadata(for trackID: String, metadata: TrackMetadata) {
         metadataCache[trackID] = metadata
+        schedulePlaylistMetadataTableRefresh()
+    }
+
+    private func schedulePlaylistMetadataTableRefresh() {
+        guard playlistMetadataRefreshWorkItem == nil else { return }
+
+        let workItem = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.playlistMetadataRefreshWorkItem = nil
+            self.playlistMetadataLoadToken += 1
+        }
+        playlistMetadataRefreshWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(100), execute: workItem)
     }
 
     private func scheduleVisiblePlaylistRefresh() {
