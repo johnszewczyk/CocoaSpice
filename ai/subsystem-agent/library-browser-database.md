@@ -11,11 +11,11 @@
 - Track identity is root-scoped: `tracks` is unique on root, source path, archive member, and subtrack index. This permits an intentionally overlapping root (for example, `JoshW` and `JoshW/USF`) to index the same archive without turning valid tracks into persistence failures.
 
 - The sidebar database browser is a scanned persistent browser, not a raw filesystem tree.
-- The sidebar displays a dense flat list of games derived from scanned metadata.
+- The normal sidebar displays a dense flat list of games derived from scanned metadata. Optional System Mode groups the same game leaves below expandable root-level system rows.
 - Sidebar game buckets are keyed by `game title + system`, not title alone, so cross-platform name collisions stay separate.
 - The scanned database now stores one playable row per discovered subtrack for loose or archived multi-track `libgme` containers such as NSF, GBS, and KSS.
 - Archive scans expand playable members from ZIP, 7z, and RSN containers, retaining archive path plus member path for later playback materialization.
-- Archived SPC members use header metadata during indexing; multi-track archive members are materialized and inspected during indexing so their playlist/database leaves carry track counts and indices.
+- SPC members use libgme metadata during indexing; multi-track archive members are materialized and inspected during indexing so their playlist/database leaves carry track counts, indices, and playback durations.
 - Metadata-free archive rows group by archive path, so each RSN/ZIP/7z set appears as its own database item instead of disappearing into the containing folder.
 - Database rows support native multiselect.
 - Database double-click follows the configured sidebar double-click behavior.

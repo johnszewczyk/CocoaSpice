@@ -22,11 +22,11 @@
 - Each active Library Paths row owns a live label-free 200pt progress bar; cancelling invalidates the active scan generation.
 - Scan persistence uses the main-actor-owned database connection. Keep progress publication lightweight; unthrottled per-candidate UI work can delay playback completion delivery and queue advancement.
 - A new scan replaces both the root's scan inventory and track rows. Do not retain tracks from prior scans, because every displayed library entry must resolve to a currently discovered file or archive member.
-- `Trim Missing` performs one whole-library file-existence pass over unique indexed source paths. It does not open archives or read metadata, and removes all rows backed by a confirmed-missing source path.
+- `Trim Missing` performs one whole-library file-existence pass over unique indexed source paths. It does not open archives or read metadata, and removes all rows backed by a confirmed-missing source path. Options shows the checked/total count, progress bar, current source, and final removal result.
 - Archive subprocesses are polled for cancellation and bounded by a timeout, so a failed 7z listing/extraction cannot strand a later retry.
 - Archive listing and extraction stream standard output to short-lived files under CocoaSpice's managed archive cache rather than the system temporary directory or in-memory pipes. Their stderr pipe endpoints must be explicitly closed after every subprocess; otherwise a whole-tree scan eventually exhausts file descriptors and manifests as cascading archive, metadata, and SQLite failures.
 - ZIP listing and extraction both use 7-Zip path names; do not mix a separate ZIP lister with 7-Zip extraction, because legacy member encodings can otherwise resolve to different paths.
-- Scans include playable members from ZIP, 7z, and RSN archives; archived SPC members use lightweight header metadata extraction, while multi-track archive members are inspected into one row per subtrack.
+- Scans include playable members from ZIP, 7z, and RSN archives. SPC files are inspected through libgme during scanning, so the stored metadata and duration match playback before a playlist is opened. Multi-track members are stored as one row per subtrack.
 - LazyUSF archive members materialize their complete archive set into one cache directory so `.miniusf` files retain access to sibling `.usf` and `.usflib` dependencies.
 - Database state restores from the existing database on launch and does not rescan automatically.
 - The live SQLite handle remains open for the lifetime of the model; removing the last root does not delete the open database file.

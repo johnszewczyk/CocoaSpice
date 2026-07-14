@@ -15,7 +15,7 @@
 - Playlist state is separate from sidebar state.
 - Persisted playlist restore includes queued paths, selected track path, and current track path.
 - The current database sidebar persists its last selected library folder path independently from queued playlist state.
-- Sidebar double-click behavior and `Playlist Follows Cursor` persist in `UserDefaults`.
+- Sidebar double-click behavior, `Playlist Follows Cursor`, and Sidebar System Mode persist in `UserDefaults`.
 - Audio-export destination history persists as the last used output folder.
 - Playlist sort state persists independently from broader playback preferences.
 - Playlist column order, visibility, and widths restore through the shared persistence helper rather than direct view-level `UserDefaults` reads.

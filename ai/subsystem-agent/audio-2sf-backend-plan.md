@@ -16,6 +16,7 @@ The app vendors the GPL-2.0-or-later `2sf2wav` core and builds it as `lib2sf.a` 
 - `TwoSFBridgeGate` serializes every bridge call, including tag inspection, because the DS core is not concurrent-safe.
 - `length` and `fade` tags become `TrackMetadata` timing fields. `Nintendo DS` is always the system fallback.
 - Archive dependency paths must remain relative to the extracted set; malformed or missing libraries fail only their own scan or playback item.
+- The bridge discards the DS core's short boot transient before it supplies audio to the shared playback queue.
 
 ## Acceptance Criteria
 

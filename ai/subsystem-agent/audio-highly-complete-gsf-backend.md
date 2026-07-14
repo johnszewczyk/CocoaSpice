@@ -12,6 +12,7 @@
 - `CHighlyComplete` is the native bridge target for the `Highly Complete` path.
 - `gsf` and `minigsf` now route through `PlaybackDecoderFactory` the same way `libgme` and `libvgm` formats do.
 - The bridge uses `psflib` to resolve PSF-family library chains such as `_lib` references inside `minigsf` sets.
+- Archive-backed GSF playback materializes the complete archive set before bridge creation, so miniGSF sibling libraries resolve normally.
 - The bridge uses a headless `mGBA` core to execute the GBA audio code embedded by the format and render PCM frames for the app.
 - The Swift app still treats this as a normal decoder backend:
   metadata inspection, playback, seek, and frame decoding all stay behind the shared decoder protocols.
