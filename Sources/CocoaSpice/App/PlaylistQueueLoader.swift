@@ -126,19 +126,22 @@ enum PlaylistQueueLoader {
 
             let game = track.url.deletingPathExtension().lastPathComponent
             for entry in entries {
-                let memberTrack = TrackItem(archiveURL: entry.archiveURL, entryPath: entry.entryPath)
-                tracks.append(memberTrack)
-                metadata[memberTrack.id] = TrackMetadata(
-                    game: game,
-                    song: URL(fileURLWithPath: entry.entryPath).deletingPathExtension().lastPathComponent,
-                    system: "",
-                    author: "",
-                    comment: FastScanPlaceholder.metadataComment,
-                    introLengthMs: 0,
-                    loopLengthMs: 0,
-                    playLengthMs: 0,
-                    fadeLengthMs: 0
-                )
+                let inspectedTracks = await inspectPlayableTracks(forArchiveEntry: entry)
+                for inspected in inspectedTracks {
+                    tracks.append(inspected.track)
+                    let inspectedMetadata = inspected.metadata
+                    metadata[inspected.track.id] = TrackMetadata(
+                        game: inspectedMetadata.game.isEmpty ? game : inspectedMetadata.game,
+                        song: inspectedMetadata.song,
+                        system: inspectedMetadata.system,
+                        author: inspectedMetadata.author,
+                        comment: inspectedMetadata.comment,
+                        introLengthMs: inspectedMetadata.introLengthMs,
+                        loopLengthMs: inspectedMetadata.loopLengthMs,
+                        playLengthMs: inspectedMetadata.playLengthMs,
+                        fadeLengthMs: inspectedMetadata.fadeLengthMs
+                    )
+                }
             }
             metadata.removeValue(forKey: track.id)
         }
