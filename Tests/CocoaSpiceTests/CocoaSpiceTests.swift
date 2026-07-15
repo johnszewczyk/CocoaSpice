@@ -128,6 +128,31 @@ import Testing
     #expect(duration > 0)
 }
 
+@Test func fastScanIndexesArchiveMembersWithoutMetadataInspection() async throws {
+    let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/JoshW/GBS/3D Ultra Pinball - Thrillride (2000-12)(Left Field)(Sierra)[GBC].7z")
+    guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }
+    let values = try archiveURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+    let candidate = ScanCandidate(
+        identity: ScanItemIdentity(rootID: 1, path: archiveURL.path, archiveEntry: nil),
+        fingerprint: ScanFingerprint(fileSize: Int64(values.fileSize ?? 0), modifiedAt: values.contentModificationDate ?? .distantPast),
+        sourceURL: archiveURL,
+        route: nil
+    )
+
+    let accumulator = try await ScanPipelineExecutor(archiveScanDepth: .fast).process(
+        plan: ScanPlan(mode: .newScan, candidates: [candidate]),
+        persist: { _ in }
+    )
+    let results = await accumulator.results
+    let inspections = results.compactMap { result -> ScanInspection? in
+        guard case .success(_, let inspection) = result else { return nil }
+        return inspection
+    }
+
+    #expect(inspections.count == 10)
+    #expect(inspections.allSatisfy { $0.tracks.count == 1 && $0.tracks[0].metadata == nil })
+}
+
 @Test func supportedExtensionsPreserveLegacyS98Compatibility() {
     #expect(SPCFileScanner.supportedExtensions.contains("s98"))
 }

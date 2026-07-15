@@ -235,12 +235,29 @@ struct OptionsView: View {
                     Button("Add Folders…") {
                         model.chooseLibraryScanRoots()
                     }
+                    Button("Scan All") {
+                        model.rescanEnabledLibraryRoots()
+                    }
+                    .disabled(model.libraryScanInProgress || model.libraryScanRoots.allSatisfy { !$0.isEnabled })
                     Button("Trim Missing") {
                         model.trimMissingLibrary()
                     }
                     .disabled(model.libraryScanInProgress)
                     Spacer()
                 }
+
+                Toggle(isOn: Binding(
+                    get: { model.fastLibraryScan },
+                    set: { model.setFastLibraryScan($0) }
+                )) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Fast Scan")
+                        Text("Index archive members without decompressing them. Their tags load when they enter the playlist.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .toggleStyle(.checkbox)
 
                 if let progress = model.trimMissingProgress {
                     VStack(alignment: .leading, spacing: 6) {

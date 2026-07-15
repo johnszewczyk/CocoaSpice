@@ -99,6 +99,7 @@ final class PlayerViewModel {
     var databaseSidebarTextColor: DatabaseSidebarTextColor = .primary
     var databaseSidebarMonospaceFont = false
     var sidebarSystemMode = false
+    var fastLibraryScan = false
     private(set) var expandedDatabaseSystems: Set<String> = []
     var playlistSearchText: String = "" {
         didSet {
@@ -508,7 +509,10 @@ final class PlayerViewModel {
         generation: Int
     ) async {
         guard generation == libraryScanGeneration, !Task.isCancelled else { return }
-        let coordinator = LibraryScanCoordinator(database: database)
+        let coordinator = LibraryScanCoordinator(
+            database: database,
+            archiveScanDepth: fastLibraryScan ? .fast : .deep
+        )
         let liveLog = LibraryScanLiveLogWindow(root: root)
         liveScanLogs[root.id] = liveLog
         setLibraryScanProgress(rootID: root.id, current: 0, total: 0)
@@ -531,7 +535,7 @@ final class PlayerViewModel {
             }
             guard generation == libraryScanGeneration else { return }
             liveLog.finish(successful: summary.successful, failed: summary.failed, unsupported: summary.unsupported)
-            libraryScanStatus = "\(mode.rawValue.capitalized) scan \(root.standardizedURL.lastPathComponent) • \(summary.successful) successful • \(summary.failed) failed • \(summary.unsupported) unsupported"
+            libraryScanStatus = "\(summary.successful) / \(summary.successful + summary.failed + summary.unsupported)"
             trimmedLibraryScanRootIDs.remove(root.id)
             persistTrimmedLibraryRootIDs()
             reloadLibraryScanRoots()
@@ -981,7 +985,8 @@ final class PlayerViewModel {
             databaseSidebarFontSize: databaseSidebarFontSize,
             databaseSidebarTextColor: databaseSidebarTextColor.rawValue,
             databaseSidebarMonospaceFont: databaseSidebarMonospaceFont,
-            sidebarSystemMode: sidebarSystemMode
+            sidebarSystemMode: sidebarSystemMode,
+            fastLibraryScan: fastLibraryScan
         )
     }
 
@@ -1005,6 +1010,11 @@ final class PlayerViewModel {
         if enabled {
             expandedDatabaseSystems = Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
         }
+        savePreferencesNow()
+    }
+
+    func setFastLibraryScan(_ enabled: Bool) {
+        fastLibraryScan = enabled
         savePreferencesNow()
     }
 
@@ -1533,14 +1543,11 @@ final class PlayerViewModel {
         if let error = root.lastScanError, !error.isEmpty {
             return error
         }
-        if libraryScanRootIsEmpty(root) {
-            return "Scan completed with no playable files"
-        }
         if root.lastScanCompletedAt != nil,
            let tally = try? libraryDatabase?.scanResultTally(rootID: root.id) {
-            return "Scan completed • \(tally.successful) / \(tally.total) successful"
+            return "\(tally.successful) / \(tally.total)"
         }
-        return root.lastScanCompletedAt == nil ? "Ready to scan" : "Scan completed"
+        return root.lastScanCompletedAt == nil ? "Ready to scan" : "—"
     }
 
     func libraryScanRootIsEmpty(_ root: LibraryScanRoot) -> Bool {
@@ -1743,7 +1750,23 @@ final class PlayerViewModel {
             // Older database scans may have cached SPC tags but no duration.
             // Reinspect those rows so the playlist gets the libgme play length
             // without requiring selection or playback.
-            return track.playablePathExtension == "spc" && metadata.playLengthMs <= 0
+            if track.playablePathExtension == "spc" && metadata.playLengthMs <= 0 {
+                return true
+            }
+
+            // Fast archive scans deliberately retain a playable archive leaf
+            // without materializing it. Hydrate that empty metadata only after
+            // the game has been placed in the playlist.
+            return track.isArchiveEntry
+                && metadata.game.isEmpty
+                && metadata.song.isEmpty
+                && metadata.system.isEmpty
+                && metadata.author.isEmpty
+                && metadata.comment.isEmpty
+                && metadata.introLengthMs == 0
+                && metadata.loopLengthMs == 0
+                && metadata.playLengthMs == 0
+                && metadata.fadeLengthMs == 0
         }
         if missingTracks.isEmpty {
             if playlistColumnWidthHints == nil {
@@ -1969,6 +1992,7 @@ final class PlayerViewModel {
         }
         databaseSidebarMonospaceFont = preferences.databaseSidebarMonospaceFont
         sidebarSystemMode = preferences.sidebarSystemMode
+        fastLibraryScan = preferences.fastLibraryScan
         if sidebarSystemMode {
             expandedDatabaseSystems = Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
         }

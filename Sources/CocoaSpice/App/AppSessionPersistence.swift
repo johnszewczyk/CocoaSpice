@@ -27,6 +27,7 @@ enum AppDefaultsKey {
     static let databaseSidebarTextColor = "CocoaSpice.databaseSidebarTextColor"
     static let databaseSidebarMonospaceFont = "CocoaSpice.databaseSidebarMonospaceFont"
     static let sidebarSystemMode = "CocoaSpice.sidebarSystemMode"
+    static let fastLibraryScan = "CocoaSpice.fastLibraryScan"
 }
 
 struct RestoredPlaybackPreferences {
@@ -44,6 +45,7 @@ struct RestoredPlaybackPreferences {
     let databaseSidebarTextColor: String?
     let databaseSidebarMonospaceFont: Bool
     let sidebarSystemMode: Bool
+    let fastLibraryScan: Bool
 }
 
 struct RestoredSessionState {
@@ -71,7 +73,7 @@ enum AppSessionPersistence {
             "sidebarDoubleClickAction", "playlistFollowsCursor", "lastAudioExportDirectoryPath",
             "playlistSortColumn", "playlistSortDirection", "persistedPlaylistPaths",
             "persistedSelectedTrackPath", "persistedCurrentTrackPath", "playlistColumnOrder",
-            "playlistColumnVisibility", "playlistColumnWidths", "databaseSidebarFontSize", "databaseSidebarTextColor", "databaseSidebarMonospaceFont", "sidebarSystemMode"
+            "playlistColumnVisibility", "playlistColumnWidths", "databaseSidebarFontSize", "databaseSidebarTextColor", "databaseSidebarMonospaceFont", "sidebarSystemMode", "fastLibraryScan"
         ]
 
         for suffix in keys {
@@ -104,7 +106,8 @@ enum AppSessionPersistence {
             databaseSidebarFontSize: defaults.object(forKey: AppDefaultsKey.databaseSidebarFontSize) as? Double,
             databaseSidebarTextColor: defaults.string(forKey: AppDefaultsKey.databaseSidebarTextColor),
             databaseSidebarMonospaceFont: defaults.object(forKey: AppDefaultsKey.databaseSidebarMonospaceFont) as? Bool ?? false,
-            sidebarSystemMode: defaults.object(forKey: AppDefaultsKey.sidebarSystemMode) as? Bool ?? false
+            sidebarSystemMode: defaults.object(forKey: AppDefaultsKey.sidebarSystemMode) as? Bool ?? false,
+            fastLibraryScan: defaults.object(forKey: AppDefaultsKey.fastLibraryScan) as? Bool ?? false
         )
     }
 
@@ -142,6 +145,7 @@ enum AppSessionPersistence {
         databaseSidebarTextColor: String,
         databaseSidebarMonospaceFont: Bool,
         sidebarSystemMode: Bool,
+        fastLibraryScan: Bool,
         defaults: UserDefaults = .standard
     ) {
         defaults.set(longPlayEnabled, forKey: AppDefaultsKey.longPlayEnabled)
@@ -156,6 +160,7 @@ enum AppSessionPersistence {
         defaults.set(databaseSidebarTextColor, forKey: AppDefaultsKey.databaseSidebarTextColor)
         defaults.set(databaseSidebarMonospaceFont, forKey: AppDefaultsKey.databaseSidebarMonospaceFont)
         defaults.set(sidebarSystemMode, forKey: AppDefaultsKey.sidebarSystemMode)
+        defaults.set(fastLibraryScan, forKey: AppDefaultsKey.fastLibraryScan)
     }
 
     static func savePlaylistSortState(

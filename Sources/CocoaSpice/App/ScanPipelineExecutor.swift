@@ -38,11 +38,13 @@ struct ScanPipelineExecutor: Sendable {
     let handlerRegistry: ScanPluginHandlerRegistry
     let archiveProvider: any ScanArchiveProvider
     let scheduler: ScanResourceScheduler
+    let archiveScanDepth: ArchiveScanDepth
 
     init(
         pluginRegistry: ScanPluginRegistry = ScanCoreHandlers.registry,
         handlerRegistry: ScanPluginHandlerRegistry = ScanCoreHandlers.handlers,
         archiveProvider: (any ScanArchiveProvider)? = nil,
+        archiveScanDepth: ArchiveScanDepth = .deep,
         scheduler: ScanResourceScheduler = ScanResourceScheduler(
             permits: max(1, ProcessInfo.processInfo.activeProcessorCount)
         )
@@ -50,6 +52,7 @@ struct ScanPipelineExecutor: Sendable {
         self.pluginRegistry = pluginRegistry
         self.handlerRegistry = handlerRegistry
         self.scheduler = scheduler
+        self.archiveScanDepth = archiveScanDepth
         self.archiveProvider = archiveProvider ?? ZipScanArchiveProvider(
             registry: pluginRegistry,
             scheduler: scheduler
@@ -150,6 +153,10 @@ struct ScanPipelineExecutor: Sendable {
                     sourceURL: member.archiveURL,
                     route: member.route
                 )
+                if archiveScanDepth == .fast {
+                    results.append(fastArchiveMemberResult(memberCandidate))
+                    continue
+                }
                 do {
                     let materializedURL: URL
                     if memberCandidate.route?.pluginID == "lazyusf" {
@@ -177,6 +184,17 @@ struct ScanPipelineExecutor: Sendable {
         } catch {
             return [failure(candidate, stage: .archiveListing, message: error.localizedDescription)]
         }
+    }
+
+    private func fastArchiveMemberResult(_ candidate: ScanCandidate) -> ScanPipelineResult {
+        guard let route = candidate.route else { return .unsupported(candidate) }
+        return .success(
+            candidate,
+            ScanInspection(
+                route: route,
+                tracks: [ScanTrackMetadata(trackIndex: 0, trackCount: 1, metadata: nil)]
+            )
+        )
     }
 
     private func materialize(_ candidate: ScanCandidate, archiveEntry: String) async throws -> URL {

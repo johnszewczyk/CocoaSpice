@@ -33,6 +33,11 @@ struct ScanInspection: Sendable {
     let tracks: [ScanTrackMetadata]
 }
 
+enum ArchiveScanDepth: Sendable, Equatable {
+    case fast
+    case deep
+}
+
 enum ScanFailureStage: String, Sendable {
     case discovery
     case archiveListing

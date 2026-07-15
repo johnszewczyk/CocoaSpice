@@ -3,10 +3,12 @@
 ## Database
 
 - Scan roots: add and manage folders used by the database.
+- Scan All: rescans every enabled library path.
+- Fast Scan: indexes supported archive members without decompressing them; their metadata loads after the game enters the playlist.
 - Scanning: each active library path shows its own label-free 200pt progress bar at the bottom-right of that path's panel.
 - The Library Paths section provides one `Trim Missing` action for the whole library. It checks only whether each unique indexed source path exists, then removes all entries backed by missing paths. It does not open archives or read metadata.
 - Library paths are automatically sorted by path and expose Scan, Retry, Log, and Del actions. Log shows current scan progress and errors while active, and reopens the latest completed scan details afterward.
-- The path is the top detail; current scan state is below it, and last-scan date/count is right-aligned. A green check means a complete non-empty scan, yellow means some files did not process completely (or Trim Missing changed the path), and red means the scan found no playable files.
+- The path is the top detail; current scan state is below it, and the right-aligned tally shows processed items over total items. A green check means a complete non-empty scan, yellow means some files did not process completely (or Trim Missing changed the path), and red means the scan found no playable files.
 
 ## Playback
 

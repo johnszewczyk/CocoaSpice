@@ -6,10 +6,14 @@ final class LibraryScanCoordinator {
     let registry: ScanPluginRegistry
     let executor: ScanPipelineExecutor
 
-    init(database: LibraryDatabase, registry: ScanPluginRegistry = ScanCoreHandlers.registry) {
+    init(
+        database: LibraryDatabase,
+        registry: ScanPluginRegistry = ScanCoreHandlers.registry,
+        archiveScanDepth: ArchiveScanDepth = .deep
+    ) {
         self.database = database
         self.registry = registry
-        self.executor = ScanPipelineExecutor(pluginRegistry: registry)
+        self.executor = ScanPipelineExecutor(pluginRegistry: registry, archiveScanDepth: archiveScanDepth)
     }
 
     func run(
