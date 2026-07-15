@@ -18,8 +18,8 @@
 - Archive scans report the current member filename while listing and inspecting a container, rather than appearing stuck on the outer archive filename.
 - Scan status publication is throttled and does not await the main actor for every discovered member.
 - The modern scan pipeline is the only scan route; root additions, per-root scans, retries, and enabled-root rescans use it.
-- Fast Scan lists supported archive members and persists one playable leaf per member without materializing or inspecting it. Deep Scan retains full archive extraction, metadata inspection, and multi-track expansion.
-- Blank metadata from a Fast Scan is hydrated only after its archive leaf enters a playlist; scanning must never decompress archive members merely to create the sidebar list.
+- Fast Scan lists supported archive members and persists one playable leaf per member with filename-derived placeholder metadata. Deep Scan retains full archive extraction, metadata inspection, and multi-track expansion.
+- Fast Scan never clears or replaces existing Deep Scan tracks. Its placeholder metadata is hydrated only after its archive leaf enters a playlist; scanning must never decompress archive members merely to create the sidebar list.
 - A scan retains the existing library while it runs and persists each completed item independently, so a bad file or interrupted scan cannot erase already indexed results.
 - Each active Library Paths row owns a live label-free 200pt progress bar; cancelling invalidates the active scan generation.
 - Scan persistence uses the main-actor-owned database connection. Keep progress publication lightweight; unthrottled per-candidate UI work can delay playback completion delivery and queue advancement.

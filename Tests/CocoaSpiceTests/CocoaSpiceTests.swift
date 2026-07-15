@@ -150,7 +150,10 @@ import Testing
     }
 
     #expect(inspections.count == 10)
-    #expect(inspections.allSatisfy { $0.tracks.count == 1 && $0.tracks[0].metadata == nil })
+    #expect(inspections.allSatisfy {
+        $0.tracks.count == 1
+            && $0.tracks[0].metadata?.comment == FastScanPlaceholder.metadataComment
+    })
 }
 
 @Test func supportedExtensionsPreserveLegacyS98Compatibility() {

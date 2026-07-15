@@ -215,7 +215,10 @@ final class LibraryDatabase {
         }
     }
 
-    func persistScanTrackResults(_ results: [ScanPipelineResult]) throws {
+    func persistScanTrackResults(
+        _ results: [ScanPipelineResult],
+        preservingExistingTracks: Bool = false
+    ) throws {
         let successes = results.compactMap { result -> (ScanCandidate, ScanInspection)? in
             guard case .success(let candidate, let inspection) = result else { return nil }
             return (candidate, inspection)
@@ -225,6 +228,10 @@ final class LibraryDatabase {
         try execute("BEGIN TRANSACTION;")
         do {
             for (candidate, inspection) in successes {
+                if preservingExistingTracks,
+                   try containsTrack(for: candidate) {
+                    continue
+                }
                 if let archiveEntry = candidate.identity.archiveEntry {
                     try execute(
                         "DELETE FROM tracks WHERE root_id = ? AND path = ? AND archive_entry = ?;",
@@ -292,6 +299,27 @@ final class LibraryDatabase {
             try? execute("ROLLBACK;")
             throw error
         }
+    }
+
+    private func containsTrack(for candidate: ScanCandidate) throws -> Bool {
+        let sql: String
+        if candidate.identity.archiveEntry != nil {
+            sql = "SELECT 1 FROM tracks WHERE root_id = ? AND path = ? AND archive_entry = ? LIMIT 1;"
+        } else {
+            sql = "SELECT 1 FROM tracks WHERE root_id = ? AND path = ? AND archive_entry IS NULL LIMIT 1;"
+        }
+
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw databaseError()
+        }
+        defer { sqlite3_finalize(statement) }
+        sqliteBind(.int(candidate.identity.rootID), to: statement, at: 1)
+        sqliteBind(.text(candidate.identity.path), to: statement, at: 2)
+        if let archiveEntry = candidate.identity.archiveEntry {
+            sqliteBind(.text(archiveEntry), to: statement, at: 3)
+        }
+        return sqlite3_step(statement) == SQLITE_ROW
     }
 
     func markScanFailed(rootID: Int64, error: String) throws {

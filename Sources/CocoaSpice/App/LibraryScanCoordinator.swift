@@ -5,6 +5,7 @@ final class LibraryScanCoordinator {
     let database: LibraryDatabase
     let registry: ScanPluginRegistry
     let executor: ScanPipelineExecutor
+    let archiveScanDepth: ArchiveScanDepth
 
     init(
         database: LibraryDatabase,
@@ -13,6 +14,7 @@ final class LibraryScanCoordinator {
     ) {
         self.database = database
         self.registry = registry
+        self.archiveScanDepth = archiveScanDepth
         self.executor = ScanPipelineExecutor(pluginRegistry: registry, archiveScanDepth: archiveScanDepth)
     }
 
@@ -27,7 +29,7 @@ final class LibraryScanCoordinator {
         let operationName = mode == .retryFailed ? "retry" : "scan"
         report("Starting \(operationName): \(root.standardizedURL.lastPathComponent)")
         try database.markScanStarted(rootID: root.id)
-        if mode == .newScan {
+        if mode == .newScan, archiveScanDepth == .deep {
             // A new scan is a replacement inventory. Retaining old tracks
             // here would surface entries whose file or archive member no
             // longer exists after a source changes.
@@ -63,6 +65,7 @@ final class LibraryScanCoordinator {
 
         report("Planned \(selected.count) files for \(operationName)…")
         progress(0, selected.count)
+        let preserveExistingTracks = archiveScanDepth == .fast
         let progressReporter = ScanProgressReporter(report: report, progress: progress, activity: activity)
         let accumulator = try await executor.process(
             plan: ScanPlan(mode: mode, candidates: selected),
@@ -78,10 +81,13 @@ final class LibraryScanCoordinator {
                     issue(line)
                 }
             },
-            persist: { [database] result in
+            persist: { [database, preserveExistingTracks] result in
                 try database.persistScanResult(result)
                 if case .success = result {
-                    try database.persistScanTrackResults([result])
+                    try database.persistScanTrackResults(
+                        [result],
+                        preservingExistingTracks: preserveExistingTracks
+                    )
                 }
             }
         )

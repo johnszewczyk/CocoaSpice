@@ -1757,16 +1757,20 @@ final class PlayerViewModel {
             // Fast archive scans deliberately retain a playable archive leaf
             // without materializing it. Hydrate that empty metadata only after
             // the game has been placed in the playlist.
-            return track.isArchiveEntry
-                && metadata.game.isEmpty
-                && metadata.song.isEmpty
-                && metadata.system.isEmpty
-                && metadata.author.isEmpty
-                && metadata.comment.isEmpty
-                && metadata.introLengthMs == 0
-                && metadata.loopLengthMs == 0
-                && metadata.playLengthMs == 0
-                && metadata.fadeLengthMs == 0
+            return track.isArchiveEntry && (
+                metadata.comment == FastScanPlaceholder.metadataComment
+                    || (
+                        metadata.game.isEmpty
+                            && metadata.song.isEmpty
+                            && metadata.system.isEmpty
+                            && metadata.author.isEmpty
+                            && metadata.comment.isEmpty
+                            && metadata.introLengthMs == 0
+                            && metadata.loopLengthMs == 0
+                            && metadata.playLengthMs == 0
+                            && metadata.fadeLengthMs == 0
+                    )
+            )
         }
         if missingTracks.isEmpty {
             if playlistColumnWidthHints == nil {

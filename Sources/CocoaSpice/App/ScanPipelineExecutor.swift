@@ -192,7 +192,23 @@ struct ScanPipelineExecutor: Sendable {
             candidate,
             ScanInspection(
                 route: route,
-                tracks: [ScanTrackMetadata(trackIndex: 0, trackCount: 1, metadata: nil)]
+                tracks: [
+                    ScanTrackMetadata(
+                        trackIndex: 0,
+                        trackCount: 1,
+                        metadata: TrackMetadata(
+                            game: candidate.sourceURL.deletingPathExtension().lastPathComponent,
+                            song: URL(fileURLWithPath: candidate.identity.archiveEntry ?? "").deletingPathExtension().lastPathComponent,
+                            system: "",
+                            author: "",
+                            comment: FastScanPlaceholder.metadataComment,
+                            introLengthMs: 0,
+                            loopLengthMs: 0,
+                            playLengthMs: 0,
+                            fadeLengthMs: 0
+                        )
+                    )
+                ]
             )
         )
     }
