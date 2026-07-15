@@ -21,10 +21,6 @@ final class ToolbarSpectrumModel {
     private var lastAnimationUptime: TimeInterval?
     private var displayTimer: Timer?
 
-    init() {
-        startDisplayTimer()
-    }
-
     func update(with newLevels: [Float]) {
         guard !newLevels.isEmpty else {
             reset()
@@ -38,6 +34,7 @@ final class ToolbarSpectrumModel {
     }
 
     private func startDisplayTimer() {
+        guard displayTimer == nil else { return }
         displayTimer?.invalidate()
         lastAnimationUptime = ProcessInfo.processInfo.systemUptime
         displayTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
@@ -48,6 +45,16 @@ final class ToolbarSpectrumModel {
         if let displayTimer {
             RunLoop.main.add(displayTimer, forMode: .common)
         }
+    }
+
+    func setAnimating(_ isAnimating: Bool) {
+        if isAnimating {
+            startDisplayTimer()
+            return
+        }
+        displayTimer?.invalidate()
+        displayTimer = nil
+        reset()
     }
 
     private func stepAnimation() {
@@ -82,6 +89,12 @@ final class ToolbarSpectrumModel {
     }
 
     func reset() {
+        guard targetLevels.contains(where: { $0 != 0 })
+                || levels.contains(where: { $0 != 0 })
+                || capLevels.contains(where: { $0 != 0 })
+                || capHoldRemaining.contains(where: { $0 != 0 }) else {
+            return
+        }
         for index in levels.indices {
             targetLevels[index] = 0
             levels[index] = 0

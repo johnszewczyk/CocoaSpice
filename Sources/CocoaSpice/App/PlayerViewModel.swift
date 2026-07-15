@@ -239,7 +239,9 @@ final class PlayerViewModel {
                 }
                 self.isPlaying = snapshot.isPlaying
                 if !snapshot.isPlaying {
-                    self.toolbarSpectrum.reset()
+                    self.toolbarSpectrum.setAnimating(false)
+                } else {
+                    self.toolbarSpectrum.setAnimating(true)
                 }
                 self.updateRemoteTransportState()
             }
@@ -1632,7 +1634,7 @@ final class PlayerViewModel {
                     self.playbackElapsedSeconds = snapshot.elapsedSeconds
                 }
                 if !snapshot.isPlaying {
-                    self.toolbarSpectrum.reset()
+                    self.toolbarSpectrum.setAnimating(false)
                 }
                 self.handlePlaybackCompletionIfNeeded()
                 self.updateRemoteTransportState()
