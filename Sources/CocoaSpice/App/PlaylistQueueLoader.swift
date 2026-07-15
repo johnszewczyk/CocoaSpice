@@ -42,7 +42,7 @@ enum PlaylistQueueLoader {
                 databaseURL: databaseURL,
                 gameItems: gameItems
             )).map(loadedPlaylistData(from:)) ?? emptyLoadedPlaylistData()
-            return expandFastArchiveContainers(in: loaded)
+            return await expandFastContainers(in: loaded)
         }.value
     }
 
@@ -90,15 +90,28 @@ enum PlaylistQueueLoader {
         )
     }
 
-    private static func expandFastArchiveContainers(in loaded: LoadedPlaylistData) -> LoadedPlaylistData {
+    private static func expandFastContainers(in loaded: LoadedPlaylistData) async -> LoadedPlaylistData {
         var tracks: [TrackItem] = []
         var metadata = loaded.metadata
 
         for track in loaded.tracks {
             guard !track.isArchiveEntry,
-                  ZipArchiveSupport.canHandle(track.url),
                   metadata[track.id]?.comment == FastScanPlaceholder.metadataComment else {
                 tracks.append(track)
+                continue
+            }
+
+            if !ZipArchiveSupport.canHandle(track.url) {
+                let inspectedTracks = await inspectPlayableTracks(forFileURL: track.url)
+                if inspectedTracks.count > 1 {
+                    for inspected in inspectedTracks {
+                        tracks.append(inspected.track)
+                        metadata[inspected.track.id] = inspected.metadata
+                    }
+                    metadata.removeValue(forKey: track.id)
+                } else {
+                    tracks.append(track)
+                }
                 continue
             }
 

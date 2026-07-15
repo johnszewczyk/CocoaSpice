@@ -246,7 +246,7 @@ private final class SpectrumBandAnalyzer: @unchecked Sendable {
     private let bandFrequencies: [Float]
     private let bandEdges: [(lower: Float, upper: Float)]
     private let analysisFrameCount = 2_048
-    private let minimumUpdateInterval: TimeInterval = 1.0 / 120.0
+    private let minimumUpdateInterval: TimeInterval = 1.0 / 30.0
     private var analysisBuffer = Array(repeating: Float.zero, count: 2_048)
     private var lastPublishUptime: TimeInterval = 0
 
@@ -305,13 +305,9 @@ private final class SpectrumBandAnalyzer: @unchecked Sendable {
 
         var levels = Array(repeating: Float.zero, count: Self.bandCount)
         for index in bandFrequencies.indices {
-            let edge = bandEdges[index]
-            let probeFrequencies = [edge.lower, bandFrequencies[index], edge.upper]
-            let bandPower = probeFrequencies.reduce(Float.zero) { power, frequency in
-                let clampedFrequency = min(frequency, sampleRate * 0.45)
-                let magnitude = goertzelMagnitude(targetFrequency: clampedFrequency, sampleCount: analysisFrameCount)
-                return power + (magnitude * magnitude)
-            } / Float(probeFrequencies.count)
+            let frequency = min(bandFrequencies[index], sampleRate * 0.45)
+            let magnitude = goertzelMagnitude(targetFrequency: frequency, sampleCount: analysisFrameCount)
+            let bandPower = magnitude * magnitude
             let relative = sqrt(bandPower) / floor
             levels[index] = min(1, log10f(1 + (relative * 6)) / log10f(7))
         }
