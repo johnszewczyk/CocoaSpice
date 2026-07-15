@@ -63,7 +63,7 @@ struct ScanPipelineExecutor: Sendable {
         plan: ScanPlan,
         progress: @escaping @Sendable (Int, Int, String) -> Void = { _, _, _ in },
         issue: @escaping @Sendable (ScanFailure) -> Void = { _ in },
-        persist: @escaping @MainActor @Sendable (ScanPipelineResult) throws -> Void
+        persist: @escaping @MainActor @Sendable ([ScanPipelineResult]) throws -> Void
     ) async throws -> ScanResultAccumulator {
         let accumulator = ScanResultAccumulator(discovered: plan.count)
         let cursor = ScanPlanCursor(count: plan.candidates.count)
@@ -80,17 +80,17 @@ struct ScanPipelineExecutor: Sendable {
                         try Task.checkCancellation()
                         let candidate = plan.candidates[index]
                         let results = await self.process(candidate)
-                        for result in results {
-                            let acceptedResult = await MainActor.run { () -> ScanPipelineResult in
-                                do {
-                                    try persist(result)
-                                    return result
-                                } catch {
-                                    // A disk/database failure belongs to this item. It must not
-                                    // cancel unrelated validation work.
-                                    return result.persistenceFailure(message: error.localizedDescription)
-                                }
+                        let acceptedResults = await MainActor.run { () -> [ScanPipelineResult] in
+                            do {
+                                try persist(results)
+                                return results
+                            } catch {
+                                // A disk/database failure belongs to this item. It must not
+                                // cancel unrelated validation work.
+                                return results.map { $0.persistenceFailure(message: error.localizedDescription) }
                             }
+                        }
+                        for acceptedResult in acceptedResults {
                             try await accumulator.accept(acceptedResult)
                             if case .failure(let failure) = acceptedResult {
                                 issue(failure)

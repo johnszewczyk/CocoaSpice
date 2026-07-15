@@ -239,6 +239,10 @@ struct OptionsView: View {
                         model.rescanEnabledLibraryRoots()
                     }
                     .disabled(model.libraryScanInProgress || model.libraryScanRoots.allSatisfy { !$0.isEnabled })
+                    Button("Stop Scan") {
+                        model.stopLibraryScan()
+                    }
+                    .disabled(!model.libraryScanInProgress)
                     Button("Trim Missing") {
                         model.trimMissingLibrary()
                     }

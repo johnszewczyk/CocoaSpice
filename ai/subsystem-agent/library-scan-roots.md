@@ -21,7 +21,7 @@
 - Fast Scan lists supported archive members and persists one playable leaf per member with filename-derived placeholder metadata. Deep Scan retains full archive extraction, metadata inspection, and multi-track expansion.
 - Fast Scan never clears or replaces existing Deep Scan tracks. Its placeholder metadata is hydrated only after its archive leaf enters a playlist; scanning must never decompress archive members merely to create the sidebar list.
 - Purging the database deletes indexed tracks, metadata, scan inventory, and scan status for every root in one transaction, but never deletes configured root rows or their path, enabled, or ordering values.
-- A scan retains the existing library while it runs and persists each completed item independently, so a bad file or interrupted scan cannot erase already indexed results.
+- A scan retains the existing library while it runs and persists each completed source/archive in one transaction, so a bad file or interrupted scan cannot erase already indexed results or force a transaction per archive member.
 - Each active Library Paths row owns a live label-free 200pt progress bar; cancelling invalidates the active scan generation.
 - Scan persistence uses the main-actor-owned database connection. Keep progress publication lightweight; unthrottled per-candidate UI work can delay playback completion delivery and queue advancement.
 - A new scan replaces both the root's scan inventory and track rows. Do not retain tracks from prior scans, because every displayed library entry must resolve to a currently discovered file or archive member.

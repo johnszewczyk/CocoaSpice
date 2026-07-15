@@ -238,85 +238,116 @@ final class LibraryDatabase {
         _ results: [ScanPipelineResult],
         preservingExistingTracks: Bool = false
     ) throws {
+        try execute("BEGIN TRANSACTION;")
+        do {
+            try persistScanTrackResultsInCurrentTransaction(
+                results,
+                preservingExistingTracks: preservingExistingTracks
+            )
+            try execute("COMMIT;")
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
+    }
+
+    func persistScanResults(
+        _ results: [ScanPipelineResult],
+        preservingExistingTracks: Bool = false
+    ) throws {
+        guard !results.isEmpty else { return }
+        try execute("BEGIN TRANSACTION;")
+        do {
+            for result in results {
+                try persistScanResult(result)
+            }
+            try persistScanTrackResultsInCurrentTransaction(
+                results,
+                preservingExistingTracks: preservingExistingTracks
+            )
+            try execute("COMMIT;")
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
+    }
+
+    private func persistScanTrackResultsInCurrentTransaction(
+        _ results: [ScanPipelineResult],
+        preservingExistingTracks: Bool
+    ) throws {
         let successes = results.compactMap { result -> (ScanCandidate, ScanInspection)? in
             guard case .success(let candidate, let inspection) = result else { return nil }
             return (candidate, inspection)
         }
         guard !successes.isEmpty else { return }
 
-        try execute("BEGIN TRANSACTION;")
-        do {
-            for (candidate, inspection) in successes {
-                if preservingExistingTracks,
-                   try containsDeepMetadata(for: candidate) {
-                    continue
-                }
-                if let archiveEntry = candidate.identity.archiveEntry {
-                    try execute(
-                        "DELETE FROM tracks WHERE root_id = ? AND path = ? AND archive_entry = ?;",
-                        bindings: [.int(candidate.identity.rootID), .text(candidate.identity.path), .text(archiveEntry)]
-                    )
-                } else {
-                    try execute(
-                        "DELETE FROM tracks WHERE root_id = ? AND path = ? AND archive_entry IS NULL;",
-                        bindings: [.int(candidate.identity.rootID), .text(candidate.identity.path)]
-                    )
-                }
-
-                for track in inspection.tracks {
-                    let path = candidate.identity.path
-                    let filename = candidate.identity.archiveEntry.map {
-                        URL(fileURLWithPath: $0).lastPathComponent
-                    } ?? URL(fileURLWithPath: path).lastPathComponent
-                    let extensionName = inspection.route.formatExtension
-                    let archivePath = candidate.identity.archiveEntry == nil ? nil : path
-                    try execute(
-                        """
-                        INSERT INTO tracks (root_id, folder_path, path, filename, extension, track_index, track_count, file_size, modified_at, discovered_at, archive_path, archive_entry)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                        """,
-                        bindings: [
-                            .int(candidate.identity.rootID),
-                            .text(URL(fileURLWithPath: path).deletingLastPathComponent().path),
-                            .text(path),
-                            .text(filename),
-                            .text(extensionName),
-                            .int(Int64(track.trackIndex)),
-                            .int(Int64(track.trackCount)),
-                            .int(candidate.fingerprint.fileSize),
-                            .double(candidate.fingerprint.modifiedAt.timeIntervalSince1970),
-                            .double(Date().timeIntervalSince1970),
-                            archivePath.map(SQLiteValue.text) ?? .null,
-                            candidate.identity.archiveEntry.map(SQLiteValue.text) ?? .null
-                        ]
-                    )
-                    guard let metadata = track.metadata else { continue }
-                    let trackID = try lastInsertedRowID()
-                    try execute(
-                        """
-                        INSERT INTO track_metadata (track_id, title, game, author, system, comment, intro_length_ms, loop_length_ms, play_length_ms, fade_length_ms, metadata_scanned_at)
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                        """,
-                        bindings: [
-                            .int(trackID),
-                            .text(metadata.song),
-                            .text(metadata.game),
-                            .text(metadata.author),
-                            .text(metadata.system),
-                            .text(metadata.comment),
-                            .int(Int64(metadata.introLengthMs)),
-                            .int(Int64(metadata.loopLengthMs)),
-                            .int(Int64(metadata.playLengthMs)),
-                            .int(Int64(metadata.fadeLengthMs)),
-                            .double(Date().timeIntervalSince1970)
-                        ]
-                    )
-                }
+        for (candidate, inspection) in successes {
+            if preservingExistingTracks,
+               try containsDeepMetadata(for: candidate) {
+                continue
             }
-            try execute("COMMIT;")
-        } catch {
-            try? execute("ROLLBACK;")
-            throw error
+            if let archiveEntry = candidate.identity.archiveEntry {
+                try execute(
+                    "DELETE FROM tracks WHERE root_id = ? AND path = ? AND archive_entry = ?;",
+                    bindings: [.int(candidate.identity.rootID), .text(candidate.identity.path), .text(archiveEntry)]
+                )
+            } else {
+                try execute(
+                    "DELETE FROM tracks WHERE root_id = ? AND path = ? AND archive_entry IS NULL;",
+                    bindings: [.int(candidate.identity.rootID), .text(candidate.identity.path)]
+                )
+            }
+
+            for track in inspection.tracks {
+                let path = candidate.identity.path
+                let filename = candidate.identity.archiveEntry.map {
+                    URL(fileURLWithPath: $0).lastPathComponent
+                } ?? URL(fileURLWithPath: path).lastPathComponent
+                let extensionName = inspection.route.formatExtension
+                let archivePath = candidate.identity.archiveEntry == nil ? nil : path
+                try execute(
+                    """
+                    INSERT INTO tracks (root_id, folder_path, path, filename, extension, track_index, track_count, file_size, modified_at, discovered_at, archive_path, archive_entry)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    bindings: [
+                        .int(candidate.identity.rootID),
+                        .text(URL(fileURLWithPath: path).deletingLastPathComponent().path),
+                        .text(path),
+                        .text(filename),
+                        .text(extensionName),
+                        .int(Int64(track.trackIndex)),
+                        .int(Int64(track.trackCount)),
+                        .int(candidate.fingerprint.fileSize),
+                        .double(candidate.fingerprint.modifiedAt.timeIntervalSince1970),
+                        .double(Date().timeIntervalSince1970),
+                        archivePath.map(SQLiteValue.text) ?? .null,
+                        candidate.identity.archiveEntry.map(SQLiteValue.text) ?? .null
+                    ]
+                )
+                guard let metadata = track.metadata else { continue }
+                let trackID = try lastInsertedRowID()
+                try execute(
+                    """
+                    INSERT INTO track_metadata (track_id, title, game, author, system, comment, intro_length_ms, loop_length_ms, play_length_ms, fade_length_ms, metadata_scanned_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    """,
+                    bindings: [
+                        .int(trackID),
+                        .text(metadata.song),
+                        .text(metadata.game),
+                        .text(metadata.author),
+                        .text(metadata.system),
+                        .text(metadata.comment),
+                        .int(Int64(metadata.introLengthMs)),
+                        .int(Int64(metadata.loopLengthMs)),
+                        .int(Int64(metadata.playLengthMs)),
+                        .int(Int64(metadata.fadeLengthMs)),
+                        .double(Date().timeIntervalSince1970)
+                    ]
+                )
+            }
         }
     }
 

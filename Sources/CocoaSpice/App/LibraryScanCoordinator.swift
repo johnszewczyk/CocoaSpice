@@ -81,14 +81,11 @@ final class LibraryScanCoordinator {
                     issue(line)
                 }
             },
-            persist: { [database, preserveExistingTracks] result in
-                try database.persistScanResult(result)
-                if case .success = result {
-                    try database.persistScanTrackResults(
-                        [result],
-                        preservingExistingTracks: preserveExistingTracks
-                    )
-                }
+            persist: { [database, preserveExistingTracks] results in
+                try database.persistScanResults(
+                    results,
+                    preservingExistingTracks: preserveExistingTracks
+                )
             }
         )
         let summary = await accumulator.summary
