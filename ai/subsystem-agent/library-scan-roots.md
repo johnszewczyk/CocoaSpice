@@ -18,7 +18,7 @@
 - Archive scans report the current member filename while listing and inspecting a container, rather than appearing stuck on the outer archive filename.
 - Scan status publication is throttled and does not await the main actor for every discovered member.
 - The modern scan pipeline is the only scan route; root additions, per-root scans, retries, and enabled-root rescans use it.
-- Fast Scan lists supported filesystem files and archive members, then persists one filename-derived placeholder leaf per entry. It must never call a decoder inspector or decompress an archive member. Deep Scan retains full archive extraction, metadata inspection, and multi-track expansion.
+- Fast Scan lists supported filesystem files and archive containers, then persists one filename-derived placeholder leaf per entry. It must never call a decoder inspector, list archive members, or decompress an archive member. Archive member listing begins only after the user places that archive in a playlist. Deep Scan retains full archive extraction, metadata inspection, and multi-track expansion.
 - Fast Scan never clears or replaces existing Deep Scan tracks. Its placeholder metadata is hydrated only after its archive leaf enters a playlist; scanning must never decompress archive members merely to create the sidebar list.
 - Purging the database deletes indexed tracks, metadata, scan inventory, and scan status for every root in one transaction, but never deletes configured root rows or their path, enabled, or ordering values.
 - A scan retains the existing library while it runs and persists each completed source/archive in one transaction, so a bad file or interrupted scan cannot erase already indexed results or force a transaction per archive member.
@@ -42,7 +42,7 @@
 - Keep scan-root persistence in SQLite, not `UserDefaults`.
 - Keep scan-root management separate from playlist behavior and playback behavior.
 - Keep automatic scan behavior explicit.
-- Keep Fast Scan limited to filesystem/archive member enumeration and filename placeholders; decoder metadata inspection belongs exclusively to Deep Scan or playlist hydration.
+- Keep Fast Scan limited to filesystem/archive-container enumeration and filename placeholders; archive member listing and decoder metadata inspection belong exclusively to playlist activation or Deep Scan.
 
 ## Files
 

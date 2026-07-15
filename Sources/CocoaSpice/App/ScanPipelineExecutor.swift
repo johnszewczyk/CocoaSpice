@@ -112,6 +112,9 @@ struct ScanPipelineExecutor: Sendable {
     func process(_ candidate: ScanCandidate) async -> [ScanPipelineResult] {
         do {
             if ZipArchiveSupport.canHandle(candidate.sourceURL), candidate.identity.archiveEntry == nil {
+                if archiveScanDepth == .fast {
+                    return [fastArchiveContainerResult(candidate)]
+                }
                 return await processArchive(candidate)
             }
             if archiveScanDepth == .fast {
@@ -212,6 +215,39 @@ struct ScanPipelineExecutor: Sendable {
                         metadata: TrackMetadata(
                             game: sourceName,
                             song: songName,
+                            system: "",
+                            author: "",
+                            comment: FastScanPlaceholder.metadataComment,
+                            introLengthMs: 0,
+                            loopLengthMs: 0,
+                            playLengthMs: 0,
+                            fadeLengthMs: 0
+                        )
+                    )
+                ]
+            )
+        )
+    }
+
+    private func fastArchiveContainerResult(_ candidate: ScanCandidate) -> ScanPipelineResult {
+        let sourceName = candidate.sourceURL.deletingPathExtension().lastPathComponent
+        let route = ScanRoute(
+            pluginID: "archive-container",
+            formatExtension: candidate.sourceURL.pathExtension.lowercased(),
+            supportsArchiveMembers: true,
+            supportsMultiTrack: false
+        )
+        return .success(
+            candidate,
+            ScanInspection(
+                route: route,
+                tracks: [
+                    ScanTrackMetadata(
+                        trackIndex: 0,
+                        trackCount: 1,
+                        metadata: TrackMetadata(
+                            game: sourceName,
+                            song: sourceName,
                             system: "",
                             author: "",
                             comment: FastScanPlaceholder.metadataComment,

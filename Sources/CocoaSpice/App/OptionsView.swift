@@ -260,7 +260,7 @@ struct OptionsView: View {
                 )) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Fast Scan")
-                        Text("Index filenames without decoder metadata scans. Archive member tags load when they enter the playlist.")
+                        Text("Index filenames only. Archive members and tags load when an archive enters the playlist.")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }

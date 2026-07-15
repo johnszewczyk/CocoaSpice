@@ -38,10 +38,11 @@ enum PlaylistQueueLoader {
     ) async -> LoadedPlaylistData {
         await Task.detached(priority: .userInitiated) {
             guard let databaseURL else { return emptyLoadedPlaylistData() }
-            return (try? LibraryDatabase.tracksAndMetadataForGames(
+            let loaded = (try? LibraryDatabase.tracksAndMetadataForGames(
                 databaseURL: databaseURL,
                 gameItems: gameItems
             )).map(loadedPlaylistData(from:)) ?? emptyLoadedPlaylistData()
+            return expandFastArchiveContainers(in: loaded)
         }.value
     }
 
@@ -86,6 +87,53 @@ enum PlaylistQueueLoader {
                 systemText: "",
                 lengthText: "—"
             )
+        )
+    }
+
+    private static func expandFastArchiveContainers(in loaded: LoadedPlaylistData) -> LoadedPlaylistData {
+        var tracks: [TrackItem] = []
+        var metadata = loaded.metadata
+
+        for track in loaded.tracks {
+            guard !track.isArchiveEntry,
+                  ZipArchiveSupport.canHandle(track.url),
+                  metadata[track.id]?.comment == FastScanPlaceholder.metadataComment else {
+                tracks.append(track)
+                continue
+            }
+
+            let entries = (try? ZipArchiveSupport.listPlayableEntries(
+                in: track.url,
+                supportedExtensions: SPCFileScanner.supportedExtensions
+            )) ?? []
+            guard !entries.isEmpty else {
+                tracks.append(track)
+                continue
+            }
+
+            let game = track.url.deletingPathExtension().lastPathComponent
+            for entry in entries {
+                let memberTrack = TrackItem(archiveURL: entry.archiveURL, entryPath: entry.entryPath)
+                tracks.append(memberTrack)
+                metadata[memberTrack.id] = TrackMetadata(
+                    game: game,
+                    song: URL(fileURLWithPath: entry.entryPath).deletingPathExtension().lastPathComponent,
+                    system: "",
+                    author: "",
+                    comment: FastScanPlaceholder.metadataComment,
+                    introLengthMs: 0,
+                    loopLengthMs: 0,
+                    playLengthMs: 0,
+                    fadeLengthMs: 0
+                )
+            }
+            metadata.removeValue(forKey: track.id)
+        }
+
+        return LoadedPlaylistData(
+            tracks: tracks,
+            metadata: metadata,
+            widthHints: PlaylistPresentation.buildColumnWidthHints(tracks: tracks, metadata: metadata)
         )
     }
 
