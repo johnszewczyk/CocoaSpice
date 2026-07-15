@@ -12,9 +12,9 @@
 - The spectrum analyzer is a dedicated titlebar accessory anchored to the far right of the main window rather than a normal SwiftUI toolbar item.
 - This avoids SwiftUI toolbar coalescing and gives the analyzer a stable titlebar lane of its own.
 - The analyzer is fed from the live mixed playback output through `AVAudioEngine.mainMixerNode`.
-- The analyzer uses 16 logarithmically spaced bands across a chiptune-oriented range rather than a textbook full-range EQ map.
-- The band range is `31.25 Hz` through `4 kHz`, with equal relative spacing across the range. Each displayed bar averages Goertzel power at the band's lower edge, geometric center, and upper edge.
-- The display updates on a 60 Hz UI timer only while playback is active; spectrum analysis is throttled to 20 Hz with one center-frequency probe per band. The display stops and clears when playback stops so an idle window does not continuously redraw.
+- The analyzer uses 8 logarithmically spaced bands across a chiptune-oriented range rather than a textbook full-range EQ map.
+- The band range is `80 Hz` through `4 kHz`, with equal relative spacing across the range and one center-frequency probe per band.
+- The display updates on a 60 Hz UI timer only while playback is active; spectrum analysis is throttled to 12 Hz over 256 samples. The display stops and clears when playback stops so an idle window does not continuously redraw.
 - Rising bars are raw and immediate.
 - Falling bars use one light exponential settle with a `50 ms` time constant.
 - Peak caps are separate from the bars and use a short hold plus exponential fall.
@@ -26,7 +26,7 @@
 ## User-Facing Technical Specification
 
 - Placement: far-right titlebar accessory with no scrubber competing for titlebar width.
-- Layout: 16 vertical bars.
+- Layout: 8 vertical bars.
 - Bar geometry: `5 px` bar width with `1 px` gap between bars.
 - Meter height: `22 px`.
 - Peak cap geometry: `1 px` cap height with `1 px` gap above the live bar.
@@ -37,7 +37,7 @@
 - Fall behavior: bars settle exponentially toward lower measured values with a `50 ms` time constant.
 - Peak behavior: caps snap upward instantly, hold for `100 ms`, then decay exponentially.
 - Signal source: live playback mix, not fabricated demo data.
-- Frequency focus: `31.25 Hz` through `4 kHz`, tuned to be more legible for retro and chiptune material than a full-range `16 kHz` spread.
+- Frequency focus: `80 Hz` through `4 kHz`, tuned to be more legible for retro and chiptune material than a full-range `16 kHz` spread.
 
 ## Rules
 

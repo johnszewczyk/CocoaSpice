@@ -233,8 +233,8 @@ final class PlaybackEngine: @unchecked Sendable {
 }
 
 private final class SpectrumBandAnalyzer: @unchecked Sendable {
-    static let bandCount = 16
-    private static let minimumBandFrequency: Float = 31.25
+    static let bandCount = 8
+    private static let minimumBandFrequency: Float = 80
     private static let maximumBandFrequency: Float = 4_000
 
     private let sampleRate: Float
@@ -245,9 +245,9 @@ private final class SpectrumBandAnalyzer: @unchecked Sendable {
     // matching how real EQ bands are distributed across octaves.
     private let bandFrequencies: [Float]
     private let bandEdges: [(lower: Float, upper: Float)]
-    private let analysisFrameCount = 2_048
-    private let minimumUpdateInterval: TimeInterval = 1.0 / 20.0
-    private var analysisBuffer = Array(repeating: Float.zero, count: 2_048)
+    private let analysisFrameCount = 256
+    private let minimumUpdateInterval: TimeInterval = 1.0 / 12.0
+    private var analysisBuffer = Array(repeating: Float.zero, count: 256)
     private var lastPublishUptime: TimeInterval = 0
 
     init(sampleRate: Float) {
