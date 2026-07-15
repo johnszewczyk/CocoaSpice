@@ -6,7 +6,7 @@
 - Scan All: rescans every enabled library path.
 - Stop Scan: stops the active scan without removing indexed library entries already written.
 - Purge Database: removes all indexed files, metadata, scan inventory, and scan status while retaining configured library paths.
-- Fast Scan: indexes supported archive members using archive and member filenames without decompressing them; their metadata loads after the game enters the playlist.
+- Fast Scan: indexes supported files and archive members using filenames only, without decoder metadata scans or archive decompression; archive-member metadata loads after the game enters the playlist.
 - Scanning: each active library path shows its own label-free 200pt progress bar at the bottom-right of that path's panel.
 - The Library Paths section provides one `Trim Missing` action for the whole library. It checks only whether each unique indexed source path exists, then removes all entries backed by missing paths. It does not open archives or read metadata.
 - Library paths are automatically sorted by path and expose Scan, Retry, Log, and Del actions. Log shows current scan progress and errors while active, and reopens the latest completed scan details afterward.

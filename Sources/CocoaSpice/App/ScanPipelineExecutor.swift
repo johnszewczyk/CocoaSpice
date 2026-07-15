@@ -111,12 +111,15 @@ struct ScanPipelineExecutor: Sendable {
 
     func process(_ candidate: ScanCandidate) async -> [ScanPipelineResult] {
         do {
+            if ZipArchiveSupport.canHandle(candidate.sourceURL), candidate.identity.archiveEntry == nil {
+                return await processArchive(candidate)
+            }
+            if archiveScanDepth == .fast {
+                return [fastFilenameResult(candidate)]
+            }
             if let archiveEntry = candidate.identity.archiveEntry {
                 let materializedURL = try await materialize(candidate, archiveEntry: archiveEntry)
                 return [try await processFile(candidate, fileURL: materializedURL)]
-            }
-            if ZipArchiveSupport.canHandle(candidate.sourceURL), candidate.identity.archiveEntry == nil {
-                return await processArchive(candidate)
             }
             return [try await processFile(candidate)]
         } catch is CancellationError {
@@ -154,7 +157,7 @@ struct ScanPipelineExecutor: Sendable {
                     route: member.route
                 )
                 if archiveScanDepth == .fast {
-                    results.append(fastArchiveMemberResult(memberCandidate))
+                    results.append(fastFilenameResult(memberCandidate))
                     continue
                 }
                 do {
@@ -186,8 +189,18 @@ struct ScanPipelineExecutor: Sendable {
         }
     }
 
-    private func fastArchiveMemberResult(_ candidate: ScanCandidate) -> ScanPipelineResult {
-        guard let route = candidate.route else { return .unsupported(candidate) }
+    private func fastFilenameResult(_ candidate: ScanCandidate) -> ScanPipelineResult {
+        guard let route = candidate.route ?? pluginRegistry.route(
+            for: URL(fileURLWithPath: candidate.identity.archiveEntry ?? candidate.sourceURL.path).pathExtension,
+            archiveMember: candidate.isArchiveMember
+        ) else {
+            return .unsupported(candidate)
+        }
+        let archiveEntry = candidate.identity.archiveEntry
+        let sourceName = candidate.sourceURL.deletingPathExtension().lastPathComponent
+        let songName = archiveEntry.map {
+            URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent
+        } ?? sourceName
         return .success(
             candidate,
             ScanInspection(
@@ -197,8 +210,8 @@ struct ScanPipelineExecutor: Sendable {
                         trackIndex: 0,
                         trackCount: 1,
                         metadata: TrackMetadata(
-                            game: candidate.sourceURL.deletingPathExtension().lastPathComponent,
-                            song: URL(fileURLWithPath: candidate.identity.archiveEntry ?? "").deletingPathExtension().lastPathComponent,
+                            game: sourceName,
+                            song: songName,
                             system: "",
                             author: "",
                             comment: FastScanPlaceholder.metadataComment,
