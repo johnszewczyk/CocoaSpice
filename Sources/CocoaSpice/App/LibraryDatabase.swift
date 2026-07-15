@@ -229,7 +229,7 @@ final class LibraryDatabase {
         do {
             for (candidate, inspection) in successes {
                 if preservingExistingTracks,
-                   try containsTrack(for: candidate) {
+                   try containsDeepMetadata(for: candidate) {
                     continue
                 }
                 if let archiveEntry = candidate.identity.archiveEntry {
@@ -301,12 +301,26 @@ final class LibraryDatabase {
         }
     }
 
-    private func containsTrack(for candidate: ScanCandidate) throws -> Bool {
+    private func containsDeepMetadata(for candidate: ScanCandidate) throws -> Bool {
         let sql: String
         if candidate.identity.archiveEntry != nil {
-            sql = "SELECT 1 FROM tracks WHERE root_id = ? AND path = ? AND archive_entry = ? LIMIT 1;"
+            sql = """
+            SELECT 1
+            FROM tracks t
+            INNER JOIN track_metadata m ON m.track_id = t.id
+            WHERE t.root_id = ? AND t.path = ? AND t.archive_entry = ?
+              AND m.comment <> ?
+            LIMIT 1;
+            """
         } else {
-            sql = "SELECT 1 FROM tracks WHERE root_id = ? AND path = ? AND archive_entry IS NULL LIMIT 1;"
+            sql = """
+            SELECT 1
+            FROM tracks t
+            INNER JOIN track_metadata m ON m.track_id = t.id
+            WHERE t.root_id = ? AND t.path = ? AND t.archive_entry IS NULL
+              AND m.comment <> ?
+            LIMIT 1;
+            """
         }
 
         var statement: OpaquePointer?
@@ -318,6 +332,9 @@ final class LibraryDatabase {
         sqliteBind(.text(candidate.identity.path), to: statement, at: 2)
         if let archiveEntry = candidate.identity.archiveEntry {
             sqliteBind(.text(archiveEntry), to: statement, at: 3)
+            sqliteBind(.text(FastScanPlaceholder.metadataComment), to: statement, at: 4)
+        } else {
+            sqliteBind(.text(FastScanPlaceholder.metadataComment), to: statement, at: 3)
         }
         return sqlite3_step(statement) == SQLITE_ROW
     }
