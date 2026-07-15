@@ -12,9 +12,9 @@
 - The spectrum analyzer is a dedicated titlebar accessory anchored to the far right of the main window rather than a normal SwiftUI toolbar item.
 - This avoids SwiftUI toolbar coalescing and gives the analyzer a stable titlebar lane of its own.
 - The analyzer is fed from the live mixed playback output through `AVAudioEngine.mainMixerNode`.
-- The analyzer now uses 40 logarithmically spaced bands across a chiptune-oriented range rather than a textbook full-range EQ map.
+- The analyzer uses 16 logarithmically spaced bands across a chiptune-oriented range rather than a textbook full-range EQ map.
 - The band range is `31.25 Hz` through `4 kHz`, with equal relative spacing across the range. Each displayed bar averages Goertzel power at the band's lower edge, geometric center, and upper edge.
-- The display updates on a 60 Hz UI timer only while playback is active; spectrum analysis is throttled to 30 Hz with one center-frequency probe per band. The display stops and clears when playback stops so an idle window does not continuously redraw.
+- The display updates on a 60 Hz UI timer only while playback is active; spectrum analysis is throttled to 20 Hz with one center-frequency probe per band. The display stops and clears when playback stops so an idle window does not continuously redraw.
 - Rising bars are raw and immediate.
 - Falling bars use one light exponential settle with a `50 ms` time constant.
 - Peak caps are separate from the bars and use a short hold plus exponential fall.
@@ -26,7 +26,7 @@
 ## User-Facing Technical Specification
 
 - Placement: far-right titlebar accessory with no scrubber competing for titlebar width.
-- Layout: 40 vertical bars.
+- Layout: 16 vertical bars.
 - Bar geometry: `5 px` bar width with `1 px` gap between bars.
 - Meter height: `22 px`.
 - Peak cap geometry: `1 px` cap height with `1 px` gap above the live bar.
