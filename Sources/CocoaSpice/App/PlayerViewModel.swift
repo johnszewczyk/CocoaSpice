@@ -466,6 +466,24 @@ final class PlayerViewModel {
         runModernLibraryScan(for: libraryScanRoots.filter(\.isEnabled), mode: .newScan)
     }
 
+    func purgeLibraryDatabase() {
+        guard !libraryScanInProgress, let libraryDatabase else { return }
+        do {
+            try libraryDatabase.purgeIndexedLibrary()
+            for root in libraryScanRoots {
+                LibraryScanLogStore.remove(rootID: root.id)
+            }
+            trimmedLibraryScanRootIDs.removeAll()
+            persistTrimmedLibraryRootIDs()
+            reloadLibraryScanRoots()
+            reloadDatabaseGameItems()
+            resetSidebarContext(message: "Database purged")
+            libraryScanStatus = "Database purged"
+        } catch {
+            libraryScanStatus = "Could not purge database: \(error.localizedDescription)"
+        }
+    }
+
     func stopLibraryScan() {
         guard libraryScanInProgress else { return }
         libraryScanGeneration += 1

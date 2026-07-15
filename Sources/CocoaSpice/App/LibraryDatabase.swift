@@ -179,6 +179,25 @@ final class LibraryDatabase {
         try execute("DELETE FROM tracks WHERE root_id = ?;", bindings: [.int(rootID)])
     }
 
+    func purgeIndexedLibrary() throws {
+        try execute("BEGIN IMMEDIATE;")
+        do {
+            try execute("DELETE FROM tracks;")
+            try execute("DELETE FROM scan_items;")
+            try execute("""
+            UPDATE library_roots
+            SET last_scan_started_at = NULL,
+                last_scan_completed_at = NULL,
+                last_scan_track_count = 0,
+                last_scan_error = NULL;
+            """)
+            try execute("COMMIT;")
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
+    }
+
     func indexedSources() throws -> [LibraryIndexedSource] {
         let sql = """
         SELECT DISTINCT root_id, path

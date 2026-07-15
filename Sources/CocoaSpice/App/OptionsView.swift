@@ -243,6 +243,10 @@ struct OptionsView: View {
                         model.trimMissingLibrary()
                     }
                     .disabled(model.libraryScanInProgress)
+                    Button("Purge Database") {
+                        model.purgeLibraryDatabase()
+                    }
+                    .disabled(model.libraryScanInProgress)
                     Spacer()
                 }
 

@@ -4,6 +4,7 @@
 
 - Scan roots: add and manage folders used by the database.
 - Scan All: rescans every enabled library path.
+- Purge Database: removes all indexed files, metadata, scan inventory, and scan status while retaining configured library paths.
 - Fast Scan: indexes supported archive members using archive and member filenames without decompressing them; their metadata loads after the game enters the playlist.
 - Scanning: each active library path shows its own label-free 200pt progress bar at the bottom-right of that path's panel.
 - The Library Paths section provides one `Trim Missing` action for the whole library. It checks only whether each unique indexed source path exists, then removes all entries backed by missing paths. It does not open archives or read metadata.
