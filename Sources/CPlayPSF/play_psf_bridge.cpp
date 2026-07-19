@@ -1,4 +1,4 @@
-#include "psf2_bridge.h"
+#include "play_psf_bridge.h"
 
 #include "PsfBase.h"
 #include "PsfLoader.h"
@@ -95,21 +95,31 @@ struct Metadata {
     CPsfBase::TagMap tags;
     std::map<std::string, std::string> exportedTags;
     int64_t playLengthFrames = 0;
+    int64_t fadeLengthFrames = 0;
+    std::string systemName;
 
     explicit Metadata(const char* filePath) {
-        if(!filePath || !filePath[0]) throw std::runtime_error("PSF2 path is empty");
+        if(!filePath || !filePath[0]) throw std::runtime_error("PSF path is empty");
         auto stream = Framework::CreateInputStdStream(fs::path(filePath).native());
         CPsfBase psfFile(stream);
-        if(psfFile.GetVersion() != CPsfBase::VERSION_PLAYSTATION2) {
-            throw std::runtime_error("File is not PSF2");
+        switch(psfFile.GetVersion()) {
+        case CPsfBase::VERSION_PLAYSTATION:
+            systemName = "PlayStation";
+            break;
+        case CPsfBase::VERSION_PLAYSTATION2:
+            systemName = "PlayStation 2";
+            break;
+        default:
+            throw std::runtime_error("File is not a supported PlayStation PSF");
         }
         tags.insert(psfFile.GetTagsBegin(), psfFile.GetTagsEnd());
         exportedTags.insert(tags.begin(), tags.end());
-        playLengthFrames = ParseLengthFrames(tags);
+        playLengthFrames = ParseTimeFrames(tags, "length");
+        fadeLengthFrames = ParseTimeFrames(tags, "fade");
     }
 
-    static int64_t ParseLengthFrames(const CPsfBase::TagMap& values) {
-        const auto it = values.find("length");
+    static int64_t ParseTimeFrames(const CPsfBase::TagMap& values, const char* name) {
+        const auto it = values.find(name);
         if(it == values.end()) return 0;
         try {
             const auto wideLength = CPsfPathToken::WidenString(it->second);
@@ -126,13 +136,17 @@ struct Player {
     CPsfBase::TagMap tags;
     std::map<std::string, std::string> exportedTags;
     std::string path;
+    std::string systemName;
     int64_t playedFrames = 0;
     int64_t playLengthFrames = 0;
+    int64_t fadeLengthFrames = 0;
     bool longPlay = false;
 
     explicit Player(const char* filePath)
         : path(filePath ? filePath : "") {
-        if(path.empty()) throw std::runtime_error("PSF2 path is empty");
+        if(path.empty()) throw std::runtime_error("PSF path is empty");
+        Metadata metadata(path.c_str());
+        systemName = metadata.systemName;
         const auto token = CPhysicalPsfStreamProvider::GetPathTokenFromFilePath(fs::path(path));
         CPsfLoader::LoadPsf(vm, token, fs::path(), &tags);
         vm.SetSpuHandler([this] {
@@ -140,7 +154,8 @@ struct Player {
             return sound;
         });
         for(const auto& [key, value] : tags) exportedTags.emplace(key, value);
-        playLengthFrames = Metadata::ParseLengthFrames(tags);
+        playLengthFrames = Metadata::ParseTimeFrames(tags, "length");
+        fadeLengthFrames = Metadata::ParseTimeFrames(tags, "fade");
         vm.Resume();
     }
 
@@ -150,16 +165,16 @@ struct Player {
 
 } // namespace
 
-extern "C" void* cocoaspice_psf2_open(const char* path) {
+extern "C" void* cocoaspice_play_psf_open(const char* path) {
     try { return new Player(path); } catch(...) { return nullptr; }
 }
 
-extern "C" void cocoaspice_psf2_close(void* handle) { delete static_cast<Player*>(handle); }
+extern "C" void cocoaspice_play_psf_close(void* handle) { delete static_cast<Player*>(handle); }
 
-extern "C" int32_t cocoaspice_psf2_read(void* handle, int16_t* output, int32_t frameCount) {
+extern "C" int32_t cocoaspice_play_psf_read(void* handle, int16_t* output, int32_t frameCount) {
     if(!handle || !output || frameCount <= 0) return -1;
     auto* player = static_cast<Player*>(handle);
-    // Some PSF2 drivers stop emitting blocks exactly at the declared length.
+    // Some PSF-family drivers stop emitting blocks exactly at the declared length.
     // CocoaSpice owns the post-length fade, so provide silence for the
     // remaining planned frames instead of making the stream end abruptly.
     if(!player->longPlay && player->playLengthFrames > 0 && player->playedFrames >= player->playLengthFrames) {
@@ -172,11 +187,11 @@ extern "C" int32_t cocoaspice_psf2_read(void* handle, int16_t* output, int32_t f
     return frames;
 }
 
-extern "C" void cocoaspice_psf2_set_long_play(void* handle, int32_t enabled) {
+extern "C" void cocoaspice_play_psf_set_long_play(void* handle, int32_t enabled) {
     if(handle) static_cast<Player*>(handle)->longPlay = enabled != 0;
 }
 
-extern "C" int32_t cocoaspice_psf2_seek(void* handle, int64_t frame) {
+extern "C" int32_t cocoaspice_play_psf_seek(void* handle, int64_t frame) {
     if(!handle || frame < 0) return -1;
     auto* player = static_cast<Player*>(handle);
     player->vm.Pause();
@@ -194,14 +209,14 @@ extern "C" int32_t cocoaspice_psf2_seek(void* handle, int64_t frame) {
         std::vector<int16_t> scratch(2048 * 2);
         while(player->playedFrames < frame) {
             const auto requested = static_cast<int32_t>(std::min<int64_t>(2048, frame - player->playedFrames));
-            const auto read = cocoaspice_psf2_read(player, scratch.data(), requested);
+            const auto read = cocoaspice_play_psf_read(player, scratch.data(), requested);
             if(read <= 0) break;
         }
         return 0;
     } catch(...) { return -1; }
 }
 
-extern "C" void cocoaspice_psf2_set_suspended(void* handle, int32_t suspended) {
+extern "C" void cocoaspice_play_psf_set_suspended(void* handle, int32_t suspended) {
     if(!handle) return;
     auto* player = static_cast<Player*>(handle);
     if(suspended) {
@@ -211,7 +226,7 @@ extern "C" void cocoaspice_psf2_set_suspended(void* handle, int32_t suspended) {
     }
 }
 
-extern "C" int32_t cocoaspice_psf2_finished(void* handle) {
+extern "C" int32_t cocoaspice_play_psf_finished(void* handle) {
     if(!handle) return 1;
     auto* player = static_cast<Player*>(handle);
     return !player->longPlay
@@ -219,46 +234,62 @@ extern "C" int32_t cocoaspice_psf2_finished(void* handle) {
         && player->playedFrames >= player->playLengthFrames;
 }
 
-extern "C" int64_t cocoaspice_psf2_played_frames(void* handle) {
+extern "C" int64_t cocoaspice_play_psf_played_frames(void* handle) {
     return handle ? static_cast<Player*>(handle)->playedFrames : 0;
 }
 
-extern "C" int64_t cocoaspice_psf2_play_length_frames(void* handle) {
+extern "C" int64_t cocoaspice_play_psf_play_length_frames(void* handle) {
     return handle ? static_cast<Player*>(handle)->playLengthFrames : 0;
 }
 
-extern "C" const char* cocoaspice_psf2_tag(void* handle, const char* name) {
+extern "C" int64_t cocoaspice_play_psf_fade_length_frames(void* handle) {
+    return handle ? static_cast<Player*>(handle)->fadeLengthFrames : 0;
+}
+
+extern "C" const char* cocoaspice_play_psf_tag(void* handle, const char* name) {
     if(!handle || !name) return nullptr;
     auto& tags = static_cast<Player*>(handle)->exportedTags;
     const auto it = tags.find(name);
     return it == tags.end() ? nullptr : it->second.c_str();
 }
 
-extern "C" int64_t cocoaspice_psf2_buffered_frames(void* handle) {
+extern "C" const char* cocoaspice_play_psf_system_name(void* handle) {
+    return handle ? static_cast<Player*>(handle)->systemName.c_str() : nullptr;
+}
+
+extern "C" int64_t cocoaspice_play_psf_buffered_frames(void* handle) {
     if(!handle) return 0;
     auto* player = static_cast<Player*>(handle);
     return player->sound ? player->sound->BufferedFrames() : 0;
 }
 
-extern "C" int64_t cocoaspice_psf2_buffer_capacity_frames(void) {
+extern "C" int64_t cocoaspice_play_psf_buffer_capacity_frames(void) {
     return static_cast<int64_t>(kBufferedFrameCapacity);
 }
 
-extern "C" void* cocoaspice_psf2_metadata_open(const char* path) {
+extern "C" void* cocoaspice_play_psf_metadata_open(const char* path) {
     try { return new Metadata(path); } catch(...) { return nullptr; }
 }
 
-extern "C" void cocoaspice_psf2_metadata_close(void* handle) {
+extern "C" void cocoaspice_play_psf_metadata_close(void* handle) {
     delete static_cast<Metadata*>(handle);
 }
 
-extern "C" int64_t cocoaspice_psf2_metadata_play_length_frames(void* handle) {
+extern "C" int64_t cocoaspice_play_psf_metadata_play_length_frames(void* handle) {
     return handle ? static_cast<Metadata*>(handle)->playLengthFrames : 0;
 }
 
-extern "C" const char* cocoaspice_psf2_metadata_tag(void* handle, const char* name) {
+extern "C" int64_t cocoaspice_play_psf_metadata_fade_length_frames(void* handle) {
+    return handle ? static_cast<Metadata*>(handle)->fadeLengthFrames : 0;
+}
+
+extern "C" const char* cocoaspice_play_psf_metadata_tag(void* handle, const char* name) {
     if(!handle || !name) return nullptr;
     auto& tags = static_cast<Metadata*>(handle)->exportedTags;
     const auto it = tags.find(name);
     return it == tags.end() ? nullptr : it->second.c_str();
+}
+
+extern "C" const char* cocoaspice_play_psf_metadata_system_name(void* handle) {
+    return handle ? static_cast<Metadata*>(handle)->systemName.c_str() : nullptr;
 }

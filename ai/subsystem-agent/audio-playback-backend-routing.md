@@ -16,6 +16,8 @@
 - `libvgm` now owns `vgm`, `vgz`, `gym`, and `s98`.
 - `Highly Complete` now owns `gsf` and `minigsf`.
 - The vendored `2sf2wav` core owns `2sf` and `mini2sf` through `C2SF`. Its bridge is serialized because the underlying DS core uses shared global state.
+- The vendored Play! `PsfCore` owns both PlayStation `psf`/`minipsf` and PlayStation 2 `psf2`/`minipsf2` through one `CPlayPSF` bridge. Separate registry modules share that backend so admission and platform identity remain explicit without duplicating VM code.
+- `vgmstream` owns PlayStation XA streams as well as its registered PlayStation 2 stream families. XA inspection enumerates embedded subsongs before playlist rows are finalized.
 - File inspection and playback share the same backend-routing table, so scan results, playlist import, and playback no longer disagree about VGM-family ownership.
 - Each static decoder module registers its plugin identifier, display name, extensions, subtrack-enumeration requirement, and archive materialization policy once. Scanner descriptors, playlist admission, and dependency-aware archive materialization derive from that registration.
 - `libvgm` is wrapped behind a small C bridge target so the Swift app can stay mostly ignorant of C++ details.
@@ -35,6 +37,7 @@
 - Treat `Highly Complete` as a real backend subsystem, not as a one-off `minigsf` exception.
 - Do not assume all decoder backends share identical threading or sample-rate behavior.
 - 2SF archive playback materializes the complete archive set before bridge creation so `_lib` dependencies resolve beside the selected file.
+- PSF-family archive playback materializes the complete archive set before bridge creation; `.psflib` files remain dependency-only.
 
 ## Files
 
@@ -46,3 +49,4 @@
 - [highlycomplete_bridge.h](/Users/john/Downloads/Code/CocoaSpice/Sources/CHighlyComplete/include/highlycomplete_bridge.h)
 - [highlycomplete_bridge.cpp](/Users/john/Downloads/Code/CocoaSpice/Sources/CHighlyComplete/highlycomplete_bridge.cpp)
 - [twosf_bridge.cpp](/Users/john/Downloads/Code/CocoaSpice/Sources/C2SF/twosf_bridge.cpp)
+- [play_psf_bridge.cpp](/Users/john/Downloads/Code/CocoaSpice/Sources/CPlayPSF/play_psf_bridge.cpp)

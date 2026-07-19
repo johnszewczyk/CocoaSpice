@@ -27,8 +27,8 @@ fi
 if [[ ! -x "$ROOT_DIR/scripts/build-2sf.sh" ]]; then
   chmod +x "$ROOT_DIR/scripts/build-2sf.sh"
 fi
-if [[ ! -x "$ROOT_DIR/scripts/build-psf2.sh" ]]; then
-  chmod +x "$ROOT_DIR/scripts/build-psf2.sh"
+if [[ ! -x "$ROOT_DIR/scripts/build-play-psf.sh" ]]; then
+  chmod +x "$ROOT_DIR/scripts/build-play-psf.sh"
 fi
 if [[ ! -x "$ROOT_DIR/scripts/build-vgmstream.sh" ]]; then
   chmod +x "$ROOT_DIR/scripts/build-vgmstream.sh"
@@ -56,8 +56,8 @@ fi
 if [[ ! -f "$BUILD_DIR/2sf/lib2sf.a" ]]; then
   "$ROOT_DIR/scripts/build-2sf.sh"
 fi
-if [[ ! -f "$BUILD_DIR/psf2/libcocoaspice_psf2.a" ]]; then
-  "$ROOT_DIR/scripts/build-psf2.sh"
+if [[ ! -f "$BUILD_DIR/play-psf/libcocoaspice_play_psf.a" ]]; then
+  "$ROOT_DIR/scripts/build-play-psf.sh"
 fi
 if [[ ! -f "$BUILD_DIR/vgmstream/src/libvgmstream.a" ]]; then
   "$ROOT_DIR/scripts/build-vgmstream.sh"

@@ -13,8 +13,9 @@ This is the current admission matrix for file discovery, database scanning, play
 | Highly Complete | `gsf`, `minigsf` | Archive-backed playback materializes the complete archive set, preserving miniGSF library dependencies. |
 | `lazyusf2` | `usf`, `miniusf` | Archive-backed playback and scanning materialize the complete archive set, preserving miniUSF dependency files. |
 | `2sf2wav` | `2sf`, `mini2sf` | Archive-backed playback materializes the complete archive set, preserving archive-relative 2SF libraries. Metadata scanning reads PSF tags directly. |
-| `vgmstream` | `adx`, `ads`, `aus`, `hd`, `hbd`, `iecs`, `int`, `mib`, `mtaf`, `rws`, `ss2`, `svag`, `vag` | Native PlayStation 2/game-audio streams and banks. Deep scans open the decoder for stream length, loop metadata, and format names; archive members are materialized before inspection/playback. Playback is finite by default; Long Play reopens in forced-loop/play-forever mode while the shared app plan retains the finite manual stop and fade. |
-| `Play! PSF2` | `psf2`, `minipsf2` | Native PS2 PSF emulator playback through the UI-free vendored Play! `PsfCore` bridge. Full archive materialization preserves sibling `_lib` dependencies; tags and declared length are available to deep scans. |
+| `vgmstream` | `adx`, `ads`, `aus`, `hd`, `hbd`, `iecs`, `int`, `mib`, `mtaf`, `rws`, `ss2`, `svag`, `vag`, `xa` | Native PlayStation XA and PlayStation 2/game-audio streams and banks. Deep scans open the decoder for subsongs, stream length, loop metadata, and format names; archive members are materialized before inspection/playback. Playback is finite by default; Long Play reopens in forced-loop/play-forever mode while the shared app plan retains the finite manual stop and fade. |
+| `Play! PSF` | `psf`, `minipsf` | Native PlayStation PSF emulator playback through the UI-free vendored Play! `PsfCore` bridge. Full archive materialization preserves sibling `_lib` and PSFLIB dependencies; tags and declared length are available to deep scans. |
+| `Play! PSF2` | `psf2`, `minipsf2` | Native PlayStation 2 PSF emulator playback through the same Play! bridge and complete-set archive policy. |
 
 ## Supported Containers
 
@@ -31,6 +32,7 @@ Every extension absent from `GMEFormatSupport.supportedExtensions` is unsupporte
 - The same registration declares selected-member versus complete-set archive materialization, including the LazyUSF alias preparation policy required after complete-set extraction.
 - Adding a format requires a decoder module or an explicit extension registration, plus compatible inspection and playback paths.
 - Archive support must be validated for the format's dependency model. Formats with sibling or library dependencies cannot use selected-member-only materialization.
+- PSFLIB files are dependency resources for PSF tracks and are not admitted as independent playlist or library rows.
 
 ## Files
 

@@ -18,7 +18,7 @@
   or one shared Long Play target duration.
 - Long Play uses one shared manual play-time value for every supported format.
 - Every decoder module admitted by `GMEFormatSupport` automatically participates in Long Play. The shared plan disables native completion, applies the manual pre-fade duration and common fade, and marks the decoder session as Long Play.
-- Backends whose native cores otherwise stop at their declared duration must honor the Long Play session flag. PSF2 continues beyond its tag length, while vgmstream reopens in forced-loop/play-forever mode; CocoaSpice still owns the finite manual stop and fade.
+- Backends whose native cores otherwise stop at their declared duration must honor the Long Play session flag. PlayStation PSF and PlayStation 2 PSF2 continue beyond their tag length, while vgmstream reopens XA and other streams in forced-loop/play-forever mode; CocoaSpice still owns the finite manual stop and fade.
 - With Long Play disabled, playback prefers file or decoder default end behavior.
 - `fadeSeconds` remains model-driven timing state and is currently `6` seconds by default.
 - The active fade setting is applied to both live playback and AAC export planning.

@@ -46,7 +46,7 @@ struct AboutView: View {
         Dependency(
             name: "vgmstream",
             version: "r2117 / 7f1ceb3",
-            purpose: "PlayStation 2 SVAG/IECS and other game-audio formats",
+            purpose: "PlayStation XA, PlayStation 2 streams, and other game-audio formats",
             license: "BSD-3-Clause and component licenses",
             sourceURL: URL(string: "https://github.com/vgmstream/vgmstream")!,
             licenseURL: URL(string: "https://github.com/vgmstream/vgmstream/blob/master/LICENSE")!
@@ -62,7 +62,7 @@ struct AboutView: View {
         Dependency(
             name: "Play! PsfCore",
             version: "0.30 / 50aedca",
-            purpose: "PlayStation 2 PSF2 and miniPSF2 emulation",
+            purpose: "PlayStation PSF/miniPSF and PlayStation 2 PSF2/miniPSF2 emulation",
             license: "BSD 3-Clause",
             sourceURL: URL(string: "https://github.com/jpd002/Play-")!,
             licenseURL: URL(string: "https://github.com/jpd002/Play-/blob/master/License.txt")!

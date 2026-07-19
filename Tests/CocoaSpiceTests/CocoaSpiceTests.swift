@@ -21,6 +21,12 @@ import Testing
     #expect(SPCFileScanner.supportedExtensions.contains("miniusf"))
     #expect(SPCFileScanner.supportedExtensions.contains("2sf"))
     #expect(SPCFileScanner.supportedExtensions.contains("mini2sf"))
+    #expect(SPCFileScanner.supportedExtensions.contains("psf"))
+    #expect(SPCFileScanner.supportedExtensions.contains("minipsf"))
+    #expect(SPCFileScanner.supportedExtensions.contains("psf2"))
+    #expect(SPCFileScanner.supportedExtensions.contains("minipsf2"))
+    #expect(SPCFileScanner.supportedExtensions.contains("xa"))
+    #expect(!SPCFileScanner.supportedExtensions.contains("psflib"))
     #expect(!SPCFileScanner.supportedExtensions.contains("nds"))
 }
 
@@ -95,6 +101,55 @@ import Testing
     )
     let chunk = try decoder.decode(frameCount: 1_024)
     #expect(chunk.frameCount > 0)
+}
+
+@Test func playPSFRecognizesStandalonePlayStationFixture() throws {
+    let fileURL = URL(fileURLWithPath: "/private/tmp/cocoaspice-psx-fixtures/standalone/01 Title.psf")
+    guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+
+    let inspector = try PlayPSFFileInspector(fileURL: fileURL)
+    let metadata = try inspector.metadata(trackIndex: 0)
+    #expect(metadata.system == "PlayStation")
+    #expect(!metadata.song.isEmpty)
+    #expect(metadata.playLengthMs == 64_000)
+    #expect(metadata.fadeLengthMs == 10_000)
+}
+
+@Test func playPSFLoadsSiblingPSFLibraries() throws {
+    let fileURL = URL(fileURLWithPath: "/private/tmp/cocoaspice-psx-fixtures/dependent/01-BOBBY_A.psf")
+    guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+
+    let decoder = try PlayPSFDecoder(track: TrackItem(url: fileURL), sampleRate: 44_100)
+    let chunk = try decoder.decode(frameCount: 1_024)
+    #expect(chunk.frameCount > 0)
+    #expect(try decoder.metadata().system == "PlayStation")
+    decoder.setSuspended(true)
+    decoder.setSuspended(false)
+    try decoder.seek(toMilliseconds: 0)
+    #expect(try decoder.decode(frameCount: 1_024).frameCount > 0)
+}
+
+@Test func archivePSFLoadsItsSiblingLibrariesFromOneMaterializedSet() throws {
+    let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/ZopharsDomain/PSF/Clock Tower - The First Fear (EMU).zophar.zip")
+    guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }
+
+    let decoder = try PlayPSFDecoder(
+        track: TrackItem(archiveURL: archiveURL, entryPath: "01-BOBBY_A.psf"),
+        sampleRate: 44_100
+    )
+    let chunk = try decoder.decode(frameCount: 1_024)
+    #expect(chunk.frameCount > 0)
+}
+
+@Test func vgmstreamRecognizesPlayStationXA() throws {
+    let fileURL = URL(fileURLWithPath: "/private/tmp/cocoaspice-psx-fixtures/xa/SLUS-00772_01 - Keep Yourself Alive (Sol's Theme).XA")
+    guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
+
+    let inspector = try VGMStreamFileInspector(fileURL: fileURL)
+    #expect(inspector.trackCount >= 1)
+    let metadata = try inspector.metadata(trackIndex: 0)
+    #expect(metadata.system == "PlayStation")
+    #expect(metadata.playLengthMs > 0)
 }
 
 @Test func scannedSPCInspectionSuppliesThePlaybackDuration() async throws {
@@ -446,18 +501,26 @@ private enum CocoaSpiceTestError: Error {
 }
 
 @Test func decoderRegistryDeclaresPlaylistEnumerationCapability() {
-    #expect(GMEFormatSupport.playbackBackend(forPathExtension: "PSF2") == .psf2)
-    #expect(GMEFormatSupport.playbackBackend(forPathExtension: "minipsf2") == .psf2)
+    #expect(GMEFormatSupport.playbackBackend(forPathExtension: "PSF") == .playPSF)
+    #expect(GMEFormatSupport.playbackBackend(forPathExtension: "minipsf") == .playPSF)
+    #expect(GMEFormatSupport.playbackBackend(forPathExtension: "PSF2") == .playPSF)
+    #expect(GMEFormatSupport.playbackBackend(forPathExtension: "minipsf2") == .playPSF)
     #expect(!GMEFormatSupport.requiresTrackEnumeration(forPathExtension: "psf2"))
+    #expect(!GMEFormatSupport.requiresTrackEnumeration(forPathExtension: "psf"))
     #expect(!GMEFormatSupport.requiresTrackEnumeration(forPathExtension: "mini2sf"))
     #expect(GMEFormatSupport.requiresTrackEnumeration(forPathExtension: "nsf"))
     #expect(GMEFormatSupport.requiresTrackEnumeration(forPathExtension: "adx"))
-    #expect(GMEFormatSupport.module(forPathExtension: "minipsf2")?.pluginID == "psf2")
+    #expect(GMEFormatSupport.requiresTrackEnumeration(forPathExtension: "xa"))
+    #expect(GMEFormatSupport.module(forPathExtension: "minipsf")?.pluginID == "play-psf1")
+    #expect(GMEFormatSupport.module(forPathExtension: "minipsf2")?.pluginID == "play-psf2")
+    #expect(GMEFormatSupport.module(forPathExtension: "psf")?.archiveMaterialization == .completeSet)
     #expect(GMEFormatSupport.module(forPathExtension: "psf2")?.archiveMaterialization == .completeSet)
     #expect(GMEFormatSupport.module(forPathExtension: "miniusf")?.archiveMaterialization == .completeSetWithLazyUSFAliases)
     #expect(GMEFormatSupport.module(forPathExtension: "adx")?.archiveMaterialization == .selectedEntry)
     #expect(GMEFormatSupport.scanPluginDescriptors.count == GMEFormatSupport.modules.count)
-    #expect(ScanCoreHandlers.registry.route(for: "PSF2", archiveMember: true)?.pluginID == "psf2")
+    #expect(ScanCoreHandlers.registry.route(for: "PSF", archiveMember: true)?.pluginID == "play-psf1")
+    #expect(ScanCoreHandlers.registry.route(for: "PSF2", archiveMember: true)?.pluginID == "play-psf2")
+    #expect(ScanCoreHandlers.registry.route(for: "XA", archiveMember: true)?.pluginID == "vgmstream")
 
     let registeredExtensionCount = GMEFormatSupport.modules.reduce(0) {
         $0 + $1.supportedExtensions.count

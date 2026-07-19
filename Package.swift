@@ -14,8 +14,8 @@ let twoSFBuildDirectory = "\(rootPath)/.build/2sf"
 let twoSFVendorDirectory = "\(rootPath)/vendor/2sf2wav"
 let vgmstreamBuildDirectory = "\(rootPath)/.build/vgmstream"
 let vgmstreamVendorDirectory = "\(rootPath)/vendor/vgmstream/src"
-let psf2BuildDirectory = "\(rootPath)/.build/psf2"
-let psf2VendorDirectory = "\(rootPath)/vendor/play/tools/PsfPlayer/Source"
+let playPSFBuildDirectory = "\(rootPath)/.build/play-psf"
+let playPSFVendorDirectory = "\(rootPath)/vendor/play/tools/PsfPlayer/Source"
 
 let package = Package(
     name: "CocoaSpice",
@@ -129,13 +129,13 @@ let package = Package(
             ]
         ),
         .target(
-            name: "CPSF2",
-            path: "Sources/CPSF2",
+            name: "CPlayPSF",
+            path: "Sources/CPlayPSF",
             publicHeadersPath: "include",
             cxxSettings: [
                 .unsafeFlags([
                     "-std=c++17",
-                    "-I\(psf2VendorDirectory)",
+                    "-I\(playPSFVendorDirectory)",
                     "-I\(rootPath)/vendor/play/Source",
                     "-I\(rootPath)/vendor/play/Source/app_shared",
                     "-I\(rootPath)/vendor/play/deps/CodeGen/src",
@@ -145,14 +145,14 @@ let package = Package(
                 ])
             ],
             linkerSettings: [
-                .unsafeFlags(["\(psf2BuildDirectory)/libcocoaspice_psf2.a"]),
+                .unsafeFlags(["\(playPSFBuildDirectory)/libcocoaspice_play_psf.a"]),
                 .linkedLibrary("z"),
                 .linkedLibrary("bz2")
             ]
         ),
         .executableTarget(
             name: "CocoaSpice",
-            dependencies: ["CGME", "CLibVGM", "CHighlyComplete", "CLazyUSF", "C2SF", "CPlaybackAudio", "CVGMStream", "CPSF2"],
+            dependencies: ["CGME", "CLibVGM", "CHighlyComplete", "CLazyUSF", "C2SF", "CPlaybackAudio", "CVGMStream", "CPlayPSF"],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("AudioToolbox"),

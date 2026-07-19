@@ -4,7 +4,7 @@ import CHighlyComplete
 import CLazyUSF
 import C2SF
 import CVGMStream
-import CPSF2
+import CPlayPSF
 
 private enum HighlyCompleteBridgeGate {
     private static let lock = NSLock()
@@ -65,8 +65,8 @@ enum PlaybackDecoderFactory {
             return try TwoSFDecoder(track: track, sampleRate: sampleRate)
         case .vgmstream:
             return try VGMStreamDecoder(track: track, sampleRate: sampleRate)
-        case .psf2:
-            return try PSF2Decoder(track: track, sampleRate: sampleRate)
+        case .playPSF:
+            return try PlayPSFDecoder(track: track, sampleRate: sampleRate)
         }
     }
 
@@ -84,8 +84,8 @@ enum PlaybackDecoderFactory {
             return try TwoSFFileInspector(fileURL: fileURL)
         case .vgmstream:
             return try VGMStreamFileInspector(fileURL: fileURL)
-        case .psf2:
-            return try PSF2FileInspector(fileURL: fileURL)
+        case .playPSF:
+            return try PlayPSFFileInspector(fileURL: fileURL)
         }
     }
 

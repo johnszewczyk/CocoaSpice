@@ -2,14 +2,14 @@
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
-build="$root/.build/psf2"
+build="$root/.build/play-psf"
 build_jobs="${COCOASPICE_BUILD_JOBS:-4}"
 patch="$root/patches/play-psfcore-only.patch"
 
 if git -C "$root/vendor/play" apply --check "$patch" >/dev/null 2>&1; then
   git -C "$root/vendor/play" apply "$patch"
 elif ! git -C "$root/vendor/play" apply --reverse --check "$patch" >/dev/null 2>&1; then
-  echo "Play! source does not match the CocoaSpice PSF2 patch" >&2
+  echo "Play! source does not match the CocoaSpice PSF-family patch" >&2
   exit 1
 fi
 
@@ -22,7 +22,7 @@ cmake -S "$root/vendor/play" -B "$build" \
   -DPSFCORE_ONLY=ON
 cmake --build "$build" --target PsfCore --parallel "$build_jobs"
 
-libtool -static -o "$build/libcocoaspice_psf2.a" \
+libtool -static -o "$build/libcocoaspice_play_psf.a" \
   "$build/tools/PsfPlayer/Source/libPsfCore.a" \
   "$build/tools/NamcoSys147NANDTools/Source/libPlayCore.a" \
   "$build/tools/NamcoSys147NANDTools/Source/CodeGen/libCodeGen.a" \

@@ -6,6 +6,7 @@ final class VGMStreamDecoder: AudioTrackDecoder {
     let appliesFadeInternally = false
     private var handle: UnsafeMutableRawPointer?
     private let channels: Int
+    private let systemName: String
 
     init(track: TrackItem, sampleRate: Int) throws {
         let fileURL = try ZipArchiveSupport.materializePlayableFile(for: track)
@@ -19,6 +20,7 @@ final class VGMStreamDecoder: AudioTrackDecoder {
         handle = opened
         channels = max(1, Int(cocoaspice_vgmstream_channels(opened)))
         self.sampleRate = max(1, Int(cocoaspice_vgmstream_sample_rate(opened)))
+        systemName = Self.systemName(forPathExtension: fileURL.pathExtension)
     }
 
     deinit { if let handle { cocoaspice_vgmstream_close(handle) } }
@@ -41,7 +43,7 @@ final class VGMStreamDecoder: AudioTrackDecoder {
     func metadata() throws -> TrackMetadata {
         let playLength = handle.map { Int(cocoaspice_vgmstream_play_length_frames($0) * 1_000 / Int64(sampleRate)) } ?? 0
         let loopLength = handle.map { Int(cocoaspice_vgmstream_loop_length_frames($0) * 1_000 / Int64(sampleRate)) } ?? 0
-        return TrackMetadata(game: "", song: string(cocoaspice_vgmstream_stream_name(handle)), system: "PlayStation 2", author: "", comment: string(cocoaspice_vgmstream_format_name(handle)), introLengthMs: 0, loopLengthMs: loopLength, playLengthMs: playLength, fadeLengthMs: 0)
+        return TrackMetadata(game: "", song: string(cocoaspice_vgmstream_stream_name(handle)), system: systemName, author: "", comment: string(cocoaspice_vgmstream_format_name(handle)), introLengthMs: 0, loopLengthMs: loopLength, playLengthMs: playLength, fadeLengthMs: 0)
     }
 
     func decode(frameCount: Int) throws -> DecodedChunk {
@@ -65,6 +67,10 @@ final class VGMStreamDecoder: AudioTrackDecoder {
         guard let pointer else { return "" }
         return String(cString: pointer)
     }
+
+    fileprivate static func systemName(forPathExtension extensionName: String) -> String {
+        extensionName.lowercased() == "xa" ? "PlayStation" : "PlayStation 2"
+    }
 }
 
 final class VGMStreamFileInspector: AudioFileInspector {
@@ -82,7 +88,7 @@ final class VGMStreamFileInspector: AudioFileInspector {
         guard let opened else { throw SPCDecoderError.initializationFailed }
         defer { cocoaspice_vgmstream_close(opened) }
         let rate = max(1, Int(cocoaspice_vgmstream_sample_rate(opened)))
-        return TrackMetadata(game: "", song: string(cocoaspice_vgmstream_stream_name(opened)), system: "PlayStation 2", author: "", comment: string(cocoaspice_vgmstream_format_name(opened)), introLengthMs: 0, loopLengthMs: Int(cocoaspice_vgmstream_loop_length_frames(opened) * 1_000 / Int64(rate)), playLengthMs: Int(cocoaspice_vgmstream_play_length_frames(opened) * 1_000 / Int64(rate)), fadeLengthMs: 0)
+        return TrackMetadata(game: "", song: string(cocoaspice_vgmstream_stream_name(opened)), system: VGMStreamDecoder.systemName(forPathExtension: fileURL.pathExtension), author: "", comment: string(cocoaspice_vgmstream_format_name(opened)), introLengthMs: 0, loopLengthMs: Int(cocoaspice_vgmstream_loop_length_frames(opened) * 1_000 / Int64(rate)), playLengthMs: Int(cocoaspice_vgmstream_play_length_frames(opened) * 1_000 / Int64(rate)), fadeLengthMs: 0)
     }
 
     private func string(_ pointer: UnsafePointer<CChar>?) -> String {

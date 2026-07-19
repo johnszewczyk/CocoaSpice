@@ -15,10 +15,12 @@
 - `Package.swift` now targets macOS 26 for the app build.
 - `Package.swift` now links a small local `CLibVGM` bridge target against static `libvgm` archives built under `.build/libvgm`.
 - `Package.swift` now also links `CHighlyComplete` against a local static `mGBA` build under `.build/mgba`.
+- `Package.swift` links `CPlayPSF` against the headless Play! PSF-family archive under `.build/play-psf` and links `CVGMStream` against the static vgmstream archive.
 - `Package.swift` also defines the same `mGBA` feature flags for `CHighlyComplete` that the vendored static library was built with, then includes generated `mgba/flags.h` so the bridge sees the same ABI shape as the native archive.
 - `build.sh` assembles a standalone app bundle under `dist/`.
 - `build.sh` runs `scripts/build-libvgm.sh` before `swift build` so the vendored `libvgm` archives exist when SwiftPM links the executable.
 - `build.sh` also runs `scripts/build-mgba.sh` so the vendored `mGBA` archive exists when SwiftPM links the `Highly Complete` backend.
+- `build.sh` runs the bounded `scripts/build-play-psf.sh` and `scripts/build-vgmstream.sh` helpers before SwiftPM links their bridge targets.
 - `build.sh` stages the `.app` in a temporary directory outside the project tree, copies `libgme.0.dylib` into the bundle, rewrites install names, clears recursive macOS extended attributes before and after signing, then copies the verified bundle back into `dist/`.
 - `launch.sh` invokes `build.sh` before launch.
 - `launch.sh` writes app stdout or stderr to `/tmp/CocoaSpice.log`.
@@ -42,5 +44,7 @@
 - [launch.sh](/Users/john/Downloads/Code/CocoaSpice/launch.sh)
 - [scripts/build-libvgm.sh](/Users/john/Downloads/Code/CocoaSpice/scripts/build-libvgm.sh)
 - [scripts/build-mgba.sh](/Users/john/Downloads/Code/CocoaSpice/scripts/build-mgba.sh)
+- [scripts/build-play-psf.sh](/Users/john/Downloads/Code/CocoaSpice/scripts/build-play-psf.sh)
+- [scripts/build-vgmstream.sh](/Users/john/Downloads/Code/CocoaSpice/scripts/build-vgmstream.sh)
 - [Resources/Info.plist](/Users/john/Downloads/Code/CocoaSpice/Resources/Info.plist)
 - [Sources/CGME/shim.h](/Users/john/Downloads/Code/CocoaSpice/Sources/CGME/shim.h)

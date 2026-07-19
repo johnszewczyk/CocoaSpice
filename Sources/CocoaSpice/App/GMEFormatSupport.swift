@@ -7,7 +7,7 @@ enum PlaybackDecoderBackend: Sendable {
     case lazyUSF
     case twoSF
     case vgmstream
-    case psf2
+    case playPSF
 }
 
 enum ArchiveMaterializationPolicy: Equatable, Sendable {
@@ -74,8 +74,9 @@ enum GMEFormatSupport {
     // not only SVAG/IECS. Keep this list explicit so archive discovery and
     // deep scanning agree about what the backend can actually open.
     static let vgmstreamSupportedExtensions: Set<String> = [
-        "adx", "ads", "aus", "hd", "hbd", "iecs", "int", "mib", "mtaf", "rws", "ss2", "svag", "vag"
+        "adx", "ads", "aus", "hd", "hbd", "iecs", "int", "mib", "mtaf", "rws", "ss2", "svag", "vag", "xa"
     ]
+    static let psfSupportedExtensions: Set<String> = ["psf", "minipsf"]
     static let psf2SupportedExtensions: Set<String> = ["psf2", "minipsf2"]
 
     // Static modules are the current plugin boundary. A future dynamically loaded
@@ -112,7 +113,12 @@ enum GMEFormatSupport {
             requiresTrackEnumeration: true, archiveMaterialization: .selectedEntry
         ),
         PlaybackDecoderModule(
-            pluginID: "psf2", displayName: "Play! PSF2", backend: .psf2,
+            pluginID: "play-psf1", displayName: "Play! PSF", backend: .playPSF,
+            supportedExtensions: psfSupportedExtensions,
+            requiresTrackEnumeration: false, archiveMaterialization: .completeSet
+        ),
+        PlaybackDecoderModule(
+            pluginID: "play-psf2", displayName: "Play! PSF2", backend: .playPSF,
             supportedExtensions: psf2SupportedExtensions,
             requiresTrackEnumeration: false, archiveMaterialization: .completeSet
         )
