@@ -255,6 +255,7 @@ private final class AudioExportStreamSession {
         fadeFrameCount = max(0, plan.fadeSeconds * sampleRate)
         self.chunkFrameCount = chunkFrameCount
         format = AVAudioFormat(standardFormatWithSampleRate: Double(sampleRate), channels: channels)!
+        decoder.setLongPlayEnabled(plan.isLongPlay)
         decoder.configurePlayback(
             loopSeconds: plan.preFadeSeconds,
             fadeSeconds: plan.fadeSeconds,

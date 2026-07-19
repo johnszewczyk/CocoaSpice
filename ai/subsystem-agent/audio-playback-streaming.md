@@ -21,8 +21,10 @@
 - Frame-accounting helpers derive position from the session origin and frames supplied to output; completion helpers require planned/native completion and an empty output buffer.
 - The native output boundary uses a preallocated C11 atomic stereo ring buffer and an `AVAudioSourceNode` endpoint.
 - `NativePlaybackSession` owns decoder creation, generation invalidation, dedicated refill work, high-water priming, seek rebuilds, route-change recovery, and one completion callback per generation.
+- Session refill passes decoder channel buffers directly into the native ring buffer without constructing intermediate Swift arrays.
 - `PlaybackEngine` is the app-facing façade and delegates playback, pause/resume, seek, stop, status, spectrum tap, and completion to the native session.
-- Startup, seek, and route recovery prime only 2,048 frames before resuming; the refill worker grows the buffer toward its high-water mark after output starts.
+- Startup, seek, and route recovery prime 8,192 frames before resuming; the refill worker grows the buffer toward its high-water mark after output starts.
+- Track and seek restarts fully stop `AVAudioEngine` before clearing and refilling the ring buffer so the graph cannot preserve render-ahead state and consume the new stream before it becomes audible.
 
 ## Rules
 

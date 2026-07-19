@@ -32,6 +32,25 @@ struct MainView: View {
                 }
                 .disabled(model.playlist.isEmpty)
             }
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    model.cycleRepeatMode()
+                } label: {
+                    Image(systemName: model.repeatMode.iconName)
+                        .foregroundStyle(model.repeatMode == .off ? .secondary : .primary)
+                }
+                .help(model.repeatMode.title)
+                .accessibilityLabel(model.repeatMode.title)
+
+                Button {
+                    model.cycleRandomPlaybackScope()
+                } label: {
+                    Image(systemName: model.randomPlaybackScope.iconName)
+                }
+                .help(model.randomPlaybackScope.title)
+                .accessibilityLabel(model.randomPlaybackScope.title)
+                .disabled(model.playlist.isEmpty && model.databaseGameItems.isEmpty)
+            }
         }
     }
 
@@ -187,6 +206,21 @@ private struct WindowToolbarSpectrumAccessory: NSViewRepresentable {
 
         @MainActor
         func updateAccessoryView() {
+            guard model.isVisible else {
+                removeSpectrumView()
+                return
+            }
+            if hostingView == nil, let window, let container = resolveTitlebarContainerView(for: window) {
+                let hostingView = NSHostingView(rootView: ToolbarSpectrumView(model: model))
+                hostingView.translatesAutoresizingMaskIntoConstraints = false
+                container.addSubview(hostingView)
+                NSLayoutConstraint.activate([
+                    hostingView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
+                    hostingView.centerYAnchor.constraint(equalTo: container.centerYAnchor)
+                ])
+                self.hostingView = hostingView
+                self.titlebarContainerView = container
+            }
             hostingView?.rootView = ToolbarSpectrumView(model: model)
         }
 

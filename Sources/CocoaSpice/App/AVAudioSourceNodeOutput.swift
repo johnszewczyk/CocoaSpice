@@ -17,12 +17,13 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
     private var reachedEnd = false
     private var generation = 0
     private var configurationChangeObserver: NSObjectProtocol?
+    private var spectrumTapInstalled = false
 
     init(
         sampleRate: Double = 44_100,
         channels: AVAudioChannelCount = 2,
         capacityFrames: Int = 88_200,
-        primeFrameCount: Int = 2_048
+        primeFrameCount: Int = 8_192
     ) throws {
         guard sampleRate > 0,
               channels == 2,
@@ -83,6 +84,7 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
         bufferSize: AVAudioFrameCount,
         handler: @escaping (AVAudioPCMBuffer, AVAudioTime?) -> Void
     ) {
+        guard !spectrumTapInstalled else { return }
         let mixerFormat = engine.mainMixerNode.outputFormat(forBus: 0)
         engine.mainMixerNode.installTap(
             onBus: 0,
@@ -90,6 +92,13 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
             format: mixerFormat,
             block: handler
         )
+        spectrumTapInstalled = true
+    }
+
+    func removeSpectrumTap() {
+        guard spectrumTapInstalled else { return }
+        engine.mainMixerNode.removeTap(onBus: 0)
+        spectrumTapInstalled = false
     }
 
     func setConfigurationChangeHandler(_ handler: @escaping @Sendable () -> Void) {
@@ -169,7 +178,11 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
     }
 
     func prepareForRestart() {
-        engine.pause()
+        // A pause preserves AVAudioEngine's render-ahead state. On the next
+        // start, that state can consume freshly queued frames before they are
+        // audible, which makes a new track appear to start late. A full stop
+        // resets the graph's render boundary at every track/seek restart.
+        engine.stop()
         ringBuffer.clear()
         outputState = .stopped
         transportState = .stopped

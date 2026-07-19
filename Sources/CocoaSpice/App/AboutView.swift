@@ -5,33 +5,67 @@ struct AboutView: View {
     private let dependencies: [Dependency] = [
         Dependency(
             name: "game-music-emu / libgme",
+            version: "vendored source snapshot",
             purpose: "SPC, NSF, GBS, HES, KSS, AY, SAP, and related formats",
             license: "LGPL-2.1-or-later",
-            sourceURL: URL(string: "https://github.com/libgme/game-music-emu")!
+            sourceURL: URL(string: "https://github.com/libgme/game-music-emu")!,
+            licenseURL: URL(string: "https://github.com/libgme/game-music-emu/blob/master/COPYING")!
         ),
         Dependency(
             name: "libvgm",
+            version: "0.1 / 867223e",
             purpose: "VGM, VGZ, GYM, and S98 formats",
             license: "Mixed upstream component licenses; see source notices",
-            sourceURL: URL(string: "https://github.com/ValleyBell/libvgm")!
+            sourceURL: URL(string: "https://github.com/ValleyBell/libvgm")!,
+            licenseURL: URL(string: "https://github.com/ValleyBell/libvgm/tree/master/licenses")!
         ),
         Dependency(
             name: "mGBA",
+            version: "d49c093",
             purpose: "Highly Complete GBA audio backend",
             license: "Mozilla Public License 2.0",
-            sourceURL: URL(string: "https://github.com/mgba-emu/mgba")!
+            sourceURL: URL(string: "https://github.com/mgba-emu/mgba")!,
+            licenseURL: URL(string: "https://github.com/mgba-emu/mgba/blob/master/LICENSE")!
         ),
         Dependency(
             name: "psflib",
+            version: "vendored source snapshot",
             purpose: "PSF-chain loading for GSF and USF-family formats",
             license: "See vendored source attribution",
-            sourceURL: URL(string: "https://gitlab.com/kode54/psflib")!
+            sourceURL: URL(string: "https://gitlab.com/kode54/psflib")!,
+            licenseURL: URL(string: "https://gitlab.com/kode54/psflib/-/blob/master/COPYING")!
         ),
         Dependency(
             name: "lazyusf2",
+            version: "421f00b (2022-03-09)",
             purpose: "Nintendo 64 USF and miniUSF playback",
             license: "GNU General Public License 2.0-or-later",
-            sourceURL: URL(string: "https://gitlab.com/kode54/lazyusf2")!
+            sourceURL: URL(string: "https://gitlab.com/kode54/lazyusf2")!,
+            licenseURL: URL(string: "https://gitlab.com/kode54/lazyusf2/-/blob/master/COPYING")!
+        ),
+        Dependency(
+            name: "vgmstream",
+            version: "r2117 / 7f1ceb3",
+            purpose: "PlayStation 2 SVAG/IECS and other game-audio formats",
+            license: "BSD-3-Clause and component licenses",
+            sourceURL: URL(string: "https://github.com/vgmstream/vgmstream")!,
+            licenseURL: URL(string: "https://github.com/vgmstream/vgmstream/blob/master/LICENSE")!
+        ),
+        Dependency(
+            name: "2sf2wav",
+            version: "vendored source snapshot",
+            purpose: "Nintendo DS 2SF playback",
+            license: "GNU General Public License 2.0-or-later",
+            sourceURL: URL(string: "https://github.com/DeaDBeeF-Player/deadbeef/tree/master/plugins/2sf")!,
+            licenseURL: URL(string: "https://github.com/DeaDBeeF-Player/deadbeef/blob/master/COPYING")!
+        ),
+        Dependency(
+            name: "Play! PsfCore",
+            version: "0.30 / 50aedca",
+            purpose: "PlayStation 2 PSF2 and miniPSF2 emulation",
+            license: "BSD 3-Clause",
+            sourceURL: URL(string: "https://github.com/jpd002/Play-")!,
+            licenseURL: URL(string: "https://github.com/jpd002/Play-/blob/master/License.txt")!
         )
     ]
 
@@ -73,7 +107,12 @@ struct AboutView: View {
                                 Text(dependency.name)
                                     .font(.body.weight(.medium))
                                 Spacer()
+                                Text(dependency.version)
+                                    .font(.caption.monospaced())
+                                    .foregroundStyle(.secondary)
                                 Link("Source", destination: dependency.sourceURL)
+                                    .font(.caption)
+                                Link("License", destination: dependency.licenseURL)
                                     .font(.caption)
                             }
                             Text(dependency.purpose)
@@ -107,7 +146,9 @@ struct AboutView: View {
 private struct Dependency: Identifiable {
     let id = UUID()
     let name: String
+    let version: String
     let purpose: String
     let license: String
     let sourceURL: URL
+    let licenseURL: URL
 }

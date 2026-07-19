@@ -6,11 +6,33 @@ enum PlaybackDecoderBackend: Sendable {
     case highlyComplete
     case lazyUSF
     case twoSF
+    case vgmstream
+    case psf2
+}
+
+enum ArchiveMaterializationPolicy: Equatable, Sendable {
+    case selectedEntry
+    case completeSet
+    case completeSetWithLazyUSFAliases
 }
 
 struct PlaybackDecoderModule: Sendable {
+    let pluginID: String
+    let displayName: String
     let backend: PlaybackDecoderBackend
     let supportedExtensions: Set<String>
+    let requiresTrackEnumeration: Bool
+    let archiveMaterialization: ArchiveMaterializationPolicy
+
+    var scanDescriptor: ScanPluginDescriptor {
+        ScanPluginDescriptor(
+            pluginID: pluginID,
+            displayName: displayName,
+            supportedExtensions: supportedExtensions,
+            supportsMultiTrack: requiresTrackEnumeration,
+            priority: 10
+        )
+    }
 }
 
 enum GMEFormatSupport {
@@ -48,20 +70,67 @@ enum GMEFormatSupport {
         "mini2sf"
     ]
 
+    // vgmstream handles the PS2 rip families found in the Zophar collection,
+    // not only SVAG/IECS. Keep this list explicit so archive discovery and
+    // deep scanning agree about what the backend can actually open.
+    static let vgmstreamSupportedExtensions: Set<String> = [
+        "adx", "ads", "aus", "hd", "hbd", "iecs", "int", "mib", "mtaf", "rws", "ss2", "svag", "vag"
+    ]
+    static let psf2SupportedExtensions: Set<String> = ["psf2", "minipsf2"]
+
     // Static modules are the current plugin boundary. A future dynamically loaded
     // module can provide the same extension and backend registration contract.
     static let modules: [PlaybackDecoderModule] = [
-        PlaybackDecoderModule(backend: .gme, supportedExtensions: libGMESupportedExtensions),
-        PlaybackDecoderModule(backend: .libvgm, supportedExtensions: libVGMSupportedExtensions),
-        PlaybackDecoderModule(backend: .highlyComplete, supportedExtensions: highlyCompleteSupportedExtensions),
-        PlaybackDecoderModule(backend: .lazyUSF, supportedExtensions: lazyUSFSupportedExtensions),
-        PlaybackDecoderModule(backend: .twoSF, supportedExtensions: twoSFSupportedExtensions)
+        PlaybackDecoderModule(
+            pluginID: "gme", displayName: "Game Music Emu", backend: .gme,
+            supportedExtensions: libGMESupportedExtensions,
+            requiresTrackEnumeration: true, archiveMaterialization: .selectedEntry
+        ),
+        PlaybackDecoderModule(
+            pluginID: "libvgm", displayName: "libVGM", backend: .libvgm,
+            supportedExtensions: libVGMSupportedExtensions,
+            requiresTrackEnumeration: true, archiveMaterialization: .selectedEntry
+        ),
+        PlaybackDecoderModule(
+            pluginID: "highly-complete", displayName: "Highly Complete", backend: .highlyComplete,
+            supportedExtensions: highlyCompleteSupportedExtensions,
+            requiresTrackEnumeration: true, archiveMaterialization: .completeSet
+        ),
+        PlaybackDecoderModule(
+            pluginID: "lazyusf", displayName: "LazyUSF", backend: .lazyUSF,
+            supportedExtensions: lazyUSFSupportedExtensions,
+            requiresTrackEnumeration: false, archiveMaterialization: .completeSetWithLazyUSFAliases
+        ),
+        PlaybackDecoderModule(
+            pluginID: "twosf", displayName: "2SF", backend: .twoSF,
+            supportedExtensions: twoSFSupportedExtensions,
+            requiresTrackEnumeration: false, archiveMaterialization: .completeSet
+        ),
+        PlaybackDecoderModule(
+            pluginID: "vgmstream", displayName: "vgmstream", backend: .vgmstream,
+            supportedExtensions: vgmstreamSupportedExtensions,
+            requiresTrackEnumeration: true, archiveMaterialization: .selectedEntry
+        ),
+        PlaybackDecoderModule(
+            pluginID: "psf2", displayName: "Play! PSF2", backend: .psf2,
+            supportedExtensions: psf2SupportedExtensions,
+            requiresTrackEnumeration: false, archiveMaterialization: .completeSet
+        )
     ]
 
     static let supportedExtensions: Set<String> = Set(modules.flatMap(\.supportedExtensions))
+    static let scanPluginDescriptors = modules.map(\.scanDescriptor)
+
+    static func module(forPathExtension extensionName: String) -> PlaybackDecoderModule? {
+        let normalized = extensionName.lowercased()
+        return modules.first { $0.supportedExtensions.contains(normalized) }
+    }
 
     static func playbackBackend(forPathExtension extensionName: String) -> PlaybackDecoderBackend? {
-        let normalized = extensionName.lowercased()
-        return modules.first { $0.supportedExtensions.contains(normalized) }?.backend
+        module(forPathExtension: extensionName)?.backend
+    }
+
+    static func requiresTrackEnumeration(forPathExtension extensionName: String) -> Bool {
+        module(forPathExtension: extensionName)?.requiresTrackEnumeration ?? false
     }
 }

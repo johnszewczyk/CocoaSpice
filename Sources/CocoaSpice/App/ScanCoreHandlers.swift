@@ -27,96 +27,13 @@ struct DecoderCoreScanHandler: ScanFormatHandler {
 }
 
 enum ScanCoreHandlers {
-    static let registry = ScanPluginRegistry(descriptors: [
-        ScanPluginDescriptor(
-            pluginID: "gme",
-            displayName: "Game Music Emu",
-            supportedExtensions: GMEFormatSupport.libGMESupportedExtensions,
-            supportsMultiTrack: true,
-            priority: 10
-        ),
-        ScanPluginDescriptor(
-            pluginID: "libvgm",
-            displayName: "libVGM",
-            supportedExtensions: GMEFormatSupport.libVGMSupportedExtensions,
-            supportsMultiTrack: true,
-            priority: 10
-        ),
-        ScanPluginDescriptor(
-            pluginID: "highly-complete",
-            displayName: "Highly Complete",
-            supportedExtensions: GMEFormatSupport.highlyCompleteSupportedExtensions,
-            supportsMultiTrack: true,
-            priority: 10
-        ),
-        ScanPluginDescriptor(
-            pluginID: "lazyusf",
-            displayName: "LazyUSF",
-            supportedExtensions: GMEFormatSupport.lazyUSFSupportedExtensions,
-            supportsMultiTrack: true,
-            priority: 10
-        ),
-        ScanPluginDescriptor(
-            pluginID: "twosf",
-            displayName: "2SF",
-            supportedExtensions: GMEFormatSupport.twoSFSupportedExtensions,
-            supportsMultiTrack: false,
-            priority: 10
-        )
-    ])
+    static let registry = ScanPluginRegistry(
+        descriptors: GMEFormatSupport.scanPluginDescriptors
+    )
 
-    static let handlers = ScanPluginHandlerRegistry(handlers: [
-        DecoderCoreScanHandler(descriptor: registryDescriptor("gme")),
-        DecoderCoreScanHandler(descriptor: registryDescriptor("libvgm")),
-        DecoderCoreScanHandler(descriptor: registryDescriptor("highly-complete")),
-        DecoderCoreScanHandler(descriptor: registryDescriptor("lazyusf")),
-        DecoderCoreScanHandler(descriptor: registryDescriptor("twosf"))
-    ])
-
-    private static func registryDescriptor(_ pluginID: String) -> ScanPluginDescriptor {
-        // The handler descriptors are kept in one registry above so adding a
-        // plugin requires one descriptor and one handler, not scanner changes.
-        switch pluginID {
-        case "gme":
-            return ScanPluginDescriptor(
-                pluginID: "gme",
-                displayName: "Game Music Emu",
-                supportedExtensions: GMEFormatSupport.libGMESupportedExtensions,
-                supportsMultiTrack: true,
-                priority: 10
-            )
-        case "libvgm":
-            return ScanPluginDescriptor(
-                pluginID: "libvgm",
-                displayName: "libVGM",
-                supportedExtensions: GMEFormatSupport.libVGMSupportedExtensions,
-                supportsMultiTrack: true,
-                priority: 10
-            )
-        case "highly-complete":
-            return ScanPluginDescriptor(
-                pluginID: "highly-complete",
-                displayName: "Highly Complete",
-                supportedExtensions: GMEFormatSupport.highlyCompleteSupportedExtensions,
-                supportsMultiTrack: true,
-                priority: 10
-            )
-        case "twosf":
-            return ScanPluginDescriptor(
-                pluginID: "twosf",
-                displayName: "2SF",
-                supportedExtensions: GMEFormatSupport.twoSFSupportedExtensions,
-                supportsMultiTrack: false,
-                priority: 10
-            )
-        default:
-            return ScanPluginDescriptor(
-                pluginID: "lazyusf",
-                displayName: "LazyUSF",
-                supportedExtensions: GMEFormatSupport.lazyUSFSupportedExtensions,
-                supportsMultiTrack: true,
-                priority: 10
-            )
+    static let handlers = ScanPluginHandlerRegistry(
+        handlers: GMEFormatSupport.scanPluginDescriptors.map {
+            DecoderCoreScanHandler(descriptor: $0) as any ScanFormatHandler
         }
-    }
+    )
 }

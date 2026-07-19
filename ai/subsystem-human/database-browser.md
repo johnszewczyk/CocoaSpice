@@ -6,6 +6,7 @@
 - Rows: dense list of scanned games by default.
 - Console View: Options can group games under expandable console headings.
 - Rows: show track counts and scan-root status.
+- Fast Scan playlist activation expands archived GBS files into their individual subtracks.
 
 ## Search
 

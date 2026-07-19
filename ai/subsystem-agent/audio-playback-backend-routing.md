@@ -17,6 +17,7 @@
 - `Highly Complete` now owns `gsf` and `minigsf`.
 - The vendored `2sf2wav` core owns `2sf` and `mini2sf` through `C2SF`. Its bridge is serialized because the underlying DS core uses shared global state.
 - File inspection and playback share the same backend-routing table, so scan results, playlist import, and playback no longer disagree about VGM-family ownership.
+- Each static decoder module registers its plugin identifier, display name, extensions, subtrack-enumeration requirement, and archive materialization policy once. Scanner descriptors, playlist admission, and dependency-aware archive materialization derive from that registration.
 - `libvgm` is wrapped behind a small C bridge target so the Swift app can stay mostly ignorant of C++ details.
 - `Highly Complete` is also wrapped behind a local native bridge target, using `psflib` plus a headless `mGBA` core for GBA-audio execution.
 - The Swift wrapper serializes `Highly Complete` bridge calls behind a dedicated gate because this backend has stricter runtime-safety constraints than the others.
@@ -27,6 +28,7 @@
 ## Rules
 
 - Keep backend routing centralized; do not re-encode extension decisions in UI or playlist code.
+- Adding a decoder family requires one module registration plus its decoder/inspector factory cases; scanner descriptor lists and archive dependency extension conditionals must not be duplicated elsewhere.
 - Keep file intake policy, decoder routing, and Long Play policy as separate concerns.
 - Archive materialization happens before backend creation. ZIP and 7z members stream through `7zz`; RSN members route through `unar` because RSN files are solid RAR-family archives.
 - Prefer adding new decoder backends under the existing playback abstractions instead of branching the view model.

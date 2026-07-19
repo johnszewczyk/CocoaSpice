@@ -10,6 +10,7 @@ struct OptionsView: View {
         case database = "Database"
         case interface = "Interface"
         case playback = "Playback"
+        case plugins = "Plugins"
 
         var id: Self { self }
 
@@ -18,6 +19,7 @@ struct OptionsView: View {
             case .playback: "waveform"
             case .interface: "paintbrush"
             case .database: "externaldrive"
+            case .plugins: "puzzlepiece.extension"
             }
         }
     }
@@ -56,6 +58,7 @@ struct OptionsView: View {
                         case .playback: playbackPage
                         case .interface: interfacePage
                         case .database: databasePage
+                        case .plugins: pluginsPage
                         }
                     }
                     .padding(20)
@@ -63,7 +66,8 @@ struct OptionsView: View {
 
             }
         }
-        .frame(width: 1280, height: 720)
+        .frame(minWidth: 320, minHeight: 240)
+        .background(OptionsWindowConfigurator())
         .onAppear {
             longPlayTimeText = Self.formatTime(model.manualPreFadeSeconds)
         }
@@ -75,6 +79,18 @@ struct OptionsView: View {
             if longPlayTimeText != formatted {
                 longPlayTimeText = formatted
             }
+        }
+    }
+
+    private struct OptionsWindowConfigurator: NSViewRepresentable {
+        func makeNSView(context: Context) -> NSView {
+            NSView()
+        }
+
+        func updateNSView(_ nsView: NSView, context: Context) {
+            guard let window = nsView.window else { return }
+            window.minSize = NSSize(width: 320, height: 240)
+            window.setFrameAutosaveName("CocoaSpice.Options")
         }
     }
 
@@ -121,6 +137,43 @@ struct OptionsView: View {
         }
     }
 
+    private var pluginsPage: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionCard(title: "External Plugins and Software") {
+                Text("This page currently lists the external decoders, emulators, and libraries used by CocoaSpice. It is an inventory only; plugin loading and configuration are not exposed here yet.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+
+                ForEach(Self.externalComponents) { component in
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(component.name)
+                            .foregroundStyle(.white)
+                        Spacer()
+                        Text(component.version)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+            }
+        }
+    }
+
+    private struct ExternalComponent: Identifiable {
+        let id = UUID()
+        let name: String
+        let version: String
+    }
+
+    private static let externalComponents = [
+        ExternalComponent(name: "Game Music Emu / libgme", version: "0.6.5"),
+        ExternalComponent(name: "libvgm", version: "vendored snapshot"),
+        ExternalComponent(name: "vgmstream", version: "vendored snapshot"),
+        ExternalComponent(name: "mGBA / Highly Complete", version: "vendored snapshot"),
+        ExternalComponent(name: "lazyusf2", version: "vendored snapshot"),
+        ExternalComponent(name: "2sf2wav", version: "vendored snapshot"),
+        ExternalComponent(name: "psflib", version: "vendored snapshot")
+    ]
+
     private var interfacePage: some View {
         VStack(alignment: .leading, spacing: 16) {
             sectionCard(title: "Spectrum") {
@@ -128,6 +181,10 @@ struct OptionsView: View {
                     Text("Choose the colors used by the toolbar spectrum analyzer.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
+
+                    Toggle("Enable Spectrum", isOn: $model.spectrumEnabled)
+                        .toggleStyle(.checkbox)
+                        .foregroundStyle(.white)
 
                     HStack(spacing: 16) {
                         ColorPicker("Base", selection: colorBinding(for: \.spectrumGradientStartColor), supportsOpacity: false)
@@ -209,6 +266,15 @@ struct OptionsView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
+
+            sectionCard(title: "Windows") {
+                Text("Restore the default size and centered position for CocoaSpice windows.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                Button("Reset Windows") {
+                    NotificationCenter.default.post(name: .cocoaSpiceResetWindows, object: nil)
+                }
+            }
         }
     }
 
@@ -247,10 +313,14 @@ struct OptionsView: View {
                         model.trimMissingLibrary()
                     }
                     .disabled(model.libraryScanInProgress)
-                    Button("Purge Database") {
+                    Button("Reset Database") {
                         model.purgeLibraryDatabase()
                     }
                     .disabled(model.libraryScanInProgress)
+                    Button("Reset Paths") {
+                        model.resetLibraryPaths()
+                    }
+                    .disabled(model.libraryScanInProgress || model.libraryScanRoots.isEmpty)
                     Spacer()
                 }
 

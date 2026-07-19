@@ -1,6 +1,31 @@
 import AppKit
 import SwiftUI
 
+extension Notification.Name {
+    static let cocoaSpiceResetWindows = Notification.Name("CocoaSpice.resetWindows")
+}
+
+@MainActor
+private enum CocoaSpiceWindowDefaults {
+    static func resetAll() {
+        let defaults: [(String, NSSize)] = [
+            ("CocoaSpice", NSSize(width: 1100, height: 720)),
+            ("Options", NSSize(width: 800, height: 600)),
+            ("About CocoaSpice", NSSize(width: 560, height: 620))
+        ]
+        for window in NSApplication.shared.windows {
+            guard let match = defaults.first(where: { window.title == $0.0 }) else { continue }
+            window.setFrame(centeredFrame(size: match.1, on: window.screen), display: true, animate: false)
+            window.setFrameAutosaveName("")
+        }
+    }
+
+    private static func centeredFrame(size: NSSize, on screen: NSScreen?) -> NSRect {
+        let visible = (screen ?? NSScreen.main)?.visibleFrame ?? NSRect(x: 0, y: 0, width: 1440, height: 900)
+        return NSRect(x: visible.midX - size.width / 2, y: visible.midY - size.height / 2, width: size.width, height: size.height)
+    }
+}
+
 @main
 struct CocoaSpiceApp: App {
     @State private var model = PlayerViewModel()
@@ -27,6 +52,9 @@ struct CocoaSpiceApp: App {
                 .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in
                     model.saveSessionStateNow()
                 }
+                .onReceive(NotificationCenter.default.publisher(for: .cocoaSpiceResetWindows)) { _ in
+                    CocoaSpiceWindowDefaults.resetAll()
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .windowToolbarStyle(.unified(showsTitle: false))
@@ -40,8 +68,8 @@ struct CocoaSpiceApp: App {
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
-        .defaultSize(width: 1280, height: 720)
-        .windowResizability(.contentSize)
+        .defaultSize(width: 800, height: 600)
+        .windowResizability(.contentMinSize)
 
         Window("About CocoaSpice", id: "about") {
             AboutView()
@@ -59,7 +87,7 @@ private struct CocoaSpiceCommands: Commands {
 
     var body: some Commands {
         CommandGroup(replacing: .appInfo) {
-            Button("About CocoaSpice") {
+            Button("About") {
                 openWindow(id: "about")
             }
         }

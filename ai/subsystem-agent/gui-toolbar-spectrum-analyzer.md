@@ -15,6 +15,7 @@
 - The analyzer uses 8 logarithmically spaced bands across a chiptune-oriented range rather than a textbook full-range EQ map.
 - The band range is `80 Hz` through `4 kHz`, with equal relative spacing across the range and one center-frequency probe per band.
 - The display updates on a 60 Hz UI timer only while playback is active; spectrum analysis is throttled to 12 Hz over 256 samples. The display stops and clears when playback stops so an idle window does not continuously redraw.
+- The persisted `Enable Spectrum` preference gates analyzer processing at the audio-tap boundary; disabling it stops spectrum analysis and clears the display without stopping playback.
 - Rising bars are raw and immediate.
 - Falling bars use one light exponential settle with a `50 ms` time constant.
 - Peak caps are separate from the bars and use a short hold plus exponential fall.

@@ -20,6 +20,7 @@ final class ToolbarSpectrumModel {
     private var capHoldRemaining = Array(repeating: 0.0, count: bandCount)
     private var lastAnimationUptime: TimeInterval?
     private var displayTimer: Timer?
+    var isVisible = true
 
     func update(with newLevels: [Float]) {
         guard !newLevels.isEmpty else {

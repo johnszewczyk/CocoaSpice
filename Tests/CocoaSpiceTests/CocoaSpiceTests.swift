@@ -428,8 +428,8 @@ private enum CocoaSpiceTestError: Error {
     #expect(tracks.allSatisfy { $0.track.trackCount == 256 })
 }
 
-@Test @MainActor func spectrumAnalyzerUsesFortyBands() {
-    #expect(ToolbarSpectrumModel.bandCount == 40)
+@Test @MainActor func spectrumAnalyzerUsesEightBands() {
+    #expect(ToolbarSpectrumModel.bandCount == 8)
 }
 
 @Test func playbackBackendRoutesVGMFamilyToLibVGM() {
@@ -443,6 +443,26 @@ private enum CocoaSpiceTestError: Error {
     #expect(GMEFormatSupport.playbackBackend(forPathExtension: "minigsf") == .highlyComplete)
     #expect(GMEFormatSupport.playbackBackend(forPathExtension: "usf") == .lazyUSF)
     #expect(GMEFormatSupport.playbackBackend(forPathExtension: "miniusf") == .lazyUSF)
+}
+
+@Test func decoderRegistryDeclaresPlaylistEnumerationCapability() {
+    #expect(GMEFormatSupport.playbackBackend(forPathExtension: "PSF2") == .psf2)
+    #expect(GMEFormatSupport.playbackBackend(forPathExtension: "minipsf2") == .psf2)
+    #expect(!GMEFormatSupport.requiresTrackEnumeration(forPathExtension: "psf2"))
+    #expect(!GMEFormatSupport.requiresTrackEnumeration(forPathExtension: "mini2sf"))
+    #expect(GMEFormatSupport.requiresTrackEnumeration(forPathExtension: "nsf"))
+    #expect(GMEFormatSupport.requiresTrackEnumeration(forPathExtension: "adx"))
+    #expect(GMEFormatSupport.module(forPathExtension: "minipsf2")?.pluginID == "psf2")
+    #expect(GMEFormatSupport.module(forPathExtension: "psf2")?.archiveMaterialization == .completeSet)
+    #expect(GMEFormatSupport.module(forPathExtension: "miniusf")?.archiveMaterialization == .completeSetWithLazyUSFAliases)
+    #expect(GMEFormatSupport.module(forPathExtension: "adx")?.archiveMaterialization == .selectedEntry)
+    #expect(GMEFormatSupport.scanPluginDescriptors.count == GMEFormatSupport.modules.count)
+    #expect(ScanCoreHandlers.registry.route(for: "PSF2", archiveMember: true)?.pluginID == "psf2")
+
+    let registeredExtensionCount = GMEFormatSupport.modules.reduce(0) {
+        $0 + $1.supportedExtensions.count
+    }
+    #expect(GMEFormatSupport.supportedExtensions.count == registeredExtensionCount)
 }
 
 @Test func frameAccountingUsesSuppliedOutputFrames() {
@@ -613,6 +633,37 @@ private enum CocoaSpiceTestError: Error {
 
     #expect(nextFromFirst == second)
     #expect(nextFromPending == third)
+}
+
+@Test func completionAdvancesWithinTheCurrentQueueWithoutWrapping() {
+    let first = TrackItem(url: URL(fileURLWithPath: "/tmp/one.spc"))
+    let second = TrackItem(url: URL(fileURLWithPath: "/tmp/two.spc"))
+    let third = TrackItem(url: URL(fileURLWithPath: "/tmp/three.spc"))
+    let playlist = [first, second, third]
+
+    #expect(QueueTransportNavigation.completionAdvanceTarget(
+        currentTrack: first,
+        playlist: playlist
+    ) == second)
+    #expect(QueueTransportNavigation.completionAdvanceTarget(
+        currentTrack: third,
+        playlist: playlist
+    ) == nil)
+}
+
+@Test func completionStartsAtHeadWhenAReplacementQueueDoesNotContainPlayingTrack() {
+    let oldTrack = TrackItem(url: URL(fileURLWithPath: "/tmp/old.spc"))
+    let replacementFirst = TrackItem(url: URL(fileURLWithPath: "/tmp/new-one.spc"))
+    let replacementSecond = TrackItem(url: URL(fileURLWithPath: "/tmp/new-two.spc"))
+
+    #expect(QueueTransportNavigation.completionAdvanceTarget(
+        currentTrack: oldTrack,
+        playlist: [replacementFirst, replacementSecond]
+    ) == replacementFirst)
+    #expect(QueueTransportNavigation.completionAdvanceTarget(
+        currentTrack: oldTrack,
+        playlist: []
+    ) == nil)
 }
 
 @Test func databaseSidebarDisambiguatesDuplicateGameTitlesBySystem() {
@@ -881,6 +932,35 @@ private enum CocoaSpiceTestError: Error {
     )
     #expect(!nsfPlan.usesNativeEnding)
     #expect(nsfPlan.preFadeSeconds == 240)
+}
+
+@Test func longPlayPlanIsUniformForEveryRegisteredDecoderExtension() {
+    for module in GMEFormatSupport.modules {
+        for extensionName in module.supportedExtensions {
+            let plan = PlaybackTimingPolicy.playbackPlan(
+                metadata: nil,
+                trackPathExtension: extensionName.uppercased(),
+                longPlayEnabled: true,
+                manualPreFadeSeconds: 240,
+                fadeSeconds: 6
+            )
+            #expect(plan.isLongPlay, "Long Play was not enabled for \(extensionName)")
+            #expect(!plan.usesNativeEnding, "Native ending was not suppressed for \(extensionName)")
+            #expect(plan.preFadeSeconds == 240)
+            #expect(plan.fadeSeconds == 6)
+            #expect(plan.totalSeconds == 246)
+        }
+    }
+
+    let unsupported = PlaybackTimingPolicy.playbackPlan(
+        metadata: nil,
+        trackPathExtension: "mp3",
+        longPlayEnabled: true,
+        manualPreFadeSeconds: 240,
+        fadeSeconds: 6
+    )
+    #expect(!unsupported.isLongPlay)
+    #expect(unsupported.usesNativeEnding)
 }
 
 @Test func playbackPreferencesRestoreOnlyUnifiedKeys() {

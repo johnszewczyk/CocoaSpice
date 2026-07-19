@@ -20,3 +20,6 @@ vendor/2sf2wav/*.a
 # Local editor and OS metadata
 .idea/
 .vscode/
+
+# Local playback fixtures are intentionally not source artifacts.
+Silent Hill 2 (EMU).zophar.zip

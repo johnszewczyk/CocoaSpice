@@ -3,6 +3,8 @@ import CLibVGM
 import CHighlyComplete
 import CLazyUSF
 import C2SF
+import CVGMStream
+import CPSF2
 
 private enum HighlyCompleteBridgeGate {
     private static let lock = NSLock()
@@ -31,9 +33,16 @@ protocol AudioTrackDecoder {
     var appliesFadeInternally: Bool { get }
 
     func metadata() throws -> TrackMetadata
+    func setLongPlayEnabled(_ enabled: Bool)
     func configurePlayback(loopSeconds: Int, fadeSeconds: Int, usesNativeEnding: Bool)
+    func setSuspended(_ suspended: Bool)
     func seek(toMilliseconds milliseconds: Int) throws
     func decode(frameCount: Int) throws -> DecodedChunk
+}
+
+extension AudioTrackDecoder {
+    func setLongPlayEnabled(_ enabled: Bool) {}
+    func setSuspended(_ suspended: Bool) {}
 }
 
 protocol AudioFileInspector {
@@ -54,6 +63,10 @@ enum PlaybackDecoderFactory {
             return try LazyUSFDecoder(track: track, sampleRate: sampleRate)
         case .twoSF:
             return try TwoSFDecoder(track: track, sampleRate: sampleRate)
+        case .vgmstream:
+            return try VGMStreamDecoder(track: track, sampleRate: sampleRate)
+        case .psf2:
+            return try PSF2Decoder(track: track, sampleRate: sampleRate)
         }
     }
 
@@ -69,6 +82,10 @@ enum PlaybackDecoderFactory {
             return try LazyUSFFileInspector(fileURL: fileURL)
         case .twoSF:
             return try TwoSFFileInspector(fileURL: fileURL)
+        case .vgmstream:
+            return try VGMStreamFileInspector(fileURL: fileURL)
+        case .psf2:
+            return try PSF2FileInspector(fileURL: fileURL)
         }
     }
 

@@ -78,10 +78,16 @@ extension LibraryDatabase {
         )
     }
 
-    func markScanCompleted(rootID: Int64, trackCount: Int) throws {
+    func markScanCompleted(rootID: Int64) throws {
         try execute(
-            "UPDATE library_roots SET last_scan_completed_at = ?, last_scan_track_count = ?, last_scan_error = NULL WHERE id = ?;",
-            bindings: [.double(Date().timeIntervalSince1970), .int(Int64(trackCount)), .int(rootID)]
+            """
+            UPDATE library_roots
+            SET last_scan_completed_at = ?,
+                last_scan_track_count = (SELECT COUNT(*) FROM tracks WHERE root_id = ?),
+                last_scan_error = NULL
+            WHERE id = ?;
+            """,
+            bindings: [.double(Date().timeIntervalSince1970), .int(rootID), .int(rootID)]
         )
     }
 }

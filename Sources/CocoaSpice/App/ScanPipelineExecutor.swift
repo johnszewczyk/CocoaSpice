@@ -146,6 +146,7 @@ struct ScanPipelineExecutor: Sendable {
             var results: [ScanPipelineResult] = []
             results.reserveCapacity(members.count)
             var archiveSetURL: URL?
+            var lazyUSFAliasesPrepared = false
             for member in members {
                 try Task.checkCancellation()
                 let identity = ScanItemIdentity(
@@ -165,16 +166,30 @@ struct ScanPipelineExecutor: Sendable {
                 }
                 do {
                     let materializedURL: URL
-                    if memberCandidate.route?.pluginID == "lazyusf" {
+                    guard let module = GMEFormatSupport.module(
+                        forPathExtension: member.route?.formatExtension
+                            ?? URL(fileURLWithPath: member.entryPath).pathExtension
+                    ) else {
+                        throw ZipArchiveSupport.ArchiveError.invalidEntryPath(member.entryPath)
+                    }
+                    switch module.archiveMaterialization {
+                    case .selectedEntry:
+                        materializedURL = try await materialize(
+                            memberCandidate,
+                            archiveEntry: member.entryPath
+                        )
+                    case .completeSet, .completeSetWithLazyUSFAliases:
                         if archiveSetURL == nil {
-                            archiveSetURL = try await ScanOperationTimeout.run(description: "extracting USF set \(candidate.sourceURL.lastPathComponent)") {
+                            archiveSetURL = try await ScanOperationTimeout.run(description: "extracting dependency set \(candidate.sourceURL.lastPathComponent)") {
                                 try await archiveProvider.materializeArchive(at: candidate.sourceURL)
                             }
+                        }
+                        if case .completeSetWithLazyUSFAliases = module.archiveMaterialization,
+                           !lazyUSFAliasesPrepared {
                             try ZipArchiveSupport.prepareLazyUSFDependencies(in: archiveSetURL!)
+                            lazyUSFAliasesPrepared = true
                         }
                         materializedURL = ZipArchiveSupport.archiveMemberURL(in: archiveSetURL!, entryPath: member.entryPath)
-                    } else {
-                        materializedURL = try await materialize(memberCandidate, archiveEntry: member.entryPath)
                     }
                     results.append(try await processFile(
                         memberCandidate,
@@ -263,15 +278,25 @@ struct ScanPipelineExecutor: Sendable {
     }
 
     private func materialize(_ candidate: ScanCandidate, archiveEntry: String) async throws -> URL {
-        if candidate.route?.pluginID == "lazyusf" {
-            let root = try await ScanOperationTimeout.run(description: "extracting USF set \(candidate.sourceURL.lastPathComponent)") {
+        let extensionName = candidate.route?.formatExtension
+            ?? URL(fileURLWithPath: archiveEntry).pathExtension
+        guard let module = GMEFormatSupport.module(forPathExtension: extensionName) else {
+            throw ZipArchiveSupport.ArchiveError.invalidEntryPath(archiveEntry)
+        }
+
+        switch module.archiveMaterialization {
+        case .selectedEntry:
+            return try await ScanOperationTimeout.run(description: "extracting \(candidate.identityDescription)") {
+                try await archiveProvider.materialize(archiveURL: candidate.sourceURL, entryPath: archiveEntry)
+            }
+        case .completeSet, .completeSetWithLazyUSFAliases:
+            let root = try await ScanOperationTimeout.run(description: "extracting dependency set \(candidate.sourceURL.lastPathComponent)") {
                 try await archiveProvider.materializeArchive(at: candidate.sourceURL)
             }
-            try ZipArchiveSupport.prepareLazyUSFDependencies(in: root)
+            if case .completeSetWithLazyUSFAliases = module.archiveMaterialization {
+                try ZipArchiveSupport.prepareLazyUSFDependencies(in: root)
+            }
             return ZipArchiveSupport.archiveMemberURL(in: root, entryPath: archiveEntry)
-        }
-        return try await ScanOperationTimeout.run(description: "extracting \(candidate.identityDescription)") {
-            try await archiveProvider.materialize(archiveURL: candidate.sourceURL, entryPath: archiveEntry)
         }
     }
 

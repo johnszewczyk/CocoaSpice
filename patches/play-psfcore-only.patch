@@ -1,0 +1,18 @@
+diff --git a/tools/PsfPlayer/CMakeLists.txt b/tools/PsfPlayer/CMakeLists.txt
+index 427b220..d7ebfbc 100644
+--- a/tools/PsfPlayer/CMakeLists.txt
++++ b/tools/PsfPlayer/CMakeLists.txt
+@@ -8,6 +8,13 @@ include(Header)
+ 
+ project(PsfPlayer)
+ 
++option(PSFCORE_ONLY "Build the PSF decoder core without a platform UI" OFF)
++
++if(PSFCORE_ONLY)
++	add_subdirectory(Source)
++	return()
++endif()
++
+ if(TARGET_PLATFORM_UNIX)
+ 	set(USE_QT ON CACHE BOOL "Use Qt UI")
+ endif()

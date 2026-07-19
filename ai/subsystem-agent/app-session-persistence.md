@@ -11,7 +11,7 @@
 - `PlayerViewModel` is the shared app model.
 - User-defaults serialization now lives in a dedicated persistence helper rather than inline throughout the view model.
 - Playback timing persistence is now unified to one `Long Play` toggle and one manual duration key.
-- Spectrum analyzer colors persist as explicit `Base`, `Peak`, and `Cap` settings in `UserDefaults`.
+- Spectrum analyzer enabled state and explicit `Base`, `Peak`, and `Cap` colors persist in `UserDefaults`.
 - Playlist state is separate from sidebar state.
 - Persisted playlist restore includes queued paths, selected track path, and current track path.
 - The current database sidebar persists its last selected library folder path independently from queued playlist state.

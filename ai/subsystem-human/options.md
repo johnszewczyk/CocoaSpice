@@ -21,6 +21,9 @@
 ## Interface
 
 - Spectrum analyzer: choose base, peak, and cap colors.
+- Spectrum analyzer: `Enable Spectrum` can disable spectrum analysis and its toolbar display while playback continues.
+- Random playback: the main toolbar cycles between Off, Library random, and current Playlist-view random modes.
+- About: the macOS application menu opens the external-component inventory with source and license links.
 - Database sidebar: set the sidebar font size in points.
 - Database sidebar: choose primary, secondary, or tertiary text color.
 - Database sidebar: enable a monospaced font or Console View grouping.
@@ -29,8 +32,10 @@
 ## Window
 
 - Options opens in a native titled macOS window.
-- The window is 1280pt wide and 720pt tall.
-- The sidebar contains Database, Interface, and Playback components in alphabetical order.
+- The window initially opens at 800pt wide and 600pt tall, can be freely resized down to 320pt by 240pt, and remembers its last size and position.
+- `Reset Windows` restores the default size and centered position for the main, Options, and About windows.
+- The sidebar contains Database, Interface, Playback, and Plugins components.
+- Plugins currently lists the external decoder/emulation software and versions used by CocoaSpice. It is an inventory only; runtime plugin loading and configuration are not exposed there yet.
 
 ## Files
 

@@ -12,6 +12,10 @@ let lazyUSFBuildDirectory = "\(rootPath)/.build/lazyusf"
 let lazyUSFVendorDirectory = "\(rootPath)/vendor/lazyusf2"
 let twoSFBuildDirectory = "\(rootPath)/.build/2sf"
 let twoSFVendorDirectory = "\(rootPath)/vendor/2sf2wav"
+let vgmstreamBuildDirectory = "\(rootPath)/.build/vgmstream"
+let vgmstreamVendorDirectory = "\(rootPath)/vendor/vgmstream/src"
+let psf2BuildDirectory = "\(rootPath)/.build/psf2"
+let psf2VendorDirectory = "\(rootPath)/vendor/play/tools/PsfPlayer/Source"
 
 let package = Package(
     name: "CocoaSpice",
@@ -112,9 +116,43 @@ let package = Package(
             path: "Sources/CPlaybackAudio",
             publicHeadersPath: "include"
         ),
+        .target(
+            name: "CVGMStream",
+            path: "Sources/CVGMStream",
+            publicHeadersPath: "include",
+            cSettings: [
+                .unsafeFlags(["-I\(vgmstreamVendorDirectory)"])
+            ],
+            linkerSettings: [
+                .unsafeFlags(["\(vgmstreamBuildDirectory)/src/libvgmstream.a"]),
+                .linkedLibrary("z")
+            ]
+        ),
+        .target(
+            name: "CPSF2",
+            path: "Sources/CPSF2",
+            publicHeadersPath: "include",
+            cxxSettings: [
+                .unsafeFlags([
+                    "-std=c++17",
+                    "-I\(psf2VendorDirectory)",
+                    "-I\(rootPath)/vendor/play/Source",
+                    "-I\(rootPath)/vendor/play/Source/app_shared",
+                    "-I\(rootPath)/vendor/play/deps/CodeGen/src",
+                    "-I\(rootPath)/vendor/play/deps/CodeGen/include",
+                    "-I\(rootPath)/vendor/play/deps/Framework/include",
+                    "-I\(rootPath)/vendor/play/deps/Dependencies/ghc_filesystem/include"
+                ])
+            ],
+            linkerSettings: [
+                .unsafeFlags(["\(psf2BuildDirectory)/libcocoaspice_psf2.a"]),
+                .linkedLibrary("z"),
+                .linkedLibrary("bz2")
+            ]
+        ),
         .executableTarget(
             name: "CocoaSpice",
-            dependencies: ["CGME", "CLibVGM", "CHighlyComplete", "CLazyUSF", "C2SF", "CPlaybackAudio"],
+            dependencies: ["CGME", "CLibVGM", "CHighlyComplete", "CLazyUSF", "C2SF", "CPlaybackAudio", "CVGMStream", "CPSF2"],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("AudioToolbox"),

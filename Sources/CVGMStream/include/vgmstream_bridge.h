@@ -1,0 +1,21 @@
+#pragma once
+
+#include <stdint.h>
+
+typedef void *cocoaspice_vgmstream_handle_t;
+
+cocoaspice_vgmstream_handle_t cocoaspice_vgmstream_open(const char *path, int subsong, int sample_rate);
+void cocoaspice_vgmstream_close(cocoaspice_vgmstream_handle_t handle);
+int cocoaspice_vgmstream_read(cocoaspice_vgmstream_handle_t handle, int16_t *samples, int frames);
+int cocoaspice_vgmstream_set_long_play(cocoaspice_vgmstream_handle_t handle, int enabled);
+int cocoaspice_vgmstream_finished(cocoaspice_vgmstream_handle_t handle);
+int cocoaspice_vgmstream_channels(cocoaspice_vgmstream_handle_t handle);
+int cocoaspice_vgmstream_sample_rate(cocoaspice_vgmstream_handle_t handle);
+int cocoaspice_vgmstream_subsong_count(cocoaspice_vgmstream_handle_t handle);
+int64_t cocoaspice_vgmstream_played_frames(cocoaspice_vgmstream_handle_t handle);
+int64_t cocoaspice_vgmstream_play_length_frames(cocoaspice_vgmstream_handle_t handle);
+int64_t cocoaspice_vgmstream_loop_length_frames(cocoaspice_vgmstream_handle_t handle);
+int cocoaspice_vgmstream_has_loop(cocoaspice_vgmstream_handle_t handle);
+void cocoaspice_vgmstream_seek(cocoaspice_vgmstream_handle_t handle, int64_t frame);
+const char *cocoaspice_vgmstream_stream_name(cocoaspice_vgmstream_handle_t handle);
+const char *cocoaspice_vgmstream_format_name(cocoaspice_vgmstream_handle_t handle);

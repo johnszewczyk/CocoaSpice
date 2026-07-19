@@ -223,9 +223,20 @@ final class LibraryDatabase {
         guard !sources.isEmpty else { return }
         try execute("BEGIN TRANSACTION;")
         do {
+            let rootIDs = Set(sources.map(\.rootID))
             for source in sources {
                 try execute("DELETE FROM tracks WHERE root_id = ? AND path = ?;", bindings: [.int(source.rootID), .text(source.path)])
                 try execute("DELETE FROM scan_items WHERE root_id = ? AND path = ?;", bindings: [.int(source.rootID), .text(source.path)])
+            }
+            for rootID in rootIDs {
+                try execute(
+                    """
+                    UPDATE library_roots
+                    SET last_scan_track_count = (SELECT COUNT(*) FROM tracks WHERE root_id = ?)
+                    WHERE id = ?;
+                    """,
+                    bindings: [.int(rootID), .int(rootID)]
+                )
             }
             try execute("COMMIT;")
         } catch {

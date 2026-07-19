@@ -12,12 +12,13 @@ final class PlaybackEngine: @unchecked Sendable {
     private let spectrumAnalyzer: SpectrumBandAnalyzer
     private var currentPlaybackDuration: TimeInterval = 0
     private var spectrumLevelHandler: (@Sendable ([Float]) -> Void)?
+    private var spectrumEnabled = true
     private var playbackStateHandler: (@Sendable (PlaybackStatusSnapshot) -> Void)?
     private var latestPlaybackRequest = 0
 
     private(set) var currentTrack: TrackItem?
     private(set) var isPlaying = false
-    private(set) var currentPlaybackPlan = PlaybackPlan(preFadeSeconds: 150, fadeSeconds: 6, totalSeconds: 156, usesNativeEnding: false)
+    private(set) var currentPlaybackPlan = PlaybackPlan(preFadeSeconds: 150, fadeSeconds: 6, totalSeconds: 156, usesNativeEnding: false, isLongPlay: false)
 
     init() {
         spectrumAnalyzer = SpectrumBandAnalyzer(sampleRate: Float(sampleRate))
@@ -26,7 +27,7 @@ final class PlaybackEngine: @unchecked Sendable {
             channels: channels,
             chunkFrameCount: chunkFrameCount
         )
-        nativeSession.setSpectrumTap(bufferSize: 512) { [weak self] buffer, _ in
+        nativeSession.setSpectrumHandler { [weak self] buffer, _ in
             self?.handleSpectrumBuffer(buffer)
         }
         nativeSession.setCompletionHandler { [weak self] generation in
@@ -40,6 +41,16 @@ final class PlaybackEngine: @unchecked Sendable {
     func setSpectrumLevelHandler(_ handler: (@Sendable ([Float]) -> Void)?) {
         queue.async {
             self.spectrumLevelHandler = handler
+        }
+    }
+
+    func setSpectrumEnabled(_ enabled: Bool) {
+        queue.async {
+            self.spectrumEnabled = enabled
+            self.nativeSession.setSpectrumEnabled(enabled)
+            if !enabled {
+                self.spectrumAnalyzer.reset()
+            }
         }
     }
 
@@ -79,31 +90,6 @@ final class PlaybackEngine: @unchecked Sendable {
         return requestID == latestPlaybackRequest
     }
 
-    func inspect(track: TrackItem) async throws -> TrackMetadata {
-        try await Self.inspectMetadata(track: track)
-    }
-
-    nonisolated static func inspectMetadata(track: TrackItem) async throws -> TrackMetadata {
-        try await Task.detached(priority: .userInitiated) {
-            try Task.checkCancellation()
-            let decoder = try PlaybackDecoderFactory.makeDecoder(track: track, sampleRate: Int(44_100))
-            return try decoder.metadata()
-        }.value
-    }
-
-    nonisolated static func inspectPlayableTracks(fileURL: URL) async throws -> [InspectedTrack] {
-        try await Task.detached(priority: .userInitiated) {
-            try Task.checkCancellation()
-            let inspector = try PlaybackDecoderFactory.makeInspector(fileURL: fileURL)
-            let trackCount = max(1, inspector.trackCount)
-            return try (0..<trackCount).map { trackIndex in
-                let track = TrackItem(url: fileURL, trackIndex: trackIndex, trackCount: trackCount)
-                let metadata = try inspector.metadata(trackIndex: trackIndex)
-                return InspectedTrack(track: track, metadata: metadata)
-            }
-        }.value
-    }
-
     func togglePause() async -> Bool {
         await enqueue {
             do {
@@ -119,6 +105,16 @@ final class PlaybackEngine: @unchecked Sendable {
     func stopPlayback() async {
         await enqueue {
             self.resetPlaybackState()
+        }
+    }
+
+    func stopPlayback(ifLatestRequest requestID: Int) async -> Bool {
+        await enqueue {
+            guard self.isLatestPlaybackRequest(requestID) else { return false }
+            if self.currentTrack != nil || self.isPlaying {
+                self.resetPlaybackState()
+            }
+            return true
         }
     }
 
@@ -198,7 +194,7 @@ final class PlaybackEngine: @unchecked Sendable {
     }
 
     private func handleSpectrumBuffer(_ buffer: AVAudioPCMBuffer) {
-        guard isPlaying else { return }
+        guard isPlaying, spectrumEnabled else { return }
         guard let levels = spectrumAnalyzer.process(buffer: buffer) else { return }
         spectrumLevelHandler?(levels)
     }
@@ -344,6 +340,7 @@ final class PlaybackStreamSession {
     private let decoder: any AudioTrackDecoder
     private let chunkFrameCount: Int
     private let fadeFrameCount: Int
+    private let outputFormat: AVAudioFormat
 
     init(
         track: TrackItem,
@@ -351,13 +348,22 @@ final class PlaybackStreamSession {
         totalSeconds: Int,
         loopSeconds: Int,
         fadeSeconds: Int,
+        isLongPlay: Bool,
         chunkFrameCount: Int
     ) throws {
         decoder = try PlaybackDecoderFactory.makeDecoder(track: track, sampleRate: sampleRate)
         metadata = try decoder.metadata()
+        guard let outputFormat = AVAudioFormat(
+            standardFormatWithSampleRate: Double(sampleRate),
+            channels: 2
+        ) else {
+            throw SPCDecoderError.bufferCreationFailed
+        }
+        self.outputFormat = outputFormat
         totalFrames = totalSeconds > 0 ? max(totalSeconds * sampleRate, 1) : nil
         self.chunkFrameCount = chunkFrameCount
         fadeFrameCount = max(0, fadeSeconds * sampleRate)
+        decoder.setLongPlayEnabled(isLongPlay)
         decoder.configurePlayback(
             loopSeconds: loopSeconds,
             fadeSeconds: fadeSeconds,
@@ -366,14 +372,20 @@ final class PlaybackStreamSession {
     }
 
     func seek(to seconds: TimeInterval) throws {
+        guard seconds > 0 else { return }
         let clampedMilliseconds = max(0, min(Int(seconds * 1_000), totalMilliseconds))
         try decoder.seek(toMilliseconds: clampedMilliseconds)
+    }
+
+    func setSuspended(_ suspended: Bool) {
+        decoder.setSuspended(suspended)
     }
 
     func makeNextBuffer(
         sampleRate: Double,
         channels: AVAudioChannelCount
     ) throws -> AVAudioPCMBuffer? {
+        guard channels == 2 else { throw SPCDecoderError.bufferCreationFailed }
         if totalFrames == nil, decoder.trackEnded {
             return nil
         }
@@ -393,9 +405,8 @@ final class PlaybackStreamSession {
         let chunk = try decoder.decode(frameCount: frameCount)
         guard chunk.frameCount > 0 else { return nil }
 
-        let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: channels)!
         guard let buffer = AVAudioPCMBuffer(
-            pcmFormat: format,
+            pcmFormat: outputFormat,
             frameCapacity: AVAudioFrameCount(chunk.frameCount)
         ) else {
             throw SPCDecoderError.bufferCreationFailed
@@ -655,10 +666,12 @@ struct PlaybackPlan: Equatable, Sendable {
     let fadeSeconds: Int
     let totalSeconds: Int
     let usesNativeEnding: Bool
+    let isLongPlay: Bool
 }
 
 struct PlaybackStatusSnapshot: Sendable {
     let currentTrackID: TrackItem.ID?
     let isPlaying: Bool
     let elapsedSeconds: TimeInterval
+    let reachedEnd: Bool
 }

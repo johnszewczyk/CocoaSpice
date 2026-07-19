@@ -77,14 +77,19 @@ enum ZipArchiveSupport {
             return url
         case .zipEntry(let archiveURL, let entryPath):
             let extensionName = URL(fileURLWithPath: entryPath).pathExtension.lowercased()
-            if extensionName == "gsf" || extensionName == "minigsf" || extensionName == "usf" || extensionName == "miniusf" || extensionName == "2sf" || extensionName == "mini2sf" {
+            guard let module = GMEFormatSupport.module(forPathExtension: extensionName) else {
+                throw ArchiveError.invalidEntryPath(entryPath)
+            }
+            switch module.archiveMaterialization {
+            case .selectedEntry:
+                return try materializeEntry(archiveURL: archiveURL, entryPath: entryPath)
+            case .completeSet, .completeSetWithLazyUSFAliases:
                 let setURL = try materializeArchive(at: archiveURL)
-                if extensionName == "usf" || extensionName == "miniusf" {
+                if case .completeSetWithLazyUSFAliases = module.archiveMaterialization {
                     try prepareLazyUSFDependencies(in: setURL)
                 }
                 return archiveMemberURL(in: setURL, entryPath: entryPath)
             }
-            return try materializeEntry(archiveURL: archiveURL, entryPath: entryPath)
         }
     }
 

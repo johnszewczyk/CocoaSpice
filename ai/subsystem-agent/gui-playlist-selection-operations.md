@@ -14,11 +14,13 @@
 - Drag reorder is supported for selected rows.
 - Drag reorder is disabled while playlist search filtering is active.
 - One primary selected row and a multiselect set can both exist.
+- The browsing selection remains stable while playback starts, completes, or moves through previous/next media commands; the playing row is represented independently by current transport state.
 
 ## Rules
 
 - Keep Finder-style multiselect expectations.
 - Keep selection separate from playback.
+- Arrow-key movement is owned by the native playlist table; the following SwiftUI update must not overwrite the newly moved selection. Enter activates the table's current selected row, enabling arrow-key plus Enter seek/play workflows.
 - If row activation behavior changes, update both selection semantics and playback-target semantics.
 
 ## Files

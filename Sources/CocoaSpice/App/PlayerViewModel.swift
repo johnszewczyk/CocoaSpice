@@ -16,6 +16,24 @@ struct LibraryScanProgress: Sendable {
 @MainActor
 @Observable
 final class PlayerViewModel {
+    enum RepeatMode: String, CaseIterable, Identifiable {
+        case off, playlist, song
+        var id: Self { self }
+        var title: String {
+            switch self { case .off: "Repeat Off"; case .playlist: "Repeat Playlist"; case .song: "Repeat Song" }
+        }
+        var iconName: String { self == .song ? "repeat.1" : "repeat" }
+    }
+    enum RandomPlaybackScope: String, CaseIterable, Identifiable {
+        case off, library, playlist
+        var id: Self { self }
+        var title: String {
+            switch self { case .off: "Random Off"; case .library: "Random Library"; case .playlist: "Random Playlist" }
+        }
+        var iconName: String {
+            switch self { case .off: "shuffle"; case .library: "books.vertical.fill"; case .playlist: "music.note.list" }
+        }
+    }
     enum SidebarDoubleClickAction: String, CaseIterable, Identifiable {
         case playNow
         case enqueue
@@ -162,6 +180,16 @@ final class PlayerViewModel {
     ) {
         didSet { toolbarSpectrum.peakColor = spectrumPeakColor }
     }
+    var spectrumEnabled = true {
+        didSet {
+            toolbarSpectrum.isVisible = spectrumEnabled
+            playbackStorage?.setSpectrumEnabled(spectrumEnabled)
+            if !spectrumEnabled { toolbarSpectrum.setAnimating(false) }
+        }
+    }
+    var randomPlaybackScope: RandomPlaybackScope = .off
+    var repeatMode: RepeatMode = .off
+    private var randomLibraryTracks: [TrackItem] = []
     var playlistFollowsCursor = false
     var longPlayEnabled = false
     var manualPreFadeSeconds: Int = 180
@@ -173,6 +201,7 @@ final class PlayerViewModel {
     var isSeeking = false
     var seekPreviewSeconds: Double = 0
     var playlistMetadataLoadToken = 0
+    private(set) var playlistMetadataChangedTrackIDs: Set<TrackItem.ID> = []
     var libraryScanStatus: String?
     private(set) var cleanLibraryScanRootIDs: Set<Int64> = []
     private(set) var trimmedLibraryScanRootIDs: Set<Int64> = []
@@ -214,6 +243,7 @@ final class PlayerViewModel {
     private var queueBuildGeneration = 0
     private var visiblePlaylistGeneration = 0
     private var didAutoAdvanceForCurrentTrack = false
+    private var playbackReachedEnd = false
     private var pendingPlaybackTrack: TrackItem?
     private var playlistClipboard: [TrackItem] = []
     private var playlistManualOrder: [String: Int] = [:]
@@ -231,6 +261,7 @@ final class PlayerViewModel {
                 self?.toolbarSpectrum.update(with: levels)
             }
         }
+        playback.setSpectrumEnabled(spectrumEnabled)
         playback.setPlaybackStateHandler { [weak self] snapshot in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -238,12 +269,16 @@ final class PlayerViewModel {
                     self.playbackElapsedSeconds = snapshot.elapsedSeconds
                 }
                 self.isPlaying = snapshot.isPlaying
-                if !snapshot.isPlaying {
+                self.playbackReachedEnd = snapshot.reachedEnd
+                if !snapshot.isPlaying || !self.spectrumEnabled {
                     self.toolbarSpectrum.setAnimating(false)
                 } else {
                     self.toolbarSpectrum.setAnimating(true)
                 }
                 self.updateRemoteTransportState()
+                if snapshot.reachedEnd {
+                    self.handlePlaybackCompletionIfNeeded()
+                }
             }
         }
         playbackStorage = playback
@@ -484,6 +519,17 @@ final class PlayerViewModel {
         } catch {
             libraryScanStatus = "Could not purge database: \(error.localizedDescription)"
         }
+    }
+
+    func resetLibraryPaths() {
+        guard !libraryScanInProgress, let libraryDatabase else { return }
+        for root in libraryScanRoots {
+            try? libraryDatabase.deleteRoot(id: root.id)
+            LibraryScanLogStore.remove(rootID: root.id)
+        }
+        reloadLibraryScanRoots()
+        clearLibraryState()
+        libraryScanStatus = "Library paths reset"
     }
 
     func stopLibraryScan() {
@@ -819,6 +865,11 @@ final class PlayerViewModel {
                 playbackElapsedSeconds = 0
                 seekPreviewSeconds = 0
                 didAutoAdvanceForCurrentTrack = false
+            } else {
+                // The current decoder may belong to the previous queue. Re-arm
+                // its one-shot completion so the replacement queue takes over
+                // when that decoder reaches its real end.
+                didAutoAdvanceForCurrentTrack = false
             }
             playlist = Self.deduplicatedTracks(tracks)
             syncManualPlaylistOrder()
@@ -827,8 +878,9 @@ final class PlayerViewModel {
                playlist.contains(where: { $0.id == currentTrack.id }) {
                 selectedTrackID = currentTrack.id
             } else {
-                selectedTrackID = tracks.first?.id
+                selectedTrackID = playlist.first?.id
             }
+            selectedTrackIDs = selectedTrackID.map { [$0] } ?? []
         } else {
             appendTracksToPlaylist(
                 tracks,
@@ -867,6 +919,7 @@ final class PlayerViewModel {
         reapplyPlaylistSortIfNeeded()
         if selectedTrackID == nil {
             selectedTrackID = playlist.first?.id
+            selectedTrackIDs = selectedTrackID.map { [$0] } ?? []
         }
         refreshPlaylistMetadata()
         statusText = status
@@ -1000,6 +1053,9 @@ final class PlayerViewModel {
             spectrumGradientStartColor: spectrumGradientStartColor,
             spectrumGradientEndColor: spectrumGradientEndColor,
             spectrumPeakColor: spectrumPeakColor,
+            spectrumEnabled: spectrumEnabled,
+            randomPlaybackScopeRawValue: randomPlaybackScope.rawValue,
+            repeatModeRawValue: repeatMode.rawValue,
             sidebarDoubleClickActionRawValue: sidebarDoubleClickAction.rawValue,
             lastAudioExportDirectoryPath: lastAudioExportDirectoryURL?.path,
             databaseSidebarFontSize: databaseSidebarFontSize,
@@ -1275,7 +1331,6 @@ final class PlayerViewModel {
         guard let currentTrack else {
             guard let track = transportPlaybackTarget else { return }
             currentTrack = track
-            selectedTrackID = track.id
             requestPlayback(for: track)
             return
         }
@@ -1313,20 +1368,50 @@ final class PlayerViewModel {
         }
 
         currentTrack = track
-        selectedTrackID = track.id
         didAutoAdvanceForCurrentTrack = false
         requestPlayback(for: track)
     }
 
     func playNext() {
+        if randomPlaybackScope != .off, let randomTrack = randomPlaybackTarget() {
+            requestPlayback(for: randomTrack)
+            return
+        }
         guard let nextTrack = QueueTransportNavigation.adjacentTrack(
             from: transportNavigationAnchor,
             in: playlist,
             direction: .next,
             wraps: true
         ) else { return }
-        selectedTrackID = nextTrack.id
         requestPlayback(for: nextTrack)
+    }
+
+    func cycleRandomPlaybackScope() {
+        switch randomPlaybackScope {
+        case .off: randomPlaybackScope = .library
+        case .library: randomPlaybackScope = .playlist
+        case .playlist: randomPlaybackScope = .off
+        }
+        if randomPlaybackScope == .library { loadRandomLibraryTracks() }
+        if randomPlaybackScope == .off { randomLibraryTracks = [] }
+        savePreferencesNow()
+    }
+
+    private func randomPlaybackTarget() -> TrackItem? {
+        let candidates = randomPlaybackScope == .library ? randomLibraryTracks : visiblePlaylist
+        guard !candidates.isEmpty else { return nil }
+        let eligible = candidates.filter { $0.id != currentTrack?.id }
+        return (eligible.isEmpty ? candidates : eligible).randomElement()
+    }
+
+    private func loadRandomLibraryTracks() {
+        guard let databaseURL = libraryDatabaseURL, !databaseGameItems.isEmpty else { return }
+        let items = databaseGameItems
+        Task { [weak self] in
+            let loaded = await PlaylistQueueLoader.loadLibraryTracksForGames(databaseURL: databaseURL, gameItems: items)
+            guard let self, self.randomPlaybackScope == .library else { return }
+            self.randomLibraryTracks = loaded.tracks
+        }
     }
 
     func handleMediaNextCommand() {
@@ -1340,7 +1425,6 @@ final class PlayerViewModel {
             direction: .previous,
             wraps: true
         ) else { return }
-        selectedTrackID = previousTrack.id
         requestPlayback(for: previousTrack)
     }
 
@@ -1420,12 +1504,13 @@ final class PlayerViewModel {
         }
 
         playbackTask?.cancel()
+        playlistLoadTask?.cancel()
+        playlistLoadGeneration += 1
         playbackRequestGeneration += 1
         let generation = playbackRequestGeneration
         pendingPlaybackTrack = track
-        selectedTrackID = track.id
-        selectedTrackIDs = [track.id]
         isPlaying = false
+        playbackReachedEnd = false
         toolbarSpectrum.reset()
         didAutoAdvanceForCurrentTrack = false
         isLoading = true
@@ -1434,7 +1519,7 @@ final class PlayerViewModel {
         let playback = self.playback
         let requestID = playback.reservePlaybackRequest()
         playbackTask = Task { [weak self] in
-            await playback.stopPlayback()
+            guard await playback.stopPlayback(ifLatestRequest: requestID) else { return }
             guard !Task.isCancelled else { return }
             guard let self, generation == self.playbackRequestGeneration else { return }
             await self.play(track: track, generation: generation, requestID: requestID)
@@ -1490,6 +1575,7 @@ final class PlayerViewModel {
         if generation == playbackRequestGeneration {
             isLoading = false
             playbackTask = nil
+            refreshPlaylistMetadata()
         }
     }
 
@@ -1652,20 +1738,38 @@ final class PlayerViewModel {
             return
         }
 
-        guard QueueTransportNavigation.reachedCompletionThreshold(
-            elapsedSeconds: playbackElapsedSeconds,
-            totalPlaybackSeconds: totalPlaybackSeconds
-        ) else { return }
+        // Only the drained native output may declare completion. Elapsed-time
+        // thresholds can mistake a pause or a short/unknown duration for EOF.
+        guard playbackReachedEnd else { return }
 
         didAutoAdvanceForCurrentTrack = true
+        if repeatMode == .song {
+            requestPlayback(for: currentTrack)
+            return
+        }
+        if randomPlaybackScope != .off, let randomTrack = randomPlaybackTarget() {
+            requestPlayback(for: randomTrack)
+            return
+        }
         let nextTrack = QueueTransportNavigation.completionAdvanceTarget(
             currentTrack: currentTrack,
-            selectedTrackID: selectedTrackID,
             playlist: playlist
         )
-        guard let nextTrack else { return }
-        selectedTrackID = nextTrack.id
+        guard let nextTrack else {
+            guard repeatMode == .playlist, let firstTrack = playlist.first else { return }
+            requestPlayback(for: firstTrack)
+            return
+        }
         requestPlayback(for: nextTrack)
+    }
+
+    func cycleRepeatMode() {
+        switch repeatMode {
+        case .off: repeatMode = .playlist
+        case .playlist: repeatMode = .song
+        case .song: repeatMode = .off
+        }
+        savePreferencesNow()
     }
 
     private func libraryRootPath(for folderURL: URL) -> String? {
@@ -1851,6 +1955,10 @@ final class PlayerViewModel {
 
     private func updatePlaylistMetadata(for trackID: String, metadata: TrackMetadata) {
         metadataCache[trackID] = metadata
+        if playlistMetadataRefreshWorkItem == nil {
+            playlistMetadataChangedTrackIDs.removeAll(keepingCapacity: true)
+        }
+        playlistMetadataChangedTrackIDs.insert(trackID)
         schedulePlaylistMetadataTableRefresh()
     }
 
@@ -2002,6 +2110,10 @@ final class PlayerViewModel {
         if let storedPeakColor = preferences.spectrumPeakColor.flatMap(AppSessionPersistence.deserializeColor) {
             spectrumPeakColor = storedPeakColor
         }
+        spectrumEnabled = preferences.spectrumEnabled
+        randomPlaybackScope = RandomPlaybackScope(rawValue: preferences.randomPlaybackScopeRawValue ?? "off") ?? .off
+        repeatMode = RepeatMode(rawValue: preferences.repeatModeRawValue ?? "off") ?? .off
+        if randomPlaybackScope == .library { loadRandomLibraryTracks() }
         if let storedAction = preferences.sidebarDoubleClickActionRawValue.flatMap(SidebarDoubleClickAction.init(rawValue:)) {
             sidebarDoubleClickAction = storedAction
         }

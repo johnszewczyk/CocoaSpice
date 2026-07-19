@@ -52,31 +52,22 @@ enum QueueTransportNavigation {
 
     static func completionAdvanceTarget(
         currentTrack: TrackItem?,
-        selectedTrackID: String?,
         playlist: [TrackItem]
     ) -> TrackItem? {
-        if let nextTrack = adjacentTrack(
+        guard !playlist.isEmpty else { return nil }
+        guard let currentTrack,
+              playlist.contains(currentTrack) else {
+            // A replacement queue can intentionally keep the old track playing
+            // until it finishes. That old identity is not an anchor in the new
+            // queue, so continuation begins at the replacement queue's head.
+            return playlist.first
+        }
+
+        return adjacentTrack(
             from: currentTrack,
             in: playlist,
             direction: .next,
             wraps: false
-        ) {
-            return nextTrack
-        }
-
-        if let selectedTrackID,
-           let selectedTrack = playlist.first(where: { $0.id == selectedTrackID }) {
-            return selectedTrack
-        }
-
-        return playlist.first
-    }
-
-    static func reachedCompletionThreshold(
-        elapsedSeconds: TimeInterval,
-        totalPlaybackSeconds: Int
-    ) -> Bool {
-        let completionThreshold = max(0, Double(totalPlaybackSeconds) - 0.35)
-        return elapsedSeconds >= completionThreshold
+        )
     }
 }

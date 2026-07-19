@@ -6,8 +6,9 @@ enum PlaybackInspection {
         try Task.checkCancellation()
         return try await PlaybackInspectionGate.withLock {
             try Task.checkCancellation()
-            let decoder = try PlaybackDecoderFactory.makeDecoder(track: track, sampleRate: Int(44_100))
-            return try decoder.metadata()
+            let fileURL = try ZipArchiveSupport.materializePlayableFile(for: track)
+            let inspector = try PlaybackDecoderFactory.makeInspector(fileURL: fileURL)
+            return try inspector.metadata(trackIndex: track.trackIndex)
         }
     }
 

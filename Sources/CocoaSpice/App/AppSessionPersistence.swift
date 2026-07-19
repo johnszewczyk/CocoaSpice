@@ -12,6 +12,9 @@ enum AppDefaultsKey {
     static let spectrumGradientStartColor = "CocoaSpice.spectrumGradientStartColor"
     static let spectrumGradientEndColor = "CocoaSpice.spectrumGradientEndColor"
     static let spectrumPeakColor = "CocoaSpice.spectrumPeakColor"
+    static let spectrumEnabled = "CocoaSpice.spectrumEnabled"
+    static let randomPlaybackScope = "CocoaSpice.randomPlaybackScope"
+    static let repeatMode = "CocoaSpice.repeatMode"
     static let sidebarDoubleClickAction = "CocoaSpice.sidebarDoubleClickAction"
     static let playlistFollowsCursor = "CocoaSpice.playlistFollowsCursor"
     static let lastAudioExportDirectoryPath = "CocoaSpice.lastAudioExportDirectoryPath"
@@ -37,6 +40,9 @@ struct RestoredPlaybackPreferences {
     let spectrumGradientStartColor: String?
     let spectrumGradientEndColor: String?
     let spectrumPeakColor: String?
+    let spectrumEnabled: Bool
+    let randomPlaybackScopeRawValue: String?
+    let repeatModeRawValue: String?
     let sidebarDoubleClickActionRawValue: String?
     let lastAudioExportDirectoryPath: String?
     let playlistSortColumnRawValue: String?
@@ -69,7 +75,7 @@ enum AppSessionPersistence {
         let keys = [
             "lastRootPath", "lastSelectedFolderPath", "lastLibrarySelectedFolderPath",
             "sidebarSearchText", "playlistSearchText", "longPlayEnabled", "manualPreFadeSeconds",
-            "spectrumGradientStartColor", "spectrumGradientEndColor", "spectrumPeakColor",
+            "spectrumGradientStartColor", "spectrumGradientEndColor", "spectrumPeakColor", "spectrumEnabled", "randomPlaybackScope", "repeatMode",
             "sidebarDoubleClickAction", "playlistFollowsCursor", "lastAudioExportDirectoryPath",
             "playlistSortColumn", "playlistSortDirection", "persistedPlaylistPaths",
             "persistedSelectedTrackPath", "persistedCurrentTrackPath", "playlistColumnOrder",
@@ -99,6 +105,9 @@ enum AppSessionPersistence {
             spectrumGradientStartColor: defaults.string(forKey: AppDefaultsKey.spectrumGradientStartColor),
             spectrumGradientEndColor: defaults.string(forKey: AppDefaultsKey.spectrumGradientEndColor),
             spectrumPeakColor: defaults.string(forKey: AppDefaultsKey.spectrumPeakColor),
+            spectrumEnabled: defaults.object(forKey: AppDefaultsKey.spectrumEnabled) as? Bool ?? true,
+            randomPlaybackScopeRawValue: defaults.string(forKey: AppDefaultsKey.randomPlaybackScope),
+            repeatModeRawValue: defaults.string(forKey: AppDefaultsKey.repeatMode),
             sidebarDoubleClickActionRawValue: defaults.string(forKey: AppDefaultsKey.sidebarDoubleClickAction),
             lastAudioExportDirectoryPath: defaults.string(forKey: AppDefaultsKey.lastAudioExportDirectoryPath),
             playlistSortColumnRawValue: defaults.string(forKey: AppDefaultsKey.playlistSortColumn),
@@ -139,6 +148,9 @@ enum AppSessionPersistence {
         spectrumGradientStartColor: NSColor,
         spectrumGradientEndColor: NSColor,
         spectrumPeakColor: NSColor,
+        spectrumEnabled: Bool,
+        randomPlaybackScopeRawValue: String,
+        repeatModeRawValue: String,
         sidebarDoubleClickActionRawValue: String,
         lastAudioExportDirectoryPath: String?,
         databaseSidebarFontSize: CGFloat,
@@ -154,6 +166,9 @@ enum AppSessionPersistence {
         defaults.set(serializedColor(spectrumGradientStartColor), forKey: AppDefaultsKey.spectrumGradientStartColor)
         defaults.set(serializedColor(spectrumGradientEndColor), forKey: AppDefaultsKey.spectrumGradientEndColor)
         defaults.set(serializedColor(spectrumPeakColor), forKey: AppDefaultsKey.spectrumPeakColor)
+        defaults.set(spectrumEnabled, forKey: AppDefaultsKey.spectrumEnabled)
+        defaults.set(randomPlaybackScopeRawValue, forKey: AppDefaultsKey.randomPlaybackScope)
+        defaults.set(repeatModeRawValue, forKey: AppDefaultsKey.repeatMode)
         defaults.set(sidebarDoubleClickActionRawValue, forKey: AppDefaultsKey.sidebarDoubleClickAction)
         defaults.set(lastAudioExportDirectoryPath, forKey: AppDefaultsKey.lastAudioExportDirectoryPath)
         defaults.set(Double(databaseSidebarFontSize), forKey: AppDefaultsKey.databaseSidebarFontSize)

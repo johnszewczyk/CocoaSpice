@@ -126,6 +126,17 @@ enum PlaylistQueueLoader {
 
             let game = track.url.deletingPathExtension().lastPathComponent
             for entry in entries {
+                if URL(fileURLWithPath: entry.entryPath).pathExtension.lowercased() == "gbs" {
+                    let inspectedTracks = await inspectPlayableTracks(forArchiveEntry: entry)
+                    if !inspectedTracks.isEmpty {
+                        for inspected in inspectedTracks {
+                            tracks.append(inspected.track)
+                            metadata[inspected.track.id] = inspected.metadata
+                        }
+                        continue
+                    }
+                }
+
                 let memberTrack = TrackItem(archiveURL: entry.archiveURL, entryPath: entry.entryPath)
                 tracks.append(memberTrack)
                 metadata[memberTrack.id] = TrackMetadata(
@@ -171,20 +182,18 @@ enum PlaylistQueueLoader {
                             (try? ZipArchiveSupport.listPlayableEntries(
                                 in: fileURL,
                                 supportedExtensions: SPCFileScanner.supportedExtensions
-                            )) ?? []
+                        )) ?? []
                         for entry in entries {
-                            let inspectedTracks = await inspectPlayableTracks(forArchiveEntry: entry)
-                            merge(
-                                inspectedTracks: inspectedTracks,
+                            await appendArchiveEntry(
+                                entry,
                                 into: &importedTracks,
                                 metadata: &importedMetadata
                             )
                         }
                         continue
                     }
-                    let inspectedTracks = await inspectPlayableTracks(forFileURL: fileURL)
-                    merge(
-                        inspectedTracks: inspectedTracks,
+                    await appendFile(
+                        fileURL,
                         into: &importedTracks,
                         metadata: &importedMetadata
                     )
@@ -199,9 +208,8 @@ enum PlaylistQueueLoader {
                         supportedExtensions: SPCFileScanner.supportedExtensions
                     )) ?? []
                 for entry in entries {
-                    let inspectedTracks = await inspectPlayableTracks(forArchiveEntry: entry)
-                    merge(
-                        inspectedTracks: inspectedTracks,
+                    await appendArchiveEntry(
+                        entry,
                         into: &importedTracks,
                         metadata: &importedMetadata
                     )
@@ -230,9 +238,8 @@ enum PlaylistQueueLoader {
                 continue
             }
 
-            let inspectedTracks = await inspectPlayableTracks(forFileURL: url)
-            merge(
-                inspectedTracks: inspectedTracks,
+            await appendFile(
+                url,
                 into: &importedTracks,
                 metadata: &importedMetadata
             )
@@ -290,6 +297,45 @@ enum PlaylistQueueLoader {
         return [
             InspectedTrack(track: TrackItem(url: fileURL), metadata: emptyMetadata())
         ]
+    }
+
+    private static func appendFile(
+        _ fileURL: URL,
+        into tracks: inout [TrackItem],
+        metadata: inout [String: TrackMetadata]
+    ) async {
+        guard GMEFormatSupport.requiresTrackEnumeration(
+            forPathExtension: fileURL.pathExtension
+        ) else {
+            tracks.append(TrackItem(url: fileURL))
+            return
+        }
+
+        merge(
+            inspectedTracks: await inspectPlayableTracks(forFileURL: fileURL),
+            into: &tracks,
+            metadata: &metadata
+        )
+    }
+
+    private static func appendArchiveEntry(
+        _ entry: ZipArchiveSupport.ArchiveEntry,
+        into tracks: inout [TrackItem],
+        metadata: inout [String: TrackMetadata]
+    ) async {
+        let extensionName = URL(fileURLWithPath: entry.entryPath).pathExtension
+        guard GMEFormatSupport.requiresTrackEnumeration(
+            forPathExtension: extensionName
+        ) else {
+            tracks.append(TrackItem(archiveURL: entry.archiveURL, entryPath: entry.entryPath))
+            return
+        }
+
+        merge(
+            inspectedTracks: await inspectPlayableTracks(forArchiveEntry: entry),
+            into: &tracks,
+            metadata: &metadata
+        )
     }
 
     private static func inspectPlayableTracks(

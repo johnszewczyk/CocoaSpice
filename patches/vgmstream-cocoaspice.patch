@@ -1,0 +1,32 @@
+diff --git a/src/meta/hd_bd.c b/src/meta/hd_bd.c
+index 259ec47..bb8652f 100644
+--- a/src/meta/hd_bd.c
++++ b/src/meta/hd_bd.c
+@@ -16,7 +16,7 @@ VGMSTREAM* init_vgmstream_hd_bd(STREAMFILE* sf) {
+ 
+     // .hd: standard
+     // .hdb: found in PrincessSoft's PS2 games (.PAC bigfiles don't seem to have names but exe does refers to HDB)
+-    if (!check_extensions(sf, "hd,hbd"))
++    if (!check_extensions(sf, "hd,hbd,iecs"))
+         return NULL;
+ 
+     // bank format mainly for sequences, sometimes used for sfx/voices or pseudo-streams with bgm.
+diff --git a/src/meta/svag_kcet.c b/src/meta/svag_kcet.c
+index 18e09b9..0544ce5 100644
+--- a/src/meta/svag_kcet.c
++++ b/src/meta/svag_kcet.c
+@@ -20,9 +20,10 @@ VGMSTREAM* init_vgmstream_svag_kcet(STREAMFILE* sf) {
+ 
+     /* test padding (a set "KCE-Tokyo ..." phrase) after 0x1c to catch bad rips,
+      * at 0x400 may be header  again (Silent Hill 2) or more padding (Silent Scope 2) */
+     if (channel_count > 1 && 
+-        read_32bitBE(0x400,sf) != 0x53766167 &&     /* "Svag" */
++        read_32bitBE(0x400,sf) != 0 &&
++        read_32bitBE(0x400,sf) != 0x53766167 &&     /* "Svag" */
+         read_32bitBE(0x400,sf) != 0x44657369)       /* "Desi" */
+         goto fail;
+ 
+     start_offset = 0x800;
+-        read_32bitBE(0x400,sf) != 0x53766167 &&     /* "Svag" */
++        read_32bitBE(0x400,sf) != 0 &&
++        read_32bitBE(0x400,sf) != 0x53766167 &&     /* "Svag" */

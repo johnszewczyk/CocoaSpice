@@ -8,9 +8,9 @@ enum PlaybackTimingPolicy {
         manualPreFadeSeconds: Int,
         fadeSeconds: Int
     ) -> PlaybackPlan {
-        let supportedFormat = trackPathExtension.map {
-            GMEFormatSupport.supportedExtensions.contains($0.lowercased())
-        } ?? false
+        let supportedFormat = trackPathExtension.flatMap {
+            GMEFormatSupport.module(forPathExtension: $0)
+        } != nil
         let preFadeSeconds: Int
         let usesNativeEnding: Bool
 
@@ -38,7 +38,8 @@ enum PlaybackTimingPolicy {
             preFadeSeconds: preFadeSeconds,
             fadeSeconds: clampedFadeSeconds,
             totalSeconds: preFadeSeconds + clampedFadeSeconds,
-            usesNativeEnding: usesNativeEnding
+            usesNativeEnding: usesNativeEnding,
+            isLongPlay: longPlayEnabled && supportedFormat
         )
     }
 

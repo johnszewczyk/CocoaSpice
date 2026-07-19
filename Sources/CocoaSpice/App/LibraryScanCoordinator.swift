@@ -89,12 +89,7 @@ final class LibraryScanCoordinator {
             }
         )
         let summary = await accumulator.summary
-        let results = await accumulator.results
-        let trackCount = results.reduce(0) { partialResult, result in
-            guard case .success(_, let inspection) = result else { return partialResult }
-            return partialResult + inspection.tracks.count
-        }
-        try database.markScanCompleted(rootID: root.id, trackCount: trackCount)
+        try database.markScanCompleted(rootID: root.id)
         let issues = summary.failures.map {
             "\($0.identity.path)\($0.identity.archiveEntry.map { "#\($0)" } ?? ""): \($0.stage.rawValue): \($0.message)"
         }

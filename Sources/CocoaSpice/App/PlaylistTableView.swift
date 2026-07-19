@@ -77,6 +77,7 @@ struct PlaylistTableView: NSViewRepresentable {
             case system
             case path
             case length
+            case fileSize
 
             var title: String {
                 switch self {
@@ -89,6 +90,7 @@ struct PlaylistTableView: NSViewRepresentable {
                 case .system: "System"
                 case .path: "Path"
                 case .length: "Length"
+                case .fileSize: "Size"
                 }
             }
 
@@ -103,6 +105,7 @@ struct PlaylistTableView: NSViewRepresentable {
                 case .system: 80
                 case .path: 320
                 case .length: 70
+                case .fileSize: 80
                 }
             }
 
@@ -115,6 +118,7 @@ struct PlaylistTableView: NSViewRepresentable {
                 case .system: 60
                 case .path: 160
                 case .length: 60
+                case .fileSize: 60
                 }
             }
 
@@ -142,6 +146,8 @@ struct PlaylistTableView: NSViewRepresentable {
                     .path
                 case .length:
                     .length
+                case .fileSize:
+                    nil
                 }
             }
         }
@@ -201,10 +207,18 @@ struct PlaylistTableView: NSViewRepresentable {
             let playbackStateChanged = currentTrackID != lastCurrentTrackID || isPlaying != lastIsPlaying
             let sortChanged = sortColumn != lastSortColumn || sortDirection != lastSortDirection
 
-            if rowsChanged || metadataTokenChanged || sortChanged {
+            if rowsChanged || sortChanged {
                 tableView.reloadData()
-            } else if playbackStateChanged {
-                reloadVisibleRows(in: tableView)
+            } else {
+                if metadataTokenChanged {
+                    reloadMetadataRows(
+                        in: tableView,
+                        trackIDs: model.playlistMetadataChangedTrackIDs
+                    )
+                }
+                if playbackStateChanged {
+                    reloadVisibleRows(in: tableView)
+                }
             }
 
             if rowsChanged || selectedTrackIDs != lastSelectedTrackIDs || primarySelectedTrackID != lastPrimarySelectedTrackID {
@@ -213,7 +227,6 @@ struct PlaylistTableView: NSViewRepresentable {
 
             if metadataTokenChanged {
                 lastAppliedMetadataLoadToken = model.playlistMetadataLoadToken
-                autoSizeVisibleColumns()
             }
 
             lastVisibleTrackIDs = visibleTrackIDs
@@ -294,6 +307,11 @@ struct PlaylistTableView: NSViewRepresentable {
                     row >= 0 && row < model.visiblePlaylist.count ? model.visiblePlaylist[row].id : nil
                 }
                 model.handlePlaylistSelection(trackIDs: trackIDs, primaryTrackID: primaryTrackID)
+                // Arrow-key movement is already authoritative in NSTableView.
+                // Mark the model snapshot as applied so the SwiftUI update that
+                // follows does not immediately reselect the previous row.
+                lastSelectedTrackIDs = model.selectedTrackIDs
+                lastPrimarySelectedTrackID = model.selectedTrackID
             }
         }
 
@@ -333,6 +351,8 @@ struct PlaylistTableView: NSViewRepresentable {
                     return configuredTextCell(in: tableView, row: row, identifier: column.rawValue, text: model.pathText(for: track), isCurrentTrack: model.currentTrack?.id == track.id)
                 case .length:
                     return configuredTextCell(in: tableView, row: row, identifier: column.rawValue, text: model.lengthText(for: track), isCurrentTrack: model.currentTrack?.id == track.id, monospace: true)
+                case .fileSize:
+                    return configuredTextCell(in: tableView, row: row, identifier: column.rawValue, text: value(for: column, track: track), isCurrentTrack: model.currentTrack?.id == track.id, monospace: true)
                 }
             }
         }
@@ -514,6 +534,32 @@ struct PlaylistTableView: NSViewRepresentable {
             tableView.reloadData(forRowIndexes: rows, columnIndexes: columns)
         }
 
+        private func reloadMetadataRows(
+            in tableView: NSTableView,
+            trackIDs: Set<TrackItem.ID>
+        ) {
+            guard !trackIDs.isEmpty else {
+                tableView.reloadData()
+                return
+            }
+
+            let rows = IndexSet(model.visiblePlaylist.enumerated().compactMap { index, track in
+                trackIDs.contains(track.id) ? index : nil
+            })
+            guard !rows.isEmpty else { return }
+
+            let metadataColumns = IndexSet(tableView.tableColumns.enumerated().compactMap { index, tableColumn in
+                guard let column = Column(rawValue: tableColumn.identifier.rawValue) else { return nil }
+                return switch column {
+                case .title, .game, .author, .system, .length:
+                    index
+                case .transport, .index, .file, .path, .fileSize:
+                    nil
+                }
+            })
+            tableView.reloadData(forRowIndexes: rows, columnIndexes: metadataColumns)
+        }
+
         private func refreshSortIndicators() {
             guard let tableView else { return }
 
@@ -584,8 +630,13 @@ struct PlaylistTableView: NSViewRepresentable {
 
         func activateSelectedRow() {
             guard let tableView else { return }
-            let row = tableView.selectedRow
+            let row = tableView.selectedRow >= 0
+                ? tableView.selectedRow
+                : model.selectedTrackID.flatMap { selectedID in
+                    model.visiblePlaylist.firstIndex { $0.id == selectedID }
+                } ?? -1
             activateRow(row)
+            syncSelection(in: tableView)
         }
 
         func autoSizeColumn(at columnIndex: Int) {
@@ -595,24 +646,6 @@ struct PlaylistTableView: NSViewRepresentable {
             let width = self.tableView(tableView, sizeToFitWidthOfColumn: columnIndex)
             let tableColumn = tableView.tableColumns[columnIndex]
             animateColumnWidths([(tableColumn, max(tableColumn.minWidth, width))])
-            persistWidths()
-        }
-
-        private func autoSizeVisibleColumns() {
-            guard let tableView else { return }
-
-            let animatedColumns: [(NSTableColumn, CGFloat)] = tableView.tableColumns.enumerated().compactMap { columnIndex, tableColumn in
-                guard !tableColumn.isHidden,
-                      let column = Column(rawValue: tableColumn.identifier.rawValue),
-                      column.userConfigurable else {
-                    return nil
-                }
-
-                let width = self.tableView(tableView, sizeToFitWidthOfColumn: columnIndex)
-                return (tableColumn, max(tableColumn.minWidth, width))
-            }
-            animateColumnWidths(animatedColumns)
-
             persistWidths()
         }
 
@@ -840,6 +873,8 @@ struct PlaylistTableView: NSViewRepresentable {
                 nil
             case .length:
                 hints.lengthText
+            case .fileSize:
+                nil
             }
         }
 
@@ -863,7 +898,16 @@ struct PlaylistTableView: NSViewRepresentable {
                 model.pathText(for: track)
             case .length:
                 model.lengthText(for: track)
+            case .fileSize:
+                fileSizeText(for: track)
             }
+        }
+
+        private func fileSizeText(for track: TrackItem) -> String {
+            guard !track.isArchiveEntry else { return "—" }
+            let bytes = (try? track.url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? nil
+            guard let bytes, bytes > 0 else { return "—" }
+            return ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
         }
 
         private func textWidth(_ text: String, font: NSFont) -> CGFloat {

@@ -2,8 +2,8 @@
 
 ## Product
 
-- `CocoaSpice` is a native macOS audio frontend for game-music formats, growing toward standard audio support as well.
-- Current decoder families include `libgme`, `libvgm`, `Highly Complete` for GBA PSF-family playback, and `lazyusf2` for Nintendo 64 USF-family playback.
+- `CocoaSpice` is a native macOS audio frontend for game-music formats.
+- Current decoder families include `libgme`, `libvgm`, `Highly Complete` for GBA PSF-family playback, `lazyusf2` for Nintendo 64 USF-family playback, the Nintendo DS 2SF backend, `vgmstream` for native streamed game audio, and Play! for PSF2/minipsf2.
 - The current product split is a scanned `Database` browser on the left and an editable `Playlist` on the right.
 
 ## Major Components
@@ -33,6 +33,7 @@ Agent engineering notes:
 - Highly Complete lifecycle and timing: [audio-highly-complete-bridge-lifecycle.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-bridge-lifecycle.md), [audio-highly-complete-minigsf-timing.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-minigsf-timing.md)
 - Highly Complete failure boundaries: [audio-highly-complete-runtime-failure-modes.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-runtime-failure-modes.md)
 - Codec intake and policy: [audio-libgme-format-intake.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-libgme-format-intake.md)
+- Nintendo DS 2SF backend: [audio-2sf-backend.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-2sf-backend.md)
 - Playback streaming, transport, and timing: [audio-playback-streaming.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-playback-streaming.md), [audio-playback-transport.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-playback-transport.md), [audio-playback-timing.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-playback-timing.md)
 - Database ownership: [library-browser-database.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/library-browser-database.md), [library-scan-roots.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/library-scan-roots.md), [database-sidebar-presentation.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/database-sidebar-presentation.md)
 - Playlist ownership and formats: [playlist-queue-core.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/playlist-queue-core.md), [playlist-file-formats.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/playlist-file-formats.md), [gui-playlist-columns.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/gui-playlist-columns.md), [gui-playlist-selection-operations.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/gui-playlist-selection-operations.md)

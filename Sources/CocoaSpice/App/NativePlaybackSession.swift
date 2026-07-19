@@ -38,6 +38,27 @@ final class NativePlaybackSession: @unchecked Sendable {
         output.setSpectrumTap(bufferSize: bufferSize, handler: handler)
     }
 
+    func setSpectrumEnabled(_ enabled: Bool) {
+        refillQueue.sync {
+            if enabled {
+                let handler = spectrumHandler
+                output.setSpectrumTap(bufferSize: 512) { buffer, time in
+                    handler?(buffer, time)
+                }
+            } else {
+                output.removeSpectrumTap()
+            }
+        }
+    }
+
+    private var spectrumHandler: ((AVAudioPCMBuffer, AVAudioTime?) -> Void)?
+
+    func setSpectrumHandler(_ handler: ((AVAudioPCMBuffer, AVAudioTime?) -> Void)?) {
+        refillQueue.sync {
+            spectrumHandler = handler
+        }
+    }
+
     func setCompletionHandler(_ handler: (@Sendable (Int) -> Void)?) {
         refillQueue.async {
             self.completionHandler = handler
@@ -66,6 +87,7 @@ final class NativePlaybackSession: @unchecked Sendable {
                 totalSeconds: plan.usesNativeEnding ? 0 : plan.totalSeconds,
                 loopSeconds: plan.preFadeSeconds,
                 fadeSeconds: plan.fadeSeconds,
+                isLongPlay: plan.isLongPlay,
                 chunkFrameCount: chunkFrameCount
             )
             try stream.seek(to: seconds)
@@ -80,8 +102,10 @@ final class NativePlaybackSession: @unchecked Sendable {
 
             if autoplay {
                 try output.start()
+                startRefillTimer()
+            } else {
+                stream.setSuspended(true)
             }
-            startRefillTimer()
             return stream.metadata
         }
     }
@@ -91,10 +115,15 @@ final class NativePlaybackSession: @unchecked Sendable {
             let isPlaying = output.snapshot.transportState == .playing
             if isPlaying {
                 output.pause()
+                stream?.setSuspended(true)
+                refillTimer?.cancel()
+                refillTimer = nil
                 return false
             }
 
+            stream?.setSuspended(false)
             try output.start()
+            startRefillTimer()
             return true
         }
     }
@@ -107,6 +136,9 @@ final class NativePlaybackSession: @unchecked Sendable {
             generation += 1
             finishedGeneration = nil
             try stream.seek(to: seconds)
+            if !wasPlaying {
+                stream.setSuspended(true)
+            }
             output.clear()
             output.markTrackLoaded(generation: generation)
             try refillTo(targetBufferedFrames: output.primeFrameCount)
@@ -138,7 +170,8 @@ final class NativePlaybackSession: @unchecked Sendable {
                     sessionStartFrame: 0,
                     framesSupplied: snapshot.framesSupplied,
                     sampleRate: Int(sampleRate)
-                )
+                ),
+                reachedEnd: snapshot.reachedEnd
             )
         }
     }
@@ -151,7 +184,9 @@ final class NativePlaybackSession: @unchecked Sendable {
 
     private func startRefillTimer() {
         let timer = DispatchSource.makeTimerSource(queue: refillQueue)
-        timer.schedule(deadline: .now(), repeating: .milliseconds(5))
+        // The ring buffer holds about two seconds of audio. A 20 ms refill
+        // cadence leaves ample headroom while avoiding needless wakeups.
+        timer.schedule(deadline: .now(), repeating: .milliseconds(20))
         timer.setEventHandler { [weak self] in
             self?.refill()
         }
@@ -196,6 +231,9 @@ final class NativePlaybackSession: @unchecked Sendable {
                 self.generation += 1
                 self.finishedGeneration = nil
                 try stream.seek(to: seconds)
+                if !wasPlaying {
+                    stream.setSuspended(true)
+                }
                 self.output.clear()
                 self.output.markTrackLoaded(generation: self.generation)
                 try self.refillTo(targetBufferedFrames: self.output.primeFrameCount)
@@ -231,13 +269,9 @@ final class NativePlaybackSession: @unchecked Sendable {
                 break
             }
 
-            let left = Array(UnsafeBufferPointer(start: channelData[0], count: frameCount))
-            let right = Array(UnsafeBufferPointer(start: channelData[1], count: frameCount))
-            let written = left.withUnsafeBufferPointer { leftBuffer in
-                right.withUnsafeBufferPointer { rightBuffer in
-                    output.enqueue(left: leftBuffer, right: rightBuffer)
-                }
-            }
+            let left = UnsafeBufferPointer(start: channelData[0], count: frameCount)
+            let right = UnsafeBufferPointer(start: channelData[1], count: frameCount)
+            let written = output.enqueue(left: left, right: right)
             if written < frameCount {
                 break
             }
