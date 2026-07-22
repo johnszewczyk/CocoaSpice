@@ -1533,6 +1533,8 @@ private actor ScanURLRecorder {
     #expect(legacyOnlyPreferences.manualPreFadeSeconds == nil)
     #expect(!legacyOnlyPreferences.databaseSidebarMonospaceFont)
     #expect(!legacyOnlyPreferences.sidebarSystemMode)
+    #expect(!legacyOnlyPreferences.equalizerEnabled)
+    #expect(legacyOnlyPreferences.equalizerBandGains == nil)
 
     defaults.set(true, forKey: AppDefaultsKey.longPlayEnabled)
     defaults.set(240, forKey: AppDefaultsKey.manualPreFadeSeconds)
@@ -1541,6 +1543,8 @@ private actor ScanURLRecorder {
     defaults.set("0.400000,0.500000,0.600000,1.000000", forKey: AppDefaultsKey.spectrumPeakColor)
     defaults.set(true, forKey: AppDefaultsKey.sidebarSystemMode)
     defaults.set(true, forKey: AppDefaultsKey.databaseSidebarMonospaceFont)
+    defaults.set(true, forKey: AppDefaultsKey.equalizerEnabled)
+    defaults.set([-12.0, -3.5, 4.0, 12.0], forKey: AppDefaultsKey.equalizerBandGains)
 
     let unifiedPreferences = AppSessionPersistence.restorePlaybackPreferences(defaults: defaults)
     #expect(unifiedPreferences.longPlayEnabled)
@@ -1550,6 +1554,15 @@ private actor ScanURLRecorder {
     #expect(unifiedPreferences.spectrumPeakColor == "0.400000,0.500000,0.600000,1.000000")
     #expect(unifiedPreferences.databaseSidebarMonospaceFont)
     #expect(unifiedPreferences.sidebarSystemMode)
+    #expect(unifiedPreferences.equalizerEnabled)
+    #expect(unifiedPreferences.equalizerBandGains == [-12.0, -3.5, 4.0, 12.0])
+}
+
+@Test func equalizerUsesTenStandardBandsAndClampsGain() {
+    #expect(AudioEqualizer.bandFrequencies == [31, 62, 125, 250, 500, 1_000, 2_000, 4_000, 8_000, 16_000])
+    #expect(AudioEqualizer.clampedGain(-20) == -12)
+    #expect(AudioEqualizer.clampedGain(5.5) == 5.5)
+    #expect(AudioEqualizer.clampedGain(20) == 12)
 }
 
 @Test func legacyPreferencesMigrateToCocoaSpiceKeys() {

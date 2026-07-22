@@ -8,6 +8,7 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
 
     private let engine = AVAudioEngine()
     private let sourceNode: AVAudioSourceNode
+    private let equalizerNode: AVAudioUnitEQ
     private let format: AVAudioFormat
     let primeFrameCount: Int
     private var transportState: PlaybackTransportState = .stopped
@@ -43,6 +44,7 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
             throw AVAudioSourceNodeOutputError.invalidFormat
         }
         self.format = format
+        self.equalizerNode = AVAudioUnitEQ(numberOfBands: AudioEqualizer.bandFrequencies.count)
 
         let ringBuffer = self.ringBuffer
         self.sourceNode = AVAudioSourceNode(format: format) { _, _, frameCount, audioBufferList in
@@ -70,8 +72,18 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
             return noErr
         }
 
+        for (band, frequency) in zip(equalizerNode.bands, AudioEqualizer.bandFrequencies) {
+            band.filterType = .parametric
+            band.frequency = frequency
+            band.bandwidth = 1
+            band.gain = 0
+            band.bypass = true
+        }
+        equalizerNode.bypass = true
         engine.attach(sourceNode)
-        engine.connect(sourceNode, to: engine.mainMixerNode, format: format)
+        engine.attach(equalizerNode)
+        engine.connect(sourceNode, to: equalizerNode, format: format)
+        engine.connect(equalizerNode, to: engine.mainMixerNode, format: format)
     }
 
     deinit {
@@ -99,6 +111,14 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
         guard spectrumTapInstalled else { return }
         engine.mainMixerNode.removeTap(onBus: 0)
         spectrumTapInstalled = false
+    }
+
+    func setEqualizer(enabled: Bool, bandGains: [Float]) {
+        for (index, band) in equalizerNode.bands.enumerated() {
+            band.gain = AudioEqualizer.clampedGain(bandGains[safe: index] ?? 0)
+            band.bypass = !enabled
+        }
+        equalizerNode.bypass = !enabled
     }
 
     func setConfigurationChangeHandler(_ handler: @escaping @Sendable () -> Void) {
@@ -202,6 +222,21 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
         reachedEnd = false
         outputState = .stopped
         transportState = .stopped
+    }
+}
+
+enum AudioEqualizer {
+    static let bandFrequencies: [Float] = [31, 62, 125, 250, 500, 1_000, 2_000, 4_000, 8_000, 16_000]
+    static let gainRange: ClosedRange<Float> = -12...12
+
+    static func clampedGain(_ gain: Float) -> Float {
+        min(max(gain, gainRange.lowerBound), gainRange.upperBound)
+    }
+}
+
+private extension Array {
+    subscript(safe index: Int) -> Element? {
+        indices.contains(index) ? self[index] : nil
     }
 }
 

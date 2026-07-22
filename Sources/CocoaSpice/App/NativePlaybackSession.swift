@@ -51,6 +51,12 @@ final class NativePlaybackSession: @unchecked Sendable {
         }
     }
 
+    func setEqualizer(enabled: Bool, bandGains: [Float]) {
+        refillQueue.sync {
+            output.setEqualizer(enabled: enabled, bandGains: bandGains)
+        }
+    }
+
     private var spectrumHandler: ((AVAudioPCMBuffer, AVAudioTime?) -> Void)?
 
     func setSpectrumHandler(_ handler: ((AVAudioPCMBuffer, AVAudioTime?) -> Void)?) {

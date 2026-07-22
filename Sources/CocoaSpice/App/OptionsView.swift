@@ -135,6 +135,8 @@ struct OptionsView: View {
 
             libraryBehaviorCard
 
+            equalizerCard
+
             sectionCard(title: "Playback Diagnostics") {
                 diagnosticRow(
                     "Buffer",
@@ -419,6 +421,49 @@ struct OptionsView: View {
         }
     }
 
+    private var equalizerCard: some View {
+        sectionCard(title: "Equalizer") {
+            Toggle("Enable Equalizer", isOn: $model.equalizerEnabled)
+                .toggleStyle(.checkbox)
+                .foregroundStyle(.white)
+
+            Text("Ten parametric bands apply to every playback format.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+
+            LazyVGrid(
+                columns: [GridItem(.flexible()), GridItem(.flexible())],
+                spacing: 10
+            ) {
+                ForEach(Array(AudioEqualizer.bandFrequencies.indices), id: \.self) { index in
+                    HStack(spacing: 8) {
+                        Text(Self.equalizerBandLabel(for: AudioEqualizer.bandFrequencies[index]))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 34, alignment: .trailing)
+                        Slider(
+                            value: Binding(
+                                get: { Double(model.equalizerBandGains[index]) },
+                                set: { model.setEqualizerBandGain(Float($0), at: index) }
+                            ),
+                            in: Double(AudioEqualizer.gainRange.lowerBound)...Double(AudioEqualizer.gainRange.upperBound),
+                            step: 0.5
+                        )
+                        Text(String(format: "%+.1f", model.equalizerBandGains[index]))
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 34, alignment: .trailing)
+                    }
+                }
+            }
+
+            HStack {
+                Spacer()
+                Button("Reset") { model.resetEqualizer() }
+            }
+        }
+    }
+
     private func colorBinding(for keyPath: ReferenceWritableKeyPath<PlayerViewModel, NSColor>) -> Binding<Color> {
         Binding(
             get: { Color(nsColor: model[keyPath: keyPath]) },
@@ -519,6 +564,12 @@ struct OptionsView: View {
         let minutes = max(0, totalSeconds) / 60
         let seconds = max(0, totalSeconds) % 60
         return String(format: "%d:%02d", minutes, seconds)
+    }
+
+    private static func equalizerBandLabel(for frequency: Float) -> String {
+        frequency >= 1_000
+            ? "\(Int(frequency / 1_000))k"
+            : "\(Int(frequency))"
     }
 
     private static func parseTime(_ value: String) -> Int? {

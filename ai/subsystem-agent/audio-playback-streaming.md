@@ -22,6 +22,7 @@
 - The Options Playback Diagnostics panel samples those snapshots at the existing 250 ms transport cadence. It shows buffered PCM headroom, underruns, and source samples beyond full scale; source clip counts are collected while the refill worker writes PCM, never in the realtime output callback.
 - Frame-accounting helpers derive position from the session origin and frames supplied to output; completion helpers require planned/native completion and an empty output buffer.
 - The native output boundary uses a preallocated C11 atomic stereo ring buffer and an `AVAudioSourceNode` endpoint.
+- The shared output graph routes `AVAudioSourceNode` through one ten-band `AVAudioUnitEQ` before the main mixer. Equalizer mutation stays on the playback queue and applies before the mixer spectrum tap, so every decoder shares the same post-decode processing path.
 - `NativePlaybackSession` owns decoder creation, generation invalidation, dedicated refill work, high-water priming, seek rebuilds, route-change recovery, and one completion callback per generation.
 - Session refill passes decoder channel buffers directly into the native ring buffer without constructing intermediate Swift arrays.
 - `PlaybackEngine` is the app-facing façade and delegates playback, pause/resume, seek, stop, status, spectrum tap, and completion to the native session.

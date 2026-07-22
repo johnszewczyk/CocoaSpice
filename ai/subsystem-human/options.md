@@ -18,6 +18,7 @@
 - Duration: set a manual playback target.
 - Library Behavior: Playlist Follows Cursor and Double-Click Enqueues are playback controls.
 - Playback Diagnostics: reports current PCM buffer headroom plus per-track underruns and source over-scale samples. These counters reset for each new track; source clipping cannot detect amplifier or speaker distortion.
+- Equalizer: enable ten shared 31 Hz–16 kHz bands, adjust each by ±12 dB, and reset all gains to flat. The setting applies to every playback format.
 
 ## Interface
 

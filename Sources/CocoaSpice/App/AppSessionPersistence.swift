@@ -13,6 +13,8 @@ enum AppDefaultsKey {
     static let spectrumGradientEndColor = "CocoaSpice.spectrumGradientEndColor"
     static let spectrumPeakColor = "CocoaSpice.spectrumPeakColor"
     static let spectrumEnabled = "CocoaSpice.spectrumEnabled"
+    static let equalizerEnabled = "CocoaSpice.equalizerEnabled"
+    static let equalizerBandGains = "CocoaSpice.equalizerBandGains"
     static let randomPlaybackScope = "CocoaSpice.randomPlaybackScope"
     static let repeatMode = "CocoaSpice.repeatMode"
     static let sidebarDoubleClickAction = "CocoaSpice.sidebarDoubleClickAction"
@@ -41,6 +43,8 @@ struct RestoredPlaybackPreferences {
     let spectrumGradientEndColor: String?
     let spectrumPeakColor: String?
     let spectrumEnabled: Bool
+    let equalizerEnabled: Bool
+    let equalizerBandGains: [Double]?
     let randomPlaybackScopeRawValue: String?
     let repeatModeRawValue: String?
     let sidebarDoubleClickActionRawValue: String?
@@ -75,7 +79,7 @@ enum AppSessionPersistence {
         let keys = [
             "lastRootPath", "lastSelectedFolderPath", "lastLibrarySelectedFolderPath",
             "sidebarSearchText", "playlistSearchText", "longPlayEnabled", "manualPreFadeSeconds",
-            "spectrumGradientStartColor", "spectrumGradientEndColor", "spectrumPeakColor", "spectrumEnabled", "randomPlaybackScope", "repeatMode",
+            "spectrumGradientStartColor", "spectrumGradientEndColor", "spectrumPeakColor", "spectrumEnabled", "equalizerEnabled", "equalizerBandGains", "randomPlaybackScope", "repeatMode",
             "sidebarDoubleClickAction", "playlistFollowsCursor", "lastAudioExportDirectoryPath",
             "playlistSortColumn", "playlistSortDirection", "persistedPlaylistPaths",
             "persistedSelectedTrackPath", "persistedCurrentTrackPath", "playlistColumnOrder",
@@ -106,6 +110,8 @@ enum AppSessionPersistence {
             spectrumGradientEndColor: defaults.string(forKey: AppDefaultsKey.spectrumGradientEndColor),
             spectrumPeakColor: defaults.string(forKey: AppDefaultsKey.spectrumPeakColor),
             spectrumEnabled: defaults.object(forKey: AppDefaultsKey.spectrumEnabled) as? Bool ?? true,
+            equalizerEnabled: defaults.object(forKey: AppDefaultsKey.equalizerEnabled) as? Bool ?? false,
+            equalizerBandGains: (defaults.array(forKey: AppDefaultsKey.equalizerBandGains) as? [NSNumber])?.map(\.doubleValue),
             randomPlaybackScopeRawValue: defaults.string(forKey: AppDefaultsKey.randomPlaybackScope),
             repeatModeRawValue: defaults.string(forKey: AppDefaultsKey.repeatMode),
             sidebarDoubleClickActionRawValue: defaults.string(forKey: AppDefaultsKey.sidebarDoubleClickAction),
@@ -148,6 +154,8 @@ enum AppSessionPersistence {
         spectrumGradientEndColor: NSColor,
         spectrumPeakColor: NSColor,
         spectrumEnabled: Bool,
+        equalizerEnabled: Bool,
+        equalizerBandGains: [Float],
         randomPlaybackScopeRawValue: String,
         repeatModeRawValue: String,
         sidebarDoubleClickActionRawValue: String,
@@ -166,6 +174,8 @@ enum AppSessionPersistence {
         defaults.set(serializedColor(spectrumGradientEndColor), forKey: AppDefaultsKey.spectrumGradientEndColor)
         defaults.set(serializedColor(spectrumPeakColor), forKey: AppDefaultsKey.spectrumPeakColor)
         defaults.set(spectrumEnabled, forKey: AppDefaultsKey.spectrumEnabled)
+        defaults.set(equalizerEnabled, forKey: AppDefaultsKey.equalizerEnabled)
+        defaults.set(equalizerBandGains.map(Double.init), forKey: AppDefaultsKey.equalizerBandGains)
         defaults.set(randomPlaybackScopeRawValue, forKey: AppDefaultsKey.randomPlaybackScope)
         defaults.set(repeatModeRawValue, forKey: AppDefaultsKey.repeatMode)
         defaults.set(sidebarDoubleClickActionRawValue, forKey: AppDefaultsKey.sidebarDoubleClickAction)

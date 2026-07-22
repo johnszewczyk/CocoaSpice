@@ -13,6 +13,8 @@ final class PlaybackEngine: @unchecked Sendable {
     private var currentPlaybackDuration: TimeInterval = 0
     private var spectrumLevelHandler: (@Sendable ([Float]) -> Void)?
     private var spectrumEnabled = true
+    private var equalizerEnabled = false
+    private var equalizerBandGains = AudioEqualizer.bandFrequencies.map { _ in Float.zero }
     private var playbackStateHandler: (@Sendable (PlaybackStatusSnapshot) -> Void)?
     private var latestPlaybackRequest = 0
 
@@ -51,6 +53,14 @@ final class PlaybackEngine: @unchecked Sendable {
             if !enabled {
                 self.spectrumAnalyzer.reset()
             }
+        }
+    }
+
+    func setEqualizer(enabled: Bool, bandGains: [Float]) {
+        queue.async {
+            self.equalizerEnabled = enabled
+            self.equalizerBandGains = bandGains
+            self.nativeSession.setEqualizer(enabled: enabled, bandGains: bandGains)
         }
     }
 

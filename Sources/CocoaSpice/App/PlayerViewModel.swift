@@ -171,6 +171,10 @@ final class PlayerViewModel {
             if !spectrumEnabled { toolbarSpectrum.setAnimating(false) }
         }
     }
+    var equalizerEnabled = false {
+        didSet { playbackStorage?.setEqualizer(enabled: equalizerEnabled, bandGains: equalizerBandGains) }
+    }
+    var equalizerBandGains = AudioEqualizer.bandFrequencies.map { _ in Float.zero }
     var randomPlaybackScope: RandomPlaybackScope = .off
     var repeatMode: RepeatMode = .off
     private var randomLibraryTracks: [TrackItem] = []
@@ -249,6 +253,7 @@ final class PlayerViewModel {
             }
         }
         playback.setSpectrumEnabled(spectrumEnabled)
+        playback.setEqualizer(enabled: equalizerEnabled, bandGains: equalizerBandGains)
         playback.setPlaybackStateHandler { [weak self] snapshot in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -1039,6 +1044,8 @@ final class PlayerViewModel {
             spectrumGradientEndColor: spectrumGradientEndColor,
             spectrumPeakColor: spectrumPeakColor,
             spectrumEnabled: spectrumEnabled,
+            equalizerEnabled: equalizerEnabled,
+            equalizerBandGains: equalizerBandGains,
             randomPlaybackScopeRawValue: randomPlaybackScope.rawValue,
             repeatModeRawValue: repeatMode.rawValue,
             sidebarDoubleClickActionRawValue: sidebarDoubleClickAction.rawValue,
@@ -1054,6 +1061,17 @@ final class PlayerViewModel {
     func setDatabaseSidebarFontSize(_ size: CGFloat) {
         databaseSidebarFontSize = min(max(size.rounded(), 6), 18)
         savePreferencesNow()
+    }
+
+    func setEqualizerBandGain(_ gain: Float, at index: Int) {
+        guard equalizerBandGains.indices.contains(index) else { return }
+        equalizerBandGains[index] = AudioEqualizer.clampedGain(gain)
+        playbackStorage?.setEqualizer(enabled: equalizerEnabled, bandGains: equalizerBandGains)
+    }
+
+    func resetEqualizer() {
+        equalizerBandGains = AudioEqualizer.bandFrequencies.map { _ in Float.zero }
+        playbackStorage?.setEqualizer(enabled: equalizerEnabled, bandGains: equalizerBandGains)
     }
 
     func setDatabaseSidebarTextColor(_ color: DatabaseSidebarTextColor) {
@@ -2202,6 +2220,11 @@ final class PlayerViewModel {
             spectrumPeakColor = storedPeakColor
         }
         spectrumEnabled = preferences.spectrumEnabled
+        equalizerEnabled = preferences.equalizerEnabled
+        if let storedGains = preferences.equalizerBandGains,
+           storedGains.count == AudioEqualizer.bandFrequencies.count {
+            equalizerBandGains = storedGains.map { AudioEqualizer.clampedGain(Float($0)) }
+        }
         randomPlaybackScope = RandomPlaybackScope(rawValue: preferences.randomPlaybackScopeRawValue ?? "off") ?? .off
         repeatMode = RepeatMode(rawValue: preferences.repeatModeRawValue ?? "off") ?? .off
         if randomPlaybackScope == .library { loadRandomLibraryTracks() }
