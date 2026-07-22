@@ -1,57 +1,50 @@
 # CocoaSpice
 
-`CocoaSpice` is a native macOS game-music player built with SwiftUI, `AVAudioEngine`, `libgme`, `libvgm`, and `Highly Complete`.
+CocoaSpice is a native macOS player and library for game music. It pairs a scanned Database browser with an editable Playlist and plays every supported format through one shared low-latency audio path.
 
-## Layout
+## Highlights
 
-- Left pane: scanned database game list with sidebar search
-- Right pane: editable playlist and queue
-- Top toolbar: previous/play-pause/next
-- Far-right titlebar: 20-bar live spectrum analyzer with customizable base, peak, and cap colors
+- Fast Scan for filename-only intake, or Deep Scan for archive members, metadata, duration, and subsongs.
+- Drag files, folders, and supported archives straight into the playlist.
+- Universal Long Play: one extended-playback setting for every supported decoder.
+- A ten-band 31 Hz–16 kHz Equalizer, shared by every playback format.
+- Native transport controls, seek, repeat, library/playlist random play, spectrum display, and AAC export.
 
-## Current Behavior
+## Supported playback
 
-- Sidebar double-click behavior is configurable as `Set as Playlist` or `Add to Playlist`
-- Fast Scan builds a filename-based library without opening decoders or archives; Deep Scan indexes full metadata and archive members
-- Playlist rows remain selectable while metadata hydrates in the background, and visible columns auto-size after population and final metadata updates
-- Random playback can target the indexed library or the current playlist using native toolbar symbols
-- Selected playlist rows can export native AAC `.m4a` files with built-in macOS encoding, concrete file counts, and separate current-file and batch progress
-- Options opens with the standard `Command+,` shortcut
+| Family | Formats |
+| --- | --- |
+| Classic game music | `ay`, `gbs`, `hes`, `kss`, `nsf`, `nsfe`, `sap`, `spc` |
+| Sega / VGM | `gym`, `s98`, `vgm`, `vgz` |
+| GBA / Nintendo 64 / DS | `gsf`, `minigsf`, `usf`, `miniusf`, `2sf`, `mini2sf` |
+| PlayStation | `psf`, `minipsf`, `psf2`, `minipsf2`, `xa` |
+| Streamed game audio | `adx`, `ads`, `aus`, `hd`, `hbd`, `iecs`, `int`, `mib`, `mtaf`, `rws`, `ss2`, `svag`, `vag` |
 
-## CLI Workflow
+Supported containers are ZIP, 7z, RSN, `.tar.zst`, and `.tzst`. A container is expanded only for supported members; it is not itself a playable track.
 
-Build the bundled app:
+## Build and run
+
+Requires current macOS, Xcode, Homebrew `game-music-emu`, CMake, 7-Zip, and unar.
 
 ```bash
 ./build.sh
-```
-
-Launch it without Xcode:
-
-```bash
 ./launch.sh
 ```
 
-By default it will look for the library at:
+## Decoder and emulator components
 
-`/Users/john/Downloads/Code/SPC/spcsets_extracted`
+CocoaSpice is possible because of these projects:
 
-Override that path for a launch with:
+- [Game Music Emu / libgme](https://github.com/libgme/game-music-emu)
+- [libvgm](https://github.com/ValleyBell/libvgm)
+- [vgmstream](https://github.com/vgmstream/vgmstream)
+- [mGBA](https://github.com/mgba-emu/mgba), used by the Highly Complete GSF path
+- [lazyusf2](https://gitlab.com/kode54/lazyusf2)
+- [2sf2wav](https://bitbucket.org/ahigerd/2sf2wav)
+- [Play!](https://github.com/jpd002/Play-)
 
-```bash
-COCOASPICE_LIBRARY_ROOT="/path/to/spcsets_extracted" ./launch.sh
-```
+Thank you to their maintainers and contributors for making these formats accessible and preservable.
 
-## Notes
+## License and notices
 
-- `libgme` is bundled into `dist/CocoaSpice.app/Contents/Frameworks`
-- `libvgm` is vendored under `vendor/libvgm` and built statically into the app during `./build.sh`
-- `./launch.sh` performs an incremental build before launching; pass `--rebuild` when a clean rebuild is intentional.
-- `Highly Complete` is provided by a local bridge target backed by vendored `mGBA` plus `psflib`
-- `lazyusf2` is vendored under `vendor/lazyusf2` and built statically into the app for USF and miniUSF playback
-- Play! is vendored under `vendor/play` and provides native PSF, miniPSF, PSF2, and miniPSF2 playback
-- Third-party licensing notes are kept in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)
-- the build currently expects Homebrew `game-music-emu` at `/opt/homebrew`
-- the build currently expects `cmake` to be installed locally so `scripts/build-libvgm.sh` and `scripts/build-mgba.sh` can produce the static backend libraries
-- the app now targets the current macOS generation in SwiftPM rather than macOS 14
-- the UI is intentionally native and minimal rather than custom-skinned
+CocoaSpice currently has no separate top-level project license. It bundles decoder and emulator code with different licenses, including LGPL-2.1-or-later, GPL-2.0-or-later, MPL-2.0, ISC, and BSD-style terms. Redistributing CocoaSpice must preserve and comply with every applicable upstream notice and source obligation. See [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) and the notices in `vendor/` for the distribution details.
