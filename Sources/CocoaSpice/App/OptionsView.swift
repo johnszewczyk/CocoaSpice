@@ -431,10 +431,7 @@ struct OptionsView: View {
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
 
-            LazyVGrid(
-                columns: [GridItem(.flexible()), GridItem(.flexible())],
-                spacing: 10
-            ) {
+            VStack(spacing: 10) {
                 ForEach(Array(AudioEqualizer.bandFrequencies.indices), id: \.self) { index in
                     HStack(spacing: 8) {
                         Text(Self.equalizerBandLabel(for: AudioEqualizer.bandFrequencies[index]))
