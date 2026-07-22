@@ -3,7 +3,7 @@ import Dispatch
 import Foundation
 
 enum ZipArchiveSupport {
-    static let supportedArchiveExtensions: Set<String> = ["zip", "7z", "rsn"]
+    static let supportedArchiveExtensions: Set<String> = ["zip", "7z", "rsn", "tzst"]
     /// Archive commands are deliberately one-thread-per-process. The scanner
     /// fans those processes across the machine instead of allowing every 7zz
     /// process to spawn its own full-width worker pool.
@@ -17,6 +17,7 @@ enum ZipArchiveSupport {
         case zip
         case sevenZip
         case rsn
+        case tarZstandard
     }
 
     struct ArchiveEntry: Hashable, Sendable {
@@ -42,7 +43,10 @@ enum ZipArchiveSupport {
     }
 
     static func canHandle(_ url: URL) -> Bool {
-        supportedArchiveExtensions.contains(url.pathExtension.lowercased())
+        let url = url.standardizedFileURL
+        return supportedArchiveExtensions.contains(url.pathExtension.lowercased())
+            || (url.pathExtension.lowercased() == "zst"
+                && url.deletingPathExtension().pathExtension.lowercased() == "tar")
     }
 
     static func listPlayableEntries(
@@ -133,6 +137,12 @@ enum ZipArchiveSupport {
                 arguments: ["x", "-mmt=1", "-so", archiveURL.path, normalizedEntryPath],
                 outputURL: temporaryURL
             )
+        case .tarZstandard:
+            try runProcessWritingOutput(
+                executable: try executable(named: "tar"),
+                arguments: ["-xOf", archiveURL.path, normalizedEntryPath],
+                outputURL: temporaryURL
+            )
         }
 
         if fileManager.fileExists(atPath: destinationURL.path) {
@@ -144,10 +154,8 @@ enum ZipArchiveSupport {
 
     static func materializeArchive(at archiveURL: URL) throws -> URL {
         let archiveURL = archiveURL.standardizedFileURL
-        let rootURL = cacheRootURL().appendingPathComponent(
-            sha256Hex(archiveURL.path + "|" + String(((try? archiveURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate) ?? .distantPast).timeIntervalSinceReferenceDate)),
-            isDirectory: true
-        ).appendingPathComponent("set", isDirectory: true)
+        let rootURL = archiveCacheURL(for: archiveURL)
+            .appendingPathComponent("set", isDirectory: true)
         let completionURL = rootURL.appendingPathComponent(".complete", isDirectory: false)
         if FileManager.default.fileExists(atPath: completionURL.path) { return rootURL }
 
@@ -156,9 +164,14 @@ enum ZipArchiveSupport {
         try FileManager.default.createDirectory(at: stagingURL, withIntermediateDirectories: true)
         switch archiveKind(for: archiveURL) {
         case .rsn:
-            _ = try runProcess(executable: try executable(named: "unar"), arguments: ["-q", "-f", "-o", stagingURL.path, archiveURL.path])
+            _ = try runProcess(executable: try executable(named: "unar"), arguments: ["-q", "-f", "-D", "-o", stagingURL.path, archiveURL.path])
         case .zip, .sevenZip:
             _ = try runProcess(executable: try executable(named: "7zz"), arguments: ["x", "-mmt=1", "-y", "-o\(stagingURL.path)", archiveURL.path])
+        case .tarZstandard:
+            _ = try runProcess(
+                executable: try executable(named: "tar"),
+                arguments: ["-xf", archiveURL.path, "-C", stagingURL.path]
+            )
         }
         try Data().write(to: stagingURL.appendingPathComponent(".complete"))
         try FileManager.default.createDirectory(at: rootURL.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -166,6 +179,85 @@ enum ZipArchiveSupport {
             try FileManager.default.moveItem(at: stagingURL, to: rootURL)
         }
         return rootURL
+    }
+
+    /// Materializes all selected playable members with one extractor process.
+    /// Deep scanning needs every selected member, so launching a process per
+    /// member only adds startup and temporary-file overhead.
+    static func materializeEntries(at archiveURL: URL, entryPaths: [String]) throws -> URL {
+        let archiveURL = archiveURL.standardizedFileURL
+        let normalizedPaths = try Array(Set(entryPaths.map { entryPath in
+            let normalized = normalizeEntryPath(entryPath)
+            guard !normalized.isEmpty,
+                  sanitizedEntryPathComponents(normalized).joined(separator: "/") == normalized else {
+                throw ArchiveError.invalidEntryPath(entryPath)
+            }
+            return normalized
+        })).sorted()
+        guard !normalizedPaths.isEmpty else {
+            throw ArchiveError.invalidEntryPath("")
+        }
+
+        let selectionKey = sha256Hex(normalizedPaths.joined(separator: "\n"))
+        let rootURL = archiveCacheURL(for: archiveURL)
+            .appendingPathComponent("selection-\(selectionKey)", isDirectory: true)
+        let completionURL = rootURL.appendingPathComponent(".complete", isDirectory: false)
+        if FileManager.default.fileExists(atPath: completionURL.path) { return rootURL }
+
+        let stagingURL = rootURL.deletingLastPathComponent()
+            .appendingPathComponent(".selection-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: stagingURL) }
+        try FileManager.default.createDirectory(at: stagingURL, withIntermediateDirectories: true)
+
+        switch archiveKind(for: archiveURL) {
+        case .rsn:
+            _ = try runProcess(
+                executable: try executable(named: "unar"),
+                arguments: ["-q", "-f", "-D", "-o", stagingURL.path, archiveURL.path] + normalizedPaths
+            )
+        case .zip, .sevenZip:
+            _ = try runProcess(
+                executable: try executable(named: "7zz"),
+                arguments: ["x", "-mmt=1", "-y", "-o\(stagingURL.path)", archiveURL.path] + normalizedPaths
+            )
+        case .tarZstandard:
+            _ = try runProcess(
+                executable: try executable(named: "tar"),
+                arguments: ["-xf", archiveURL.path, "-C", stagingURL.path] + normalizedPaths
+            )
+        }
+
+        try Data().write(to: stagingURL.appendingPathComponent(".complete"))
+        try FileManager.default.createDirectory(
+            at: rootURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        if !FileManager.default.fileExists(atPath: rootURL.path) {
+            try FileManager.default.moveItem(at: stagingURL, to: rootURL)
+        }
+        return rootURL
+    }
+
+    static func materializeInspectionSet(
+        archiveURL: URL,
+        entryPaths: [String]
+    ) throws -> URL {
+        guard let policy = GMEFormatSupport.archiveMaterializationForInspection(
+            entryPaths: entryPaths
+        ) else {
+            throw ArchiveError.invalidEntryPath(entryPaths.first ?? "")
+        }
+
+        switch policy {
+        case .selectedEntry:
+            return try materializeEntries(at: archiveURL, entryPaths: entryPaths)
+        case .completeSet, .completeSetWithLazyUSFAliases:
+            let root = try materializeArchive(at: archiveURL)
+            if policy == .completeSetWithLazyUSFAliases {
+                try prepareLazyUSFDependencies(in: root)
+            }
+            return root
+        }
     }
 
     static func archiveMemberURL(in materializedArchiveURL: URL, entryPath: String) -> URL {
@@ -188,25 +280,29 @@ enum ZipArchiveSupport {
     }
 
     private static func materializedEntryURL(archiveURL: URL, entryPath: String) throws -> URL {
-        let archiveModifiedAt =
-            (try? archiveURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
-            ?? .distantPast
-        let archiveCacheKey = sha256Hex(
-            archiveURL.path + "|" + String(archiveModifiedAt.timeIntervalSinceReferenceDate)
-        )
-
         let safeComponents = sanitizedEntryPathComponents(entryPath)
         guard let leaf = safeComponents.last else {
             throw ArchiveError.invalidEntryPath(entryPath)
         }
 
-        var destinationURL = cacheRootURL()
-            .appendingPathComponent(archiveCacheKey, isDirectory: true)
+        var destinationURL = archiveCacheURL(for: archiveURL)
         for component in safeComponents.dropLast() {
             destinationURL.appendPathComponent(component, isDirectory: true)
         }
         destinationURL.appendPathComponent(leaf, isDirectory: false)
         return destinationURL
+    }
+
+    private static func archiveCacheURL(for archiveURL: URL) -> URL {
+        let archiveModifiedAt =
+            (try? archiveURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
+            ?? .distantPast
+        let archiveCacheKey = sha256Hex(
+            archiveURL.standardizedFileURL.path
+                + "|"
+                + String(archiveModifiedAt.timeIntervalSinceReferenceDate)
+        )
+        return cacheRootURL().appendingPathComponent(archiveCacheKey, isDirectory: true)
     }
 
     private static func cacheRootURL() -> URL {
@@ -257,13 +353,27 @@ enum ZipArchiveSupport {
                 throw ArchiveError.processFailed(executable: "lsar", message: "invalid JSON listing")
             }
             return contents.compactMap { $0["XADFileName"] as? String }
+        case .tarZstandard:
+            let data = try runProcess(
+                executable: try executable(named: "tar"),
+                arguments: ["-tf", archiveURL.path]
+            )
+            return String(decoding: data, as: UTF8.self)
+                .split(whereSeparator: \.isNewline)
+                .map(String.init)
         }
     }
 
     private static func archiveKind(for archiveURL: URL) -> ArchiveKind {
+        let archiveURL = archiveURL.standardizedFileURL
+        if archiveURL.pathExtension.lowercased() == "zst",
+           archiveURL.deletingPathExtension().pathExtension.lowercased() == "tar" {
+            return .tarZstandard
+        }
         switch archiveURL.pathExtension.lowercased() {
         case "zip": return .zip
         case "7z": return .sevenZip
+        case "tzst": return .tarZstandard
         default: return .rsn
         }
     }
@@ -274,6 +384,7 @@ enum ZipArchiveSupport {
         case "7zz": environmentKey = "COCOASPICE_7Z_BINARY"
         case "unar": environmentKey = "COCOASPICE_UNAR_BINARY"
         case "lsar": environmentKey = "COCOASPICE_LSAR_BINARY"
+        case "tar": environmentKey = "COCOASPICE_TAR_BINARY"
         default: environmentKey = "COCOASPICE_ZIPINFO_BINARY"
         }
 
@@ -289,7 +400,7 @@ enum ZipArchiveSupport {
         }
         throw ArchiveError.processFailed(
             executable: name,
-            message: "Install 7-Zip and unar, then retry archive playback."
+            message: "Install the required archive tool, then retry archive playback."
         )
     }
 
@@ -342,7 +453,10 @@ enum ZipArchiveSupport {
         process.standardOutput = outputHandle
         process.standardError = stderr
 
+        let completion = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in completion.signal() }
         try process.run()
+        defer { process.terminationHandler = nil }
         let errorReadHandle = stderr.fileHandleForReading
         try stderr.fileHandleForWriting.close()
 
@@ -356,26 +470,19 @@ enum ZipArchiveSupport {
             readers.leave()
         }
 
-        let deadline = Date().addingTimeInterval(processTimeout)
-        while process.isRunning {
-            if Task.isCancelled {
-                process.terminate()
-                process.waitUntilExit()
-                readers.wait()
-                throw CancellationError()
-            }
-            if Date() >= deadline {
-                process.terminate()
-                process.waitUntilExit()
-                readers.wait()
-                throw ArchiveError.processFailed(
-                    executable: URL(fileURLWithPath: executable).lastPathComponent,
-                    message: "timed out after \(Int(processTimeout)) seconds"
-                )
-            }
-            Thread.sleep(forTimeInterval: 0.05)
+        do {
+            try waitForProcess(
+                process,
+                completion: completion,
+                executable: executable,
+                timeout: processTimeout
+            )
+        } catch {
+            readers.wait()
+            throw error
         }
         readers.wait()
+        try outputHandle.close()
 
         let errorData = errorCollector.value
         guard process.terminationStatus == 0 else {
@@ -411,7 +518,10 @@ enum ZipArchiveSupport {
 
         let stderr = Pipe()
         process.standardError = stderr
+        let completion = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in completion.signal() }
         try process.run()
+        defer { process.terminationHandler = nil }
         let errorReadHandle = stderr.fileHandleForReading
         try stderr.fileHandleForWriting.close()
 
@@ -425,21 +535,19 @@ enum ZipArchiveSupport {
             readers.leave()
         }
 
-        let deadline = Date().addingTimeInterval(30)
-        while process.isRunning {
-            if Task.isCancelled || Date() >= deadline {
-                process.terminate()
-                process.waitUntilExit()
-                readers.wait()
-                if Task.isCancelled { throw CancellationError() }
-                throw ArchiveError.processFailed(
-                    executable: URL(fileURLWithPath: executable).lastPathComponent,
-                    message: "timed out after 30 seconds"
-                )
-            }
-            Thread.sleep(forTimeInterval: 0.05)
+        do {
+            try waitForProcess(
+                process,
+                completion: completion,
+                executable: executable,
+                timeout: 30
+            )
+        } catch {
+            readers.wait()
+            throw error
         }
         readers.wait()
+        try outputHandle.close()
 
         guard process.terminationStatus == 0 else {
             let errorText = String(decoding: errorCollector.value, as: UTF8.self)
@@ -462,6 +570,33 @@ enum ZipArchiveSupport {
             "CocoaSpice-process-\(UUID().uuidString)",
             isDirectory: false
         )
+    }
+
+    /// Process completion wakes immediately through the termination handler.
+    /// The bounded wait exists only to observe task cancellation and timeout;
+    /// it no longer imposes a polling delay on successful tiny archive jobs.
+    private static func waitForProcess(
+        _ process: Process,
+        completion: DispatchSemaphore,
+        executable: String,
+        timeout: TimeInterval
+    ) throws {
+        let deadline = Date().addingTimeInterval(timeout)
+        while completion.wait(timeout: .now() + .milliseconds(100)) != .success {
+            if Task.isCancelled {
+                process.terminate()
+                process.waitUntilExit()
+                throw CancellationError()
+            }
+            if Date() >= deadline {
+                process.terminate()
+                process.waitUntilExit()
+                throw ArchiveError.processFailed(
+                    executable: URL(fileURLWithPath: executable).lastPathComponent,
+                    message: "timed out after \(Int(timeout)) seconds"
+                )
+            }
+        }
     }
 }
 

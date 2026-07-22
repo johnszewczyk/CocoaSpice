@@ -128,6 +128,12 @@ final class PlaybackEngine: @unchecked Sendable {
         }
     }
 
+    func diagnosticsSnapshot() async -> PlaybackDiagnosticsSnapshot {
+        await enqueue {
+            self.nativeSession.diagnosticsSnapshot()
+        }
+    }
+
     func currentTrackID() async -> TrackItem.ID? {
         await enqueue {
             self.currentTrack?.id
@@ -333,6 +339,73 @@ private final class SpectrumBandAnalyzer: @unchecked Sendable {
     }
 }
 
+/// Converts decoder-native stereo PCM into the playback engine's shared output clock.
+///
+/// vgmstream reports the real clock used by formats such as PlayStation CD-XA
+/// (37,800 Hz).  The native output endpoint is fixed at 44.1 kHz, so copying
+/// those frames directly would make them play 44,100 / 37,800 times too fast.
+final class LinearStereoResampler {
+    private let sourceFramesPerOutputFrame: Double
+    private var sourceLeft: [Float] = []
+    private var sourceRight: [Float] = []
+    private var sourcePosition = 0.0
+
+    init(sourceSampleRate: Int, outputSampleRate: Int) {
+        sourceFramesPerOutputFrame = Double(max(sourceSampleRate, 1)) /
+            Double(max(outputSampleRate, 1))
+    }
+
+    func reset() {
+        sourceLeft.removeAll(keepingCapacity: true)
+        sourceRight.removeAll(keepingCapacity: true)
+        sourcePosition = 0
+    }
+
+    func append(_ chunk: DecodedChunk) {
+        guard chunk.frameCount > 0 else { return }
+        sourceLeft.append(contentsOf: chunk.left.prefix(chunk.frameCount))
+        sourceRight.append(contentsOf: chunk.right.prefix(chunk.frameCount))
+    }
+
+    func render(maximumFrames: Int, endOfInput: Bool) -> DecodedChunk {
+        guard maximumFrames > 0 else {
+            return DecodedChunk(left: [], right: [], frameCount: 0)
+        }
+
+        var left: [Float] = []
+        var right: [Float] = []
+        left.reserveCapacity(maximumFrames)
+        right.reserveCapacity(maximumFrames)
+
+        while left.count < maximumFrames {
+            let index = Int(sourcePosition)
+            guard index < sourceLeft.count else { break }
+
+            let nextIndex = index + 1
+            guard nextIndex < sourceLeft.count || endOfInput else { break }
+
+            let interpolation = Float(sourcePosition - Double(index))
+            let upperIndex = min(nextIndex, sourceLeft.count - 1)
+            left.append(sourceLeft[index] + ((sourceLeft[upperIndex] - sourceLeft[index]) * interpolation))
+            right.append(sourceRight[index] + ((sourceRight[upperIndex] - sourceRight[index]) * interpolation))
+            sourcePosition += sourceFramesPerOutputFrame
+        }
+
+        discardConsumedFrames()
+        return DecodedChunk(left: left, right: right, frameCount: left.count)
+    }
+
+    private func discardConsumedFrames() {
+        // Keep the frame immediately before the fractional read position so
+        // interpolation remains continuous across future decoder chunks.
+        let discardCount = max(0, Int(sourcePosition) - 1)
+        guard discardCount > 0 else { return }
+        sourceLeft.removeFirst(discardCount)
+        sourceRight.removeFirst(discardCount)
+        sourcePosition -= Double(discardCount)
+    }
+}
+
 final class PlaybackStreamSession {
     let metadata: TrackMetadata
     let totalFrames: Int?
@@ -341,6 +414,9 @@ final class PlaybackStreamSession {
     private let chunkFrameCount: Int
     private let fadeFrameCount: Int
     private let outputFormat: AVAudioFormat
+    private let outputSampleRate: Int
+    private let resampler: LinearStereoResampler?
+    private var outputFramesProduced = 0
 
     init(
         track: TrackItem,
@@ -360,6 +436,13 @@ final class PlaybackStreamSession {
             throw SPCDecoderError.bufferCreationFailed
         }
         self.outputFormat = outputFormat
+        outputSampleRate = sampleRate
+        resampler = decoder.sampleRate == sampleRate
+            ? nil
+            : LinearStereoResampler(
+                sourceSampleRate: decoder.sampleRate,
+                outputSampleRate: sampleRate
+            )
         totalFrames = totalSeconds > 0 ? max(totalSeconds * sampleRate, 1) : nil
         self.chunkFrameCount = chunkFrameCount
         fadeFrameCount = max(0, fadeSeconds * sampleRate)
@@ -375,6 +458,11 @@ final class PlaybackStreamSession {
         guard seconds > 0 else { return }
         let clampedMilliseconds = max(0, min(Int(seconds * 1_000), totalMilliseconds))
         try decoder.seek(toMilliseconds: clampedMilliseconds)
+        resampler?.reset()
+        outputFramesProduced = min(
+            totalFrames ?? .max,
+            Int((Double(clampedMilliseconds) / 1_000) * Double(outputSampleRate))
+        )
     }
 
     func setSuspended(_ suspended: Bool) {
@@ -386,24 +474,21 @@ final class PlaybackStreamSession {
         channels: AVAudioChannelCount
     ) throws -> AVAudioPCMBuffer? {
         guard channels == 2 else { throw SPCDecoderError.bufferCreationFailed }
-        if totalFrames == nil, decoder.trackEnded {
-            return nil
-        }
 
-        let playedFrames = decoder.playedFrames
         if let totalFrames {
-            guard playedFrames < totalFrames else { return nil }
+            guard outputFramesProduced < totalFrames else { return nil }
         }
 
         let frameCount: Int
         if let totalFrames {
-            frameCount = min(chunkFrameCount, totalFrames - playedFrames)
+            frameCount = min(chunkFrameCount, totalFrames - outputFramesProduced)
         } else {
             frameCount = chunkFrameCount
         }
-        let chunkStartFrame = playedFrames
-        let chunk = try decoder.decode(frameCount: frameCount)
+        let chunkStartFrame = outputFramesProduced
+        let chunk = try decodeOutputFrames(frameCount: frameCount)
         guard chunk.frameCount > 0 else { return nil }
+        outputFramesProduced += chunk.frameCount
 
         guard let buffer = AVAudioPCMBuffer(
             pcmFormat: outputFormat,
@@ -437,7 +522,45 @@ final class PlaybackStreamSession {
 
     private var totalMilliseconds: Int {
         guard let totalFrames else { return Int.max }
-        return Int((Double(totalFrames) / Double(decoder.sampleRate)) * 1_000)
+        return Int((Double(totalFrames) / Double(outputSampleRate)) * 1_000)
+    }
+
+    private func decodeOutputFrames(frameCount: Int) throws -> DecodedChunk {
+        guard let resampler else {
+            return try decoder.decode(frameCount: frameCount)
+        }
+
+        var left: [Float] = []
+        var right: [Float] = []
+        left.reserveCapacity(frameCount)
+        right.reserveCapacity(frameCount)
+
+        while left.count < frameCount {
+            let rendered = resampler.render(
+                maximumFrames: frameCount - left.count,
+                endOfInput: decoder.trackEnded
+            )
+            if rendered.frameCount > 0 {
+                left.append(contentsOf: rendered.left)
+                right.append(contentsOf: rendered.right)
+                continue
+            }
+
+            guard !decoder.trackEnded else { break }
+            let remainingOutputFrames = frameCount - left.count
+            let sourceFrames = max(
+                256,
+                Int(ceil(
+                    Double(remainingOutputFrames) * Double(decoder.sampleRate) /
+                        Double(outputSampleRate)
+                )) + 2
+            )
+            let sourceChunk = try decoder.decode(frameCount: sourceFrames)
+            guard sourceChunk.frameCount > 0 else { break }
+            resampler.append(sourceChunk)
+        }
+
+        return DecodedChunk(left: left, right: right, frameCount: left.count)
     }
 
     private func applyExternalFade(

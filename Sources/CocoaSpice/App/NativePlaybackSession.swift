@@ -176,6 +176,19 @@ final class NativePlaybackSession: @unchecked Sendable {
         }
     }
 
+    func diagnosticsSnapshot() -> PlaybackDiagnosticsSnapshot {
+        refillQueue.sync {
+            let snapshot = output.snapshot
+            return PlaybackDiagnosticsSnapshot(
+                bufferedFrames: snapshot.bufferedFrames,
+                ringBufferFrames: snapshot.ringBufferFrames,
+                underrunCount: snapshot.underrunCount,
+                clippedSampleCount: snapshot.clippedSampleCount,
+                sampleRate: snapshot.sampleRate
+            )
+        }
+    }
+
     func isCurrentGeneration(_ generation: Int) -> Bool {
         refillQueue.sync {
             output.snapshot.generation == generation

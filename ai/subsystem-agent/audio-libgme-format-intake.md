@@ -10,6 +10,7 @@
 ## Current State
 
 - `libgme` supports playback and metadata inspection for `ay`, `gbs`, `hes`, `kss`, `nsf`, `nsfe`, `sap`, and `spc`.
+- SPC is registered as a single-track format so playlist rows publish immediately and hydrate metadata afterward. The remaining libgme formats retain explicit subtrack enumeration before queue insertion.
 - Long Play is a shared app feature for supported game-music formats, using one common toggle and one manual duration target.
 - With Long Play disabled, supported formats use file or decoder default playback behavior.
 

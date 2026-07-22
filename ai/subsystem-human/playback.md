@@ -12,14 +12,15 @@
 - Repeat: the toolbar cycles Off, Repeat Playlist, and Repeat Song.
 - Controls: rapid previous or next commands use the newest requested track.
 - Playback: starts through a streamed audio path.
-- Archives: supported game-music files can play from ZIP, 7z, and RSN containers; the selected member is materialized into the cache.
+- Archives: supported game-music files can play from ZIP, 7z, RSN, and TAR+Zstandard (`.tar.zst`/`.tzst`) containers; the selected member is materialized into the cache.
 - USF archives: USF and miniUSF playback materializes the complete archive set so miniUSF dependency files remain available.
 - 2SF archives: 2SF and mini2SF playback materializes the complete archive set so mini2SF library dependencies remain available.
 - PSF family: PSF, miniPSF, PSF2, and miniPSF2 use the vendored Play! PSF core. Archive playback materializes the complete set so `_lib` and PSFLIB dependencies resolve relative to the selected file; PSF tags provide scanner metadata and declared length.
 - PlayStation XA: XA streams use vgmstream and expose embedded subsongs as separate playlist tracks when present.
 - Seeking: supports forward and backward movement.
 - Audio output: resumes at the current position after an output-device change when playback was active.
-- Random playback has three toolbar states: off, random selection from the indexed library, and random selection from the currently visible playlist view.
+- Random playback has three toolbar states: off, random selection from the indexed library, and random selection from the current playlist. All three toolbar glyphs are native SF Symbols.
+- Random Library queues the requested playback action while a small track-count-weighted library pool loads, so Next and end-of-track advance cannot race an empty asynchronous pool or require hydrating the entire indexed library.
 
 ## Timing
 

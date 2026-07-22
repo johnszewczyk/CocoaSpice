@@ -62,10 +62,15 @@ struct PlaylistTableView: NSViewRepresentable {
 
     @MainActor
     final class Coordinator: NSObject {
-        private let columnResizeAnimationDuration: TimeInterval = 0.066
         private let columnResizeAnimationSteps = 12
-        private var columnResizeTask: Task<Void, Never>?
+        private let columnResizeIntervalNanoseconds: UInt64 = 24_000_000
         private let autoSizeSampleLimit = 200
+        private let autoSizeDebounceNanoseconds: UInt64 = 120_000_000
+
+        private struct AutoSizeSignature: Equatable {
+            let trackIDs: [TrackItem.ID]
+            let widthHints: PlaylistColumnWidthHints?
+        }
 
         private enum Column: String, CaseIterable {
             case transport
@@ -153,7 +158,7 @@ struct PlaylistTableView: NSViewRepresentable {
         }
 
         @Bindable var model: PlayerViewModel
-        private weak var tableView: PlaylistNativeTableView?
+        private weak var tableView: NSTableView?
         private var suppressSelectionSync = false
         private var lastAppliedMetadataLoadToken = -1
         private var lastVisibleTrackIDs: [String] = []
@@ -163,12 +168,17 @@ struct PlaylistTableView: NSViewRepresentable {
         private var lastIsPlaying = false
         private var lastSortColumn: PlayerViewModel.PlaylistSortColumn?
         private var lastSortDirection: PlayerViewModel.PlaylistSortDirection = .ascending
+        private var lastAutoSizeSignature: AutoSizeSignature?
+        private var pendingAutoSizeSignature: AutoSizeSignature?
+        private var autoSizeTask: Task<Void, Never>?
+        private var suppressWidthPersistence = false
+        private var columnResizeTask: Task<Void, Never>?
 
         init(model: PlayerViewModel) {
             self._model = Bindable(model)
         }
 
-        fileprivate func attach(tableView: PlaylistNativeTableView) {
+        func attach(tableView: NSTableView) {
             self.tableView = tableView
         }
 
@@ -228,6 +238,13 @@ struct PlaylistTableView: NSViewRepresentable {
             if metadataTokenChanged {
                 lastAppliedMetadataLoadToken = model.playlistMetadataLoadToken
             }
+
+            scheduleAutomaticColumnSizing(
+                signature: AutoSizeSignature(
+                    trackIDs: visibleTrackIDs,
+                    widthHints: model.playlistColumnWidthHints
+                )
+            )
 
             lastVisibleTrackIDs = visibleTrackIDs
             lastSelectedTrackIDs = selectedTrackIDs
@@ -402,6 +419,7 @@ struct PlaylistTableView: NSViewRepresentable {
 
         nonisolated func tableViewColumnDidResize(_ notification: Notification) {
             MainActor.assumeIsolated {
+                guard !suppressWidthPersistence else { return }
                 persistWidths()
             }
         }
@@ -643,10 +661,84 @@ struct PlaylistTableView: NSViewRepresentable {
             guard let tableView,
                   columnIndex >= 0, columnIndex < tableView.tableColumns.count else { return }
 
-            let width = self.tableView(tableView, sizeToFitWidthOfColumn: columnIndex)
             let tableColumn = tableView.tableColumns[columnIndex]
-            animateColumnWidths([(tableColumn, max(tableColumn.minWidth, width))])
-            persistWidths()
+            guard Column(rawValue: tableColumn.identifier.rawValue)?.userConfigurable == true else { return }
+            applyColumnWidths([(tableColumn, fittedWidth(for: columnIndex, in: tableView))])
+        }
+
+        private func scheduleAutomaticColumnSizing(signature: AutoSizeSignature) {
+            guard !signature.trackIDs.isEmpty else {
+                autoSizeTask?.cancel()
+                autoSizeTask = nil
+                pendingAutoSizeSignature = nil
+                lastAutoSizeSignature = nil
+                return
+            }
+            guard signature != lastAutoSizeSignature,
+                  signature != pendingAutoSizeSignature else { return }
+
+            autoSizeTask?.cancel()
+            pendingAutoSizeSignature = signature
+            autoSizeTask = Task { @MainActor [weak self] in
+                guard let self else { return }
+                try? await Task.sleep(nanoseconds: self.autoSizeDebounceNanoseconds)
+                guard !Task.isCancelled,
+                      self.pendingAutoSizeSignature == signature else { return }
+
+                self.autoSizeVisibleColumns()
+                self.lastAutoSizeSignature = signature
+                self.pendingAutoSizeSignature = nil
+                self.autoSizeTask = nil
+            }
+        }
+
+        private func autoSizeVisibleColumns() {
+            guard let tableView else { return }
+            let targets = tableView.tableColumns.enumerated().compactMap { columnIndex, tableColumn -> (NSTableColumn, CGFloat)? in
+                guard !tableColumn.isHidden,
+                      Column(rawValue: tableColumn.identifier.rawValue)?.userConfigurable == true else {
+                    return nil
+                }
+                return (tableColumn, fittedWidth(for: columnIndex, in: tableView))
+            }
+            applyColumnWidths(targets)
+        }
+
+        private func fittedWidth(for columnIndex: Int, in tableView: NSTableView) -> CGFloat {
+            let tableColumn = tableView.tableColumns[columnIndex]
+            let measuredWidth = self.tableView(tableView, sizeToFitWidthOfColumn: columnIndex)
+            let upperBound = tableColumn.maxWidth > 0 ? tableColumn.maxWidth : measuredWidth
+            return min(max(measuredWidth, tableColumn.minWidth), upperBound)
+        }
+
+        private func applyColumnWidths(_ targets: [(NSTableColumn, CGFloat)]) {
+            guard !targets.isEmpty else { return }
+
+            columnResizeTask?.cancel()
+            let startWidths = targets.map { $0.0.width }
+            let steps = columnResizeAnimationSteps
+            suppressWidthPersistence = true
+
+            columnResizeTask = Task { @MainActor [weak self] in
+                guard let self else { return }
+                for step in 1...steps {
+                    try? await Task.sleep(nanoseconds: self.columnResizeIntervalNanoseconds)
+                    guard !Task.isCancelled else { return }
+                    let linearProgress = CGFloat(step) / CGFloat(steps)
+                    let progress = linearProgress < 0.5
+                        ? 2 * linearProgress * linearProgress
+                        : 1 - (pow(-2 * linearProgress + 2, 2) / 2)
+                    for (index, target) in targets.enumerated() {
+                        let (tableColumn, finalWidth) = target
+                        tableColumn.width = startWidths[index] + ((finalWidth - startWidths[index]) * progress)
+                    }
+                }
+
+                guard !Task.isCancelled else { return }
+                self.suppressWidthPersistence = false
+                self.persistWidths()
+                self.columnResizeTask = nil
+            }
         }
 
         private func droppedFileURLs(from info: NSDraggingInfo) -> [URL] {
@@ -662,39 +754,33 @@ struct PlaylistTableView: NSViewRepresentable {
                 .filter(PlaylistQueueLoader.canImportDroppedURL(_:))
         }
 
-        private func animateColumnWidths(_ targets: [(NSTableColumn, CGFloat)]) {
-            guard !targets.isEmpty else { return }
-
-            columnResizeTask?.cancel()
-
-            let startWidths = targets.map { $0.0.width }
-            let steps = max(1, columnResizeAnimationSteps)
-            let sleepNanoseconds = UInt64((columnResizeAnimationDuration / Double(steps)) * 1_000_000_000)
-
-            columnResizeTask = Task { @MainActor [weak self] in
-                guard let self else { return }
-
-                for step in 1...steps {
-                    guard !Task.isCancelled else { return }
-                    let linearProgress = CGFloat(step) / CGFloat(steps)
-                    let progress = 1 - pow(1 - linearProgress, 2)
-                    for (index, target) in targets.enumerated() {
-                        let (tableColumn, finalWidth) = target
-                        let startWidth = startWidths[index]
-                        tableColumn.width = startWidth + ((finalWidth - startWidth) * progress)
-                    }
-                    if step < steps {
-                        try? await Task.sleep(nanoseconds: sleepNanoseconds)
-                    }
-                }
-
-                self.columnResizeTask = nil
-            }
-        }
-
         func makeHeaderMenu(clickedColumnIndex: Int) -> NSMenu {
             let menu = NSMenu(title: "Columns")
             menu.autoenablesItems = false
+
+            if let tableView,
+               clickedColumnIndex >= 0,
+               clickedColumnIndex < tableView.tableColumns.count,
+               let clickedColumn = Column(rawValue: tableView.tableColumns[clickedColumnIndex].identifier.rawValue),
+               clickedColumn.userConfigurable {
+                let autoSizeColumn = NSMenuItem(
+                    title: "Auto Size \(clickedColumn.title)",
+                    action: #selector(autoSizeColumnFromMenu(_:)),
+                    keyEquivalent: ""
+                )
+                autoSizeColumn.target = self
+                autoSizeColumn.representedObject = clickedColumn.rawValue
+                menu.addItem(autoSizeColumn)
+            }
+
+            let autoSizeAll = NSMenuItem(
+                title: "Auto Size All Columns",
+                action: #selector(autoSizeAllColumnsFromMenu(_:)),
+                keyEquivalent: ""
+            )
+            autoSizeAll.target = self
+            menu.addItem(autoSizeAll)
+            menu.addItem(.separator())
 
             for tableColumn in tableView?.tableColumns ?? [] {
                 guard let column = Column(rawValue: tableColumn.identifier.rawValue), column.userConfigurable else {
@@ -834,22 +920,34 @@ struct PlaylistTableView: NSViewRepresentable {
             persistVisibility()
         }
 
-        private func widestWidth(for column: Column) -> CGFloat {
-            if let hint = widthHintValue(for: column) {
-                let font = column == .index || column == .length
-                    ? NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
-                    : NSFont.systemFont(ofSize: NSFont.systemFontSize)
-                return textWidth(hint, font: font)
-            }
+        @objc
+        private func autoSizeColumnFromMenu(_ sender: NSMenuItem) {
+            guard let rawValue = sender.representedObject as? String,
+                  let tableView,
+                  let columnIndex = tableView.tableColumns.firstIndex(where: {
+                      $0.identifier.rawValue == rawValue
+                  }) else { return }
+            autoSizeColumn(at: columnIndex)
+        }
 
+        @objc
+        private func autoSizeAllColumnsFromMenu(_ sender: NSMenuItem) {
+            autoSizeVisibleColumns()
+        }
+
+        private func widestWidth(for column: Column) -> CGFloat {
             let font = column == .index || column == .length
                 ? NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
                 : NSFont.systemFont(ofSize: NSFont.systemFontSize)
 
             let sample = model.visiblePlaylist.prefix(autoSizeSampleLimit)
-            return sample.reduce(CGFloat.zero) { currentMax, track in
+            let sampledWidth = sample.reduce(CGFloat.zero) { currentMax, track in
                 max(currentMax, textWidth(value(for: column, track: track), font: font))
             }
+            let hintedWidth = widthHintValue(for: column).map {
+                textWidth($0, font: font)
+            } ?? 0
+            return max(sampledWidth, hintedWidth)
         }
 
         private func widthHintValue(for column: Column) -> String? {

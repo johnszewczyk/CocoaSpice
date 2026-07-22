@@ -1,5 +1,5 @@
 diff --git a/src/meta/hd_bd.c b/src/meta/hd_bd.c
-index 259ec47..bb8652f 100644
+index 259ec47..49025eb 100644
 --- a/src/meta/hd_bd.c
 +++ b/src/meta/hd_bd.c
 @@ -16,7 +16,7 @@ VGMSTREAM* init_vgmstream_hd_bd(STREAMFILE* sf) {
@@ -11,22 +11,36 @@ index 259ec47..bb8652f 100644
          return NULL;
  
      // bank format mainly for sequences, sometimes used for sfx/voices or pseudo-streams with bgm.
+@@ -92,8 +92,19 @@ VGMSTREAM* init_vgmstream_hd_bd(STREAMFILE* sf) {
+     h.open_stream = true;
+     h.has_subsongs = true;
+ 
++    // Silent Hill 2's IECS files contain a header plus a pasted BD body, but
++    // their header reports only the BD size. The body begins at the end of the
++    // file minus that reported size (with any leading bank sections retained).
++    if (check_extensions(sf, "iecs")) {
++        if (get_streamfile_size(sf) < bd_size)
++            goto fail;
++
++        h.sf_head = sf;
++        h.sf_body = sf;
++        h.stream_offset += get_streamfile_size(sf) - bd_size;
++    }
+     // detect hdb pasted together (handle as a separate meta?)
+-    if (get_streamfile_size(sf) == hd_size + bd_size) {
++    else if (get_streamfile_size(sf) == hd_size + bd_size) {
+         if (!check_extensions(sf, "hbd"))
+             goto fail;
+ 
 diff --git a/src/meta/svag_kcet.c b/src/meta/svag_kcet.c
-index 18e09b9..0544ce5 100644
+index 18e09b9..9c87a37 100644
 --- a/src/meta/svag_kcet.c
 +++ b/src/meta/svag_kcet.c
-@@ -20,9 +20,10 @@ VGMSTREAM* init_vgmstream_svag_kcet(STREAMFILE* sf) {
- 
+@@ -21,6 +21,7 @@ VGMSTREAM* init_vgmstream_svag_kcet(STREAMFILE* sf) {
      /* test padding (a set "KCE-Tokyo ..." phrase) after 0x1c to catch bad rips,
       * at 0x400 may be header  again (Silent Hill 2) or more padding (Silent Scope 2) */
      if (channel_count > 1 && 
--        read_32bitBE(0x400,sf) != 0x53766167 &&     /* "Svag" */
 +        read_32bitBE(0x400,sf) != 0 &&
-+        read_32bitBE(0x400,sf) != 0x53766167 &&     /* "Svag" */
+         read_32bitBE(0x400,sf) != 0x53766167 &&     /* "Svag" */
          read_32bitBE(0x400,sf) != 0x44657369)       /* "Desi" */
          goto fail;
- 
-     start_offset = 0x800;
--        read_32bitBE(0x400,sf) != 0x53766167 &&     /* "Svag" */
-+        read_32bitBE(0x400,sf) != 0 &&
-+        read_32bitBE(0x400,sf) != 0x53766167 &&     /* "Svag" */

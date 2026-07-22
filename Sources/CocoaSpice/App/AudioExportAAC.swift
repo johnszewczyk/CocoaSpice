@@ -12,9 +12,26 @@ struct AudioExportRequest: Sendable {
 }
 
 struct AudioExportProgressSnapshot: Sendable {
+    enum Phase: Sendable {
+        case preparing
+        case exporting
+        case completed
+        case cancelled
+        case failed
+    }
+
+    let phase: Phase
     let title: String
-    let detail: String
-    let progress: Double?
+    let outputDirectoryPath: String
+    let currentFileName: String?
+    let completedFiles: Int
+    let totalFiles: Int
+    let currentFileProgress: Double?
+    let batchProgress: Double
+
+    var remainingFiles: Int {
+        max(totalFiles - completedFiles, 0)
+    }
 }
 
 struct AudioExportBatchResult: Sendable {
@@ -76,6 +93,7 @@ enum AudioExportAACService {
         requests.reserveCapacity(tracks.count)
 
         for track in tracks {
+            try Task.checkCancellation()
             let metadata = if let cached = cachedMetadata[track.id] {
                 cached
             } else {
@@ -118,14 +136,19 @@ enum AudioExportAACService {
 
         let totalTracks = requests.count
         for (index, request) in requests.enumerated() {
+            try Task.checkCancellation()
             let expectedFrames = expectedFrameCount(metadata: request.metadata, plan: request.plan)
-            let positionLabel = "\(index + 1)/\(totalTracks)"
 
             progress(
                 AudioExportProgressSnapshot(
-                    title: "Exporting \(positionLabel)",
-                    detail: request.outputURL.path,
-                    progress: totalTracks == 1 ? 0 : Double(index) / Double(totalTracks)
+                    phase: .exporting,
+                    title: "Exporting AAC Audio",
+                    outputDirectoryPath: request.outputURL.deletingLastPathComponent().path,
+                    currentFileName: request.outputURL.lastPathComponent,
+                    completedFiles: index,
+                    totalFiles: totalTracks,
+                    currentFileProgress: 0,
+                    batchProgress: Double(index) / Double(totalTracks)
                 )
             )
 
@@ -144,37 +167,54 @@ enum AudioExportAACService {
                 bitrate: bitrate
             )
 
-            var lastUpdateTime: TimeInterval = 0
-            while let buffer = try session.makeNextBuffer() {
-                try await writer.append(buffer)
+            do {
+                var lastUpdateTime: TimeInterval = 0
+                while let buffer = try session.makeNextBuffer() {
+                    try Task.checkCancellation()
+                    try await writer.append(buffer)
 
-                let now = Date().timeIntervalSinceReferenceDate
-                if now - lastUpdateTime >= 0.05 {
-                    let trackProgress = expectedFrames.map { frames in
-                        min(Double(session.playedFrames) / Double(max(frames, 1)), 1)
-                    }
-                    let overallProgress = trackProgress.map {
-                        (Double(index) + $0) / Double(totalTracks)
-                    } ?? (totalTracks == 1 ? nil : Double(index) / Double(totalTracks))
+                    let now = Date().timeIntervalSinceReferenceDate
+                    if now - lastUpdateTime >= 0.05 {
+                        let trackProgress = expectedFrames.map { frames in
+                            min(Double(session.playedFrames) / Double(max(frames, 1)), 1)
+                        }
+                        let overallProgress = trackProgress.map {
+                            (Double(index) + $0) / Double(totalTracks)
+                        } ?? Double(index) / Double(totalTracks)
 
-                    progress(
-                        AudioExportProgressSnapshot(
-                            title: "Exporting \(positionLabel)",
-                            detail: request.outputURL.path,
-                            progress: overallProgress
+                        progress(
+                            AudioExportProgressSnapshot(
+                                phase: .exporting,
+                                title: "Exporting AAC Audio",
+                                outputDirectoryPath: request.outputURL.deletingLastPathComponent().path,
+                                currentFileName: request.outputURL.lastPathComponent,
+                                completedFiles: index,
+                                totalFiles: totalTracks,
+                                currentFileProgress: trackProgress,
+                                batchProgress: overallProgress
+                            )
                         )
-                    )
-                    lastUpdateTime = now
+                        lastUpdateTime = now
+                    }
                 }
-            }
 
-            try await writer.finish()
+                try await writer.finish()
+            } catch {
+                writer.cancel()
+                try? FileManager.default.removeItem(at: request.outputURL)
+                throw error
+            }
 
             progress(
                 AudioExportProgressSnapshot(
-                    title: "Exported \(positionLabel)",
-                    detail: request.outputURL.path,
-                    progress: Double(index + 1) / Double(totalTracks)
+                    phase: .exporting,
+                    title: "Exporting AAC Audio",
+                    outputDirectoryPath: request.outputURL.deletingLastPathComponent().path,
+                    currentFileName: request.outputURL.lastPathComponent,
+                    completedFiles: index + 1,
+                    totalFiles: totalTracks,
+                    currentFileProgress: 1,
+                    batchProgress: Double(index + 1) / Double(totalTracks)
                 )
             )
         }
@@ -406,6 +446,10 @@ private final class AACFileWriter {
         guard writer.status == .completed else {
             throw AudioExportError.appendFailed(writer.error?.localizedDescription ?? "Unknown error")
         }
+    }
+
+    func cancel() {
+        writer.cancelWriting()
     }
 
     private func makeSampleBuffer(

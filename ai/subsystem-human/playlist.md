@@ -7,8 +7,11 @@
 - Columns: missing metadata falls back to useful file or folder text.
 - Columns: includes a user-configurable Size column for direct files; archive entries show an unavailable marker until archive-entry sizing is modeled separately.
 - Metadata: playlist inspection fills available metadata, including SPC duration, while the playlist remains usable.
+- Columns: visible columns auto-size after queue population and final metadata hydration without changing the current row selection.
 - Columns: drag-and-drop resize.
 - Columns: double-click a divider to auto-size to current content.
+- Columns: the header menu can auto-size one column or all visible columns.
+- Columns: Path shows the complete filesystem source path. Archive tracks retain their member provenance as `archive-path#member-path`.
 
 ## Selection
 

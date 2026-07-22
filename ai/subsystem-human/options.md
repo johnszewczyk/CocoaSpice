@@ -17,6 +17,7 @@
 - Long Play: enable shared extended playback.
 - Duration: set a manual playback target.
 - Library Behavior: Playlist Follows Cursor and Double-Click Enqueues are playback controls.
+- Playback Diagnostics: reports current PCM buffer headroom plus per-track underruns and source over-scale samples. These counters reset for each new track; source clipping cannot detect amplifier or speaker distortion.
 
 ## Interface
 

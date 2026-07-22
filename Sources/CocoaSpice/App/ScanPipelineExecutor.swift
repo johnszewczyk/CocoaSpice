@@ -145,62 +145,89 @@ struct ScanPipelineExecutor: Sendable {
 
             var results: [ScanPipelineResult] = []
             results.reserveCapacity(members.count)
-            var archiveSetURL: URL?
-            var lazyUSFAliasesPrepared = false
-            for member in members {
-                try Task.checkCancellation()
-                let identity = ScanItemIdentity(
-                    rootID: candidate.identity.rootID,
-                    path: member.archiveURL.path,
-                    archiveEntry: member.entryPath
-                )
-                let memberCandidate = ScanCandidate(
-                    identity: identity,
+            guard !members.isEmpty else { return results }
+            let memberCandidates = members.map { member in
+                ScanCandidate(
+                    identity: ScanItemIdentity(
+                        rootID: candidate.identity.rootID,
+                        path: member.archiveURL.path,
+                        archiveEntry: member.entryPath
+                    ),
                     fingerprint: member.fingerprint,
                     sourceURL: member.archiveURL,
                     route: member.route
                 )
-                if archiveScanDepth == .fast {
-                    results.append(fastFilenameResult(memberCandidate))
-                    continue
-                }
-                do {
-                    let materializedURL: URL
-                    guard let module = GMEFormatSupport.module(
-                        forPathExtension: member.route?.formatExtension
-                            ?? URL(fileURLWithPath: member.entryPath).pathExtension
-                    ) else {
-                        throw ZipArchiveSupport.ArchiveError.invalidEntryPath(member.entryPath)
-                    }
-                    switch module.archiveMaterialization {
-                    case .selectedEntry:
-                        materializedURL = try await materialize(
-                            memberCandidate,
-                            archiveEntry: member.entryPath
+            }
+            guard let materializationPolicy = GMEFormatSupport.archiveMaterializationForInspection(
+                entryPaths: members.map(\.entryPath)
+            ) else {
+                throw ZipArchiveSupport.ArchiveError.invalidEntryPath(
+                    members.first?.entryPath ?? ""
+                )
+            }
+            let materializedRoot: URL
+            do {
+                switch materializationPolicy {
+                case .selectedEntry:
+                    materializedRoot = try await ScanOperationTimeout.run(
+                        description: "extracting playable members from \(candidate.sourceURL.lastPathComponent)"
+                    ) {
+                        try await archiveProvider.materializeEntries(
+                            archiveURL: candidate.sourceURL,
+                            entryPaths: members.map(\.entryPath)
                         )
-                    case .completeSet, .completeSetWithLazyUSFAliases:
-                        if archiveSetURL == nil {
-                            archiveSetURL = try await ScanOperationTimeout.run(description: "extracting dependency set \(candidate.sourceURL.lastPathComponent)") {
-                                try await archiveProvider.materializeArchive(at: candidate.sourceURL)
-                            }
-                        }
-                        if case .completeSetWithLazyUSFAliases = module.archiveMaterialization,
-                           !lazyUSFAliasesPrepared {
-                            try ZipArchiveSupport.prepareLazyUSFDependencies(in: archiveSetURL!)
-                            lazyUSFAliasesPrepared = true
-                        }
-                        materializedURL = ZipArchiveSupport.archiveMemberURL(in: archiveSetURL!, entryPath: member.entryPath)
                     }
-                    results.append(try await processFile(
-                        memberCandidate,
-                        fileURL: materializedURL
-                    ))
-                } catch is CancellationError {
-                    results.append(failure(memberCandidate, stage: .archiveExtraction, message: "Cancelled"))
-                } catch {
-                    results.append(failure(memberCandidate, stage: .metadata, message: error.localizedDescription))
+                case .completeSet, .completeSetWithLazyUSFAliases:
+                    materializedRoot = try await ScanOperationTimeout.run(
+                        description: "extracting dependency set \(candidate.sourceURL.lastPathComponent)"
+                    ) {
+                        try await archiveProvider.materializeArchive(at: candidate.sourceURL)
+                    }
+                    if materializationPolicy == .completeSetWithLazyUSFAliases {
+                        try ZipArchiveSupport.prepareLazyUSFDependencies(in: materializedRoot)
+                    }
+                }
+            } catch is CancellationError {
+                return memberCandidates.map {
+                    failure($0, stage: .archiveExtraction, message: "Cancelled")
+                }
+            } catch {
+                return memberCandidates.map {
+                    failure($0, stage: .archiveExtraction, message: error.localizedDescription)
                 }
             }
+
+            let memberCursor = ScanPlanCursor(count: members.count)
+            let memberWorkerCount = min(
+                ZipArchiveSupport.archiveProcessConcurrency,
+                members.count
+            )
+            var orderedResults = Array<ScanPipelineResult?>(repeating: nil, count: members.count)
+            await withTaskGroup(of: (Int, ScanPipelineResult).self) { group in
+                for _ in 0..<memberWorkerCount {
+                    guard let index = memberCursor.take() else { break }
+                    group.addTask {
+                        (index, await self.processMaterializedArchiveMember(
+                            member: members[index],
+                            candidate: memberCandidates[index],
+                            materializedRoot: materializedRoot
+                        ))
+                    }
+                }
+
+                while let (index, result) = await group.next() {
+                    orderedResults[index] = result
+                    guard let nextIndex = memberCursor.take() else { continue }
+                    group.addTask {
+                        (nextIndex, await self.processMaterializedArchiveMember(
+                            member: members[nextIndex],
+                            candidate: memberCandidates[nextIndex],
+                            materializedRoot: materializedRoot
+                        ))
+                    }
+                }
+            }
+            results.append(contentsOf: orderedResults.compactMap { $0 })
             return results
         } catch {
             return [failure(candidate, stage: .archiveListing, message: error.localizedDescription)]
@@ -319,6 +346,25 @@ struct ScanPipelineExecutor: Sendable {
             }
         }
         return .success(candidate, inspection)
+    }
+
+    private func processMaterializedArchiveMember(
+        member: ScanArchiveMember,
+        candidate: ScanCandidate,
+        materializedRoot: URL
+    ) async -> ScanPipelineResult {
+        do {
+            try Task.checkCancellation()
+            let materializedURL = ZipArchiveSupport.archiveMemberURL(
+                in: materializedRoot,
+                entryPath: member.entryPath
+            )
+            return try await processFile(candidate, fileURL: materializedURL)
+        } catch is CancellationError {
+            return failure(candidate, stage: .archiveExtraction, message: "Cancelled")
+        } catch {
+            return failure(candidate, stage: .metadata, message: error.localizedDescription)
+        }
     }
 
     private func failure(

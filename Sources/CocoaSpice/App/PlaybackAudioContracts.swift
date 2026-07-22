@@ -31,8 +31,35 @@ struct NativeAudioOutputSnapshot: Equatable, Sendable {
     let framesRequested: Int64
     let framesSupplied: Int64
     let underrunCount: Int64
+    let clippedSampleCount: Int64
     let positionFrames: Int64
     let generation: Int
+}
+
+struct PlaybackDiagnosticsSnapshot: Equatable, Sendable {
+    let bufferedFrames: Int64
+    let ringBufferFrames: Int64
+    let underrunCount: Int64
+    let clippedSampleCount: Int64
+    let sampleRate: Int
+
+    static let idle = PlaybackDiagnosticsSnapshot(
+        bufferedFrames: 0,
+        ringBufferFrames: 0,
+        underrunCount: 0,
+        clippedSampleCount: 0,
+        sampleRate: 0
+    )
+
+    var bufferedMilliseconds: Int {
+        guard sampleRate > 0 else { return 0 }
+        return Int((bufferedFrames * 1_000) / Int64(sampleRate))
+    }
+
+    var bufferPercent: Int {
+        guard ringBufferFrames > 0 else { return 0 }
+        return Int((bufferedFrames * 100) / ringBufferFrames)
+    }
 }
 
 protocol NativeAudioOutput: AnyObject, Sendable {

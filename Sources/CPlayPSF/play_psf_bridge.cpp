@@ -11,6 +11,7 @@
 #include "StdStreamUtils.h"
 
 #include <algorithm>
+#include <chrono>
 #include <condition_variable>
 #include <map>
 #include <memory>
@@ -24,6 +25,8 @@ namespace {
 constexpr int kSampleRate = 44100;
 constexpr size_t kBufferedFrameCapacity = kSampleRate;
 constexpr size_t kPsfWriteBlockSamples = 44 * 2 * 10;
+constexpr auto kInitialAudioWait = std::chrono::seconds(5);
+constexpr auto kSteadyStateAudioWait = std::chrono::milliseconds(250);
 
 class CaptureSoundHandler final : public CSoundHandler {
 public:
@@ -36,6 +39,7 @@ public:
         m_readIndex = 0;
         m_writeIndex = 0;
         m_sampleCount = 0;
+        m_hasProducedAudio = false;
         m_condition.notify_all();
     }
 
@@ -51,6 +55,7 @@ public:
             m_writeIndex = (m_writeIndex + 1) % m_samples.size();
         }
         m_sampleCount += sampleCount;
+        m_hasProducedAudio = true;
         m_condition.notify_all();
     }
 
@@ -62,7 +67,8 @@ public:
 
     int32_t Read(int16_t* output, int32_t frameCount) {
         std::unique_lock lock(m_mutex);
-        m_condition.wait_for(lock, std::chrono::milliseconds(250), [&] {
+        const auto wait = m_hasProducedAudio ? kSteadyStateAudioWait : kInitialAudioWait;
+        m_condition.wait_for(lock, wait, [&] {
             return m_sampleCount >= static_cast<size_t>(frameCount) * 2;
         });
         const auto availableFrames = static_cast<int32_t>(m_sampleCount / 2);
@@ -89,6 +95,7 @@ private:
     size_t m_readIndex = 0;
     size_t m_writeIndex = 0;
     size_t m_sampleCount = 0;
+    bool m_hasProducedAudio = false;
 };
 
 struct Metadata {
@@ -148,11 +155,12 @@ struct Player {
         Metadata metadata(path.c_str());
         systemName = metadata.systemName;
         const auto token = CPhysicalPsfStreamProvider::GetPathTokenFromFilePath(fs::path(path));
-        CPsfLoader::LoadPsf(vm, token, fs::path(), &tags);
         vm.SetSpuHandler([this] {
             sound = new CaptureSoundHandler();
             return sound;
         });
+        CPsfLoader::LoadPsf(vm, token, fs::path(), &tags);
+        vm.SetReverbEnabled(true);
         for(const auto& [key, value] : tags) exportedTags.emplace(key, value);
         playLengthFrames = Metadata::ParseTimeFrames(tags, "length");
         fadeLengthFrames = Metadata::ParseTimeFrames(tags, "fade");
@@ -199,11 +207,12 @@ extern "C" int32_t cocoaspice_play_psf_seek(void* handle, int64_t frame) {
     const auto token = CPhysicalPsfStreamProvider::GetPathTokenFromFilePath(fs::path(player->path));
     try {
         player->tags.clear();
-        CPsfLoader::LoadPsf(player->vm, token, fs::path(), &player->tags);
         player->vm.SetSpuHandler([player] {
             player->sound = new CaptureSoundHandler();
             return player->sound;
         });
+        CPsfLoader::LoadPsf(player->vm, token, fs::path(), &player->tags);
+        player->vm.SetReverbEnabled(true);
         player->vm.Resume();
         player->playedFrames = 0;
         std::vector<int16_t> scratch(2048 * 2);

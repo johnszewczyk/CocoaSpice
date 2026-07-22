@@ -49,6 +49,15 @@ struct ZipScanArchiveProvider: ScanArchiveProvider {
         }
     }
 
+    func materializeEntries(archiveURL: URL, entryPaths: [String]) async throws -> URL {
+        try await scheduler.withPermit {
+            try ZipArchiveSupport.materializeEntries(
+                at: archiveURL,
+                entryPaths: entryPaths
+            )
+        }
+    }
+
     func materializeArchive(at archiveURL: URL) async throws -> URL {
         try await scheduler.withPermit {
             try ZipArchiveSupport.materializeArchive(at: archiveURL)

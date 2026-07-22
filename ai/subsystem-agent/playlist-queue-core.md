@@ -9,6 +9,7 @@
 ## Current State
 
 - The right pane playlist is the active editable queue.
+- The playlist is shown directly without a second search/filter field or hidden filtered state; database search remains in the sidebar.
 - Rows are keyed by playable identity, which is file path plus subtrack index when needed.
 - Rows can also be keyed by `archive path + archive member path + subtrack index` for ZIP-imported tracks.
 - Double-click on a row starts playback of that row.
@@ -24,6 +25,7 @@
 - Menu and Finder opening of an M3U replaces the current queue through the same explicit open path.
 - Queue edits include cut, paste, delete, move, and drag-reorder.
 - Background playlist inspection publishes completed metadata incrementally so visible rows update before a large queue has fully hydrated.
+- Background hydration groups unresolved archive members by container and materializes each group once. It feeds prepared files through two bounded workers instead of creating one task and extractor process per playlist row.
 - A coalesced metadata batch reloads only the affected metadata cells. Hydration does not reload the whole table, measure every column, animate column widths, or persist width changes.
 - A playback request cancels queued background hydration before opening its decoder. Hydration restarts for unresolved rows after that request settles, preventing a large playlist from sitting ahead of interactive playback on the inspection queue.
 - Cached SPC metadata with no play length is incomplete and is reinspected during playlist hydration.

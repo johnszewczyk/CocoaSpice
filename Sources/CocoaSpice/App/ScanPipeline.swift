@@ -200,6 +200,11 @@ protocol ScanArchiveProvider: Sendable {
         entryPath: String
     ) async throws -> URL
 
+    func materializeEntries(
+        archiveURL: URL,
+        entryPaths: [String]
+    ) async throws -> URL
+
     func materializeArchive(at archiveURL: URL) async throws -> URL
 }
 

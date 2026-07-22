@@ -19,7 +19,7 @@ This is the current admission matrix for file discovery, database scanning, play
 
 ## Supported Containers
 
-`zip`, `7z`, and `rsn` are accepted as containers when they hold one of the supported audio formats above. ZIP member discovery uses 7-Zip's own path representation so legacy-encoded member names can be extracted consistently. A container itself is not a playable format.
+`zip`, `7z`, `rsn`, `tar.zst`, and `tzst` are accepted as containers when they hold one of the supported audio formats above. TAR+Zstandard members use macOS `tar` for both listing and extraction; ZIP member discovery uses 7-Zip's own path representation so legacy-encoded member names can be extracted consistently. A container itself is not a playable format.
 
 ## Not Currently Admitted
 

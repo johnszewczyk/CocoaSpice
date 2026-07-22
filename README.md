@@ -12,7 +12,10 @@
 ## Current Behavior
 
 - Sidebar double-click behavior is configurable as `Set as Playlist` or `Add to Playlist`
-- Selected playlist rows can export native AAC `.m4a` files with built-in macOS encoding
+- Fast Scan builds a filename-based library without opening decoders or archives; Deep Scan indexes full metadata and archive members
+- Playlist rows remain selectable while metadata hydrates in the background, and visible columns auto-size after population and final metadata updates
+- Random playback can target the indexed library or the current playlist using native toolbar symbols
+- Selected playlist rows can export native AAC `.m4a` files with built-in macOS encoding, concrete file counts, and separate current-file and batch progress
 - Options opens with the standard `Command+,` shortcut
 
 ## CLI Workflow
@@ -46,6 +49,7 @@ COCOASPICE_LIBRARY_ROOT="/path/to/spcsets_extracted" ./launch.sh
 - `./launch.sh` performs an incremental build before launching; pass `--rebuild` when a clean rebuild is intentional.
 - `Highly Complete` is provided by a local bridge target backed by vendored `mGBA` plus `psflib`
 - `lazyusf2` is vendored under `vendor/lazyusf2` and built statically into the app for USF and miniUSF playback
+- Play! is vendored under `vendor/play` and provides native PSF, miniPSF, PSF2, and miniPSF2 playback
 - Third-party licensing notes are kept in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md)
 - the build currently expects Homebrew `game-music-emu` at `/opt/homebrew`
 - the build currently expects `cmake` to be installed locally so `scripts/build-libvgm.sh` and `scripts/build-mgba.sh` can produce the static backend libraries

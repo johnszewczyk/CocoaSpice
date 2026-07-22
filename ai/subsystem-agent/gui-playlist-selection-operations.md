@@ -12,7 +12,6 @@
 - Multi-selection follows native `Shift` and `Command` semantics.
 - Right-click rows open queue-action menus.
 - Drag reorder is supported for selected rows.
-- Drag reorder is disabled while playlist search filtering is active.
 - One primary selected row and a multiselect set can both exist.
 - The browsing selection remains stable while playback starts, completes, or moves through previous/next media commands; the playing row is represented independently by current transport state.
 

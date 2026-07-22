@@ -3,7 +3,6 @@ import SwiftUI
 
 struct MainView: View {
     @Bindable var model: PlayerViewModel
-    private let enableNativeSearchFields = true
 
     var body: some View {
         liveMainView
@@ -57,16 +56,14 @@ struct MainView: View {
     private var liveMainView: some View {
         NavigationSplitView {
             VStack(spacing: 0) {
-                if enableNativeSearchFields {
-                    NativeSearchField(
-                        text: $model.sidebarSearchText,
-                        placeholder: "Search Database",
-                        debounceInterval: 0
-                    )
-                    .padding(.horizontal, 8)
-                    .padding(.top, 0)
-                    .padding(.bottom, 2)
-                }
+                NativeSearchField(
+                    text: $model.sidebarSearchText,
+                    placeholder: "Search Database",
+                    debounceInterval: 0
+                )
+                .padding(.horizontal, 8)
+                .padding(.top, 0)
+                .padding(.bottom, 2)
 
                 Group {
                     if model.databaseGameItems.isEmpty {
@@ -102,21 +99,11 @@ struct MainView: View {
             .navigationSplitViewColumnWidth(ideal: 220, max: 500)
         } detail: {
             VStack(spacing: 0) {
-                if enableNativeSearchFields {
-                    NativeSearchField(text: $model.playlistSearchText, placeholder: "Search Queue")
-                        .padding(.horizontal, 8)
-                        .padding(.top, 4)
-                        .padding(.bottom, 2)
-                }
-
                 ZStack {
                     PlaylistTableView(model: model)
 
                     if model.playlist.isEmpty {
                         ContentUnavailableView("Empty Queue", systemImage: "music.note.list", description: Text("Double-click a game or a folder search result in the sidebar to queue tracks."))
-                            .allowsHitTesting(false)
-                    } else if model.visiblePlaylist.isEmpty {
-                        ContentUnavailableView("No Matches", systemImage: "magnifyingglass", description: Text("No queued tracks match the current filter."))
                             .allowsHitTesting(false)
                     }
                 }

@@ -128,7 +128,6 @@ enum AppSessionPersistence {
         selectedFolderPath: String?,
         librarySelectedFolderPath: String?,
         sidebarSearchText: String,
-        playlistSearchText: String,
         defaults: UserDefaults = .standard
     ) {
         defaults.set(playlist.map(\.persistedValue), forKey: AppDefaultsKey.persistedPlaylistPaths)
@@ -138,7 +137,7 @@ enum AppSessionPersistence {
         defaults.set(selectedFolderPath, forKey: AppDefaultsKey.lastSelectedFolderPath)
         defaults.set(selectedFolderPath ?? librarySelectedFolderPath, forKey: AppDefaultsKey.lastLibrarySelectedFolderPath)
         defaults.set(sidebarSearchText, forKey: AppDefaultsKey.sidebarSearchText)
-        defaults.set(playlistSearchText, forKey: AppDefaultsKey.playlistSearchText)
+        defaults.removeObject(forKey: AppDefaultsKey.playlistSearchText)
     }
 
     static func savePlaybackPreferences(
@@ -253,10 +252,6 @@ enum AppSessionPersistence {
 
     static func lastSidebarSearchText(defaults: UserDefaults = .standard) -> String {
         defaults.string(forKey: AppDefaultsKey.sidebarSearchText) ?? ""
-    }
-
-    static func lastPlaylistSearchText(defaults: UserDefaults = .standard) -> String {
-        defaults.string(forKey: AppDefaultsKey.playlistSearchText) ?? ""
     }
 
     static func serializedColor(_ color: NSColor) -> String? {

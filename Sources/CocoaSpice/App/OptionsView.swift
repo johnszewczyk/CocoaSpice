@@ -134,6 +134,30 @@ struct OptionsView: View {
             }
 
             libraryBehaviorCard
+
+            sectionCard(title: "Playback Diagnostics") {
+                diagnosticRow(
+                    "Buffer",
+                    "\(model.playbackDiagnostics.bufferedMilliseconds) ms • \(model.playbackDiagnostics.bufferPercent)%"
+                )
+                diagnosticRow("Underruns", "\(model.playbackDiagnostics.underrunCount)")
+                diagnosticRow("Source Clips", "\(model.playbackDiagnostics.clippedSampleCount)")
+
+                Text("Counters reset for each new track. Source Clips counts PCM samples above full scale before macOS output; it cannot detect amplifier or speaker distortion.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func diagnosticRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label)
+                .foregroundStyle(.white)
+            Spacer()
+            Text(value)
+                .font(.system(.body, design: .monospaced))
+                .foregroundStyle(.secondary)
         }
     }
 

@@ -1,6 +1,6 @@
 import Foundation
 
-enum PlaybackDecoderBackend: Sendable {
+enum PlaybackDecoderBackend: Hashable, Sendable {
     case gme
     case libvgm
     case highlyComplete
@@ -23,6 +23,25 @@ struct PlaybackDecoderModule: Sendable {
     let supportedExtensions: Set<String>
     let requiresTrackEnumeration: Bool
     let archiveMaterialization: ArchiveMaterializationPolicy
+    let scanInspectionConcurrency: Int
+
+    init(
+        pluginID: String,
+        displayName: String,
+        backend: PlaybackDecoderBackend,
+        supportedExtensions: Set<String>,
+        requiresTrackEnumeration: Bool,
+        archiveMaterialization: ArchiveMaterializationPolicy,
+        scanInspectionConcurrency: Int = 1
+    ) {
+        self.pluginID = pluginID
+        self.displayName = displayName
+        self.backend = backend
+        self.supportedExtensions = supportedExtensions
+        self.requiresTrackEnumeration = requiresTrackEnumeration
+        self.archiveMaterialization = archiveMaterialization
+        self.scanInspectionConcurrency = max(1, scanInspectionConcurrency)
+    }
 
     var scanDescriptor: ScanPluginDescriptor {
         ScanPluginDescriptor(
@@ -47,6 +66,11 @@ enum GMEFormatSupport {
         "sap",
         "spc"
     ]
+    static let libGMEMultiTrackSupportedExtensions = libGMESupportedExtensions.subtracting(["spc"])
+    private static let libGMEScanInspectionConcurrency = min(
+        3,
+        max(1, ProcessInfo.processInfo.activeProcessorCount / 2)
+    )
 
     static let libVGMSupportedExtensions: Set<String> = [
         "gym",
@@ -84,8 +108,15 @@ enum GMEFormatSupport {
     static let modules: [PlaybackDecoderModule] = [
         PlaybackDecoderModule(
             pluginID: "gme", displayName: "Game Music Emu", backend: .gme,
-            supportedExtensions: libGMESupportedExtensions,
-            requiresTrackEnumeration: true, archiveMaterialization: .selectedEntry
+            supportedExtensions: ["spc"],
+            requiresTrackEnumeration: false, archiveMaterialization: .selectedEntry,
+            scanInspectionConcurrency: libGMEScanInspectionConcurrency
+        ),
+        PlaybackDecoderModule(
+            pluginID: "gme-multitrack", displayName: "Game Music Emu", backend: .gme,
+            supportedExtensions: libGMEMultiTrackSupportedExtensions,
+            requiresTrackEnumeration: true, archiveMaterialization: .selectedEntry,
+            scanInspectionConcurrency: libGMEScanInspectionConcurrency
         ),
         PlaybackDecoderModule(
             pluginID: "libvgm", displayName: "libVGM", backend: .libvgm,
@@ -130,6 +161,29 @@ enum GMEFormatSupport {
     static func module(forPathExtension extensionName: String) -> PlaybackDecoderModule? {
         let normalized = extensionName.lowercased()
         return modules.first { $0.supportedExtensions.contains(normalized) }
+    }
+
+    static func archiveMaterializationForInspection(
+        entryPaths: [String]
+    ) -> ArchiveMaterializationPolicy? {
+        guard !entryPaths.isEmpty else { return nil }
+        var resolved = ArchiveMaterializationPolicy.selectedEntry
+        for entryPath in entryPaths {
+            guard let module = module(
+                forPathExtension: URL(fileURLWithPath: entryPath).pathExtension
+            ) else {
+                return nil
+            }
+            switch module.archiveMaterialization {
+            case .selectedEntry:
+                break
+            case .completeSet:
+                if resolved == .selectedEntry { resolved = .completeSet }
+            case .completeSetWithLazyUSFAliases:
+                resolved = .completeSetWithLazyUSFAliases
+            }
+        }
+        return resolved
     }
 
     static func playbackBackend(forPathExtension extensionName: String) -> PlaybackDecoderBackend? {

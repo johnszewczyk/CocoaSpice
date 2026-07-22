@@ -4,6 +4,119 @@ import Foundation
 import Testing
 @testable import CocoaSpice
 
+@MainActor
+@Test func randomPlaybackScopesUseNativeSystemSymbols() {
+    for scope in PlayerViewModel.RandomPlaybackScope.allCases {
+        #expect(NSImage(systemSymbolName: scope.iconName, accessibilityDescription: nil) != nil)
+    }
+}
+
+@Test func audioExportProgressReportsConcreteRemainingFileCount() {
+    let snapshot = AudioExportProgressSnapshot(
+        phase: .exporting,
+        title: "Exporting AAC Audio",
+        outputDirectoryPath: "/tmp",
+        currentFileName: "Track.m4a",
+        completedFiles: 3,
+        totalFiles: 10,
+        currentFileProgress: 0.5,
+        batchProgress: 0.35
+    )
+
+    #expect(snapshot.remainingFiles == 7)
+}
+
+@Test func ringBufferCountsOverScaleSamplesWithoutMutatingPCM() throws {
+    let ringBuffer = try RealtimePCMFrameRingBuffer(capacityFrames: 8)
+    let left: [Float] = [0.5, 1.1, -1.2]
+    let right: [Float] = [-1.01, 0.25, 1.0]
+
+    let written = left.withUnsafeBufferPointer { leftPointer in
+        right.withUnsafeBufferPointer { rightPointer in
+            ringBuffer.write(left: leftPointer, right: rightPointer)
+        }
+    }
+
+    #expect(written == 3)
+    #expect(ringBuffer.clippedSampleCount == 3)
+    ringBuffer.clear()
+    #expect(ringBuffer.clippedSampleCount == 0)
+}
+
+@Test func playbackDiagnosticsExpressesRingBufferHeadroom() {
+    let diagnostics = PlaybackDiagnosticsSnapshot(
+        bufferedFrames: 22_050,
+        ringBufferFrames: 88_200,
+        underrunCount: 2,
+        clippedSampleCount: 3,
+        sampleRate: 44_100
+    )
+
+    #expect(diagnostics.bufferedMilliseconds == 500)
+    #expect(diagnostics.bufferPercent == 25)
+}
+
+@Test func linearResamplerKeepsPlayStationXAOnTheOutputClock() {
+    let resampler = LinearStereoResampler(
+        sourceSampleRate: 37_800,
+        outputSampleRate: 44_100
+    )
+    let source = (0...3_780).map(Float.init)
+    resampler.append(DecodedChunk(left: source, right: source, frameCount: source.count))
+
+    let rendered = resampler.render(maximumFrames: 4_410, endOfInput: false)
+
+    #expect(rendered.frameCount == 4_410)
+    #expect(rendered.left[0] == 0)
+    #expect(rendered.left[7] == 6)
+    #expect(rendered.right[3_500] == 3_000)
+}
+
+@Test func playlistPathUsesFullFilesystemAndArchiveMemberProvenance() {
+    let fileTrack = TrackItem(url: URL(fileURLWithPath: "/Music/SNES/Track.spc"))
+    let archiveTrack = TrackItem(
+        archiveURL: URL(fileURLWithPath: "/Music/SNES/Game.7z"),
+        entryPath: "Sound/Track.spc",
+        trackIndex: 1,
+        trackCount: 2
+    )
+
+    #expect(fileTrack.fullPathText == "/Music/SNES/Track.spc")
+    #expect(archiveTrack.fullPathText == "/Music/SNES/Game.7z#Sound/Track.spc [2]")
+}
+
+@MainActor
+@Test func playlistColumnsAutomaticallySizeAfterRowsArrive() async throws {
+    let model = PlayerViewModel()
+    model.pendingPlaylistColumnOrder = []
+    model.pendingPlaylistColumnVisibility = [:]
+    model.pendingPlaylistColumnWidths = [:]
+    let track = TrackItem(
+        url: URL(fileURLWithPath: "/tmp/\(String(repeating: "Long Playlist Filename ", count: 8)).spc")
+    )
+    model.playlist = [track]
+    model.selectedTrackID = track.id
+    model.selectedTrackIDs = [track.id]
+
+    let coordinator = PlaylistTableView.Coordinator(model: model)
+    let tableView = NSTableView()
+    tableView.delegate = coordinator
+    tableView.dataSource = coordinator
+    coordinator.attach(tableView: tableView)
+    coordinator.installColumns()
+
+    let fileColumn = try #require(tableView.tableColumns.first {
+        $0.identifier.rawValue == "file"
+    })
+    let initialWidth = fileColumn.width
+    #expect(tableView.selectedRow == 0)
+
+    try await Task.sleep(for: .milliseconds(500))
+
+    #expect(fileColumn.width > initialWidth)
+    #expect(tableView.selectedRow == 0)
+}
+
 @Test func supportedExtensionsIncludeLinkedLibGMETypes() {
     #expect(SPCFileScanner.supportedExtensions.contains("ay"))
     #expect(SPCFileScanner.supportedExtensions.contains("gbs"))
@@ -103,6 +216,48 @@ import Testing
     #expect(chunk.frameCount > 0)
 }
 
+@Test func tarZstandardArchivesListAndMaterializePlayableMembers() throws {
+    let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/SNESMusicOrg Zstd/F-Zero.tar.zst")
+    guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }
+
+    #expect(ZipArchiveSupport.canHandle(archiveURL))
+    let entries = try ZipArchiveSupport.listPlayableEntries(
+        in: archiveURL,
+        supportedExtensions: ["spc"]
+    )
+    #expect(entries.count == 17)
+    guard let firstEntry = entries.first else {
+        Issue.record("Expected playable SPC members in TAR+Zstandard fixture")
+        return
+    }
+
+    let materializedURL = try ZipArchiveSupport.materializeEntry(
+        archiveURL: archiveURL,
+        entryPath: firstEntry.entryPath
+    )
+    #expect(FileManager.default.fileExists(atPath: materializedURL.path))
+    #expect((try Data(contentsOf: materializedURL)).count > 0)
+
+    let selectedRoot = try ZipArchiveSupport.materializeEntries(
+        at: archiveURL,
+        entryPaths: entries.prefix(2).map(\.entryPath)
+    )
+    #expect(FileManager.default.fileExists(
+        atPath: ZipArchiveSupport.archiveMemberURL(
+            in: selectedRoot,
+            entryPath: firstEntry.entryPath
+        ).path
+    ))
+
+    let completeRoot = try ZipArchiveSupport.materializeArchive(at: archiveURL)
+    #expect(FileManager.default.fileExists(
+        atPath: ZipArchiveSupport.archiveMemberURL(
+            in: completeRoot,
+            entryPath: firstEntry.entryPath
+        ).path
+    ))
+}
+
 @Test func playPSFRecognizesStandalonePlayStationFixture() throws {
     let fileURL = URL(fileURLWithPath: "/private/tmp/cocoaspice-psx-fixtures/standalone/01 Title.psf")
     guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
@@ -141,12 +296,56 @@ import Testing
     #expect(chunk.frameCount > 0)
 }
 
+@Test func residentEvil2PSFArchiveProducesAudioAcrossBothLibraryLayouts() throws {
+    let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/ZopharsDomain/PSF/resident-evil-2-[biohazard-2].psf.zip")
+    guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }
+
+    let entries = try ZipArchiveSupport.listPlayableEntries(
+        in: archiveURL,
+        supportedExtensions: ["psf"]
+    )
+    #expect(entries.contains { $0.entryPath.hasPrefix("UNKNOWN/") })
+
+    for entry in entries where !entry.entryPath.contains("949 - Unknown (Won't play)") {
+        let decoder = try PlayPSFDecoder(
+            track: TrackItem(archiveURL: archiveURL, entryPath: entry.entryPath),
+            sampleRate: 44_100
+        )
+        let chunks = try (0..<4).map { _ in try decoder.decode(frameCount: 2_048) }
+        #expect(chunks.allSatisfy { $0.frameCount == 2_048 }, "\(entry.entryPath) stopped producing PCM")
+    }
+}
+
+@Test func residentEvil2PSFTracksWaitForEmulatorStartup() throws {
+    let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/ZopharsDomain/PSF/resident-evil-2-[biohazard-2].psf.zip")
+    guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }
+
+    for entryPath in ["06 Prologue.psf", "UNKNOWN/901 - Unknown.psf"] {
+        let decoder = try PlayPSFDecoder(
+            track: TrackItem(archiveURL: archiveURL, entryPath: entryPath),
+            sampleRate: 44_100
+        )
+        let chunks = try (0..<4).map { _ in try decoder.decode(frameCount: 2_048) }
+        #expect(chunks.allSatisfy { $0.frameCount == 2_048 }, "\(entryPath) stopped producing PCM")
+        if entryPath == "06 Prologue.psf" {
+            #expect(chunks.contains { chunk in
+                chunk.left.contains(where: { $0 != 0 }) || chunk.right.contains(where: { $0 != 0 })
+            }, "\(entryPath) produced only silence")
+        }
+    }
+}
+
 @Test func vgmstreamRecognizesPlayStationXA() throws {
     let fileURL = URL(fileURLWithPath: "/private/tmp/cocoaspice-psx-fixtures/xa/SLUS-00772_01 - Keep Yourself Alive (Sol's Theme).XA")
     guard FileManager.default.fileExists(atPath: fileURL.path) else { return }
 
+    let decoder = try VGMStreamDecoder(
+        track: TrackItem(url: fileURL),
+        sampleRate: 44_100
+    )
     let inspector = try VGMStreamFileInspector(fileURL: fileURL)
     #expect(inspector.trackCount >= 1)
+    #expect(decoder.sampleRate == 37_800)
     let metadata = try inspector.metadata(trackIndex: 0)
     #expect(metadata.system == "PlayStation")
     #expect(metadata.playLengthMs > 0)
@@ -209,6 +408,45 @@ import Testing
         $0.tracks.count == 1
             && $0.tracks[0].metadata?.comment == FastScanPlaceholder.metadataComment
     })
+}
+
+@Test func fastLibraryQueueExpandsMultiTrackNSFArchiveMember() async throws {
+    let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/ZopharsDomain/NSF/President no Sentaku (EMU).zophar.zip")
+    guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }
+
+    let container = TrackItem(url: archiveURL)
+    let loaded = LoadedPlaylistData(
+        tracks: [container],
+        metadata: [
+            container.id: TrackMetadata(
+                game: "President no Sentaku (EMU).zophar",
+                song: "President no Sentaku (EMU).zophar",
+                system: "",
+                author: "",
+                comment: FastScanPlaceholder.metadataComment,
+                introLengthMs: 0,
+                loopLengthMs: 0,
+                playLengthMs: 0,
+                fadeLengthMs: 0
+            )
+        ],
+        widthHints: PlaylistColumnWidthHints(
+            indexText: "1",
+            fileText: "",
+            titleText: "",
+            gameText: "",
+            authorText: "",
+            systemText: "",
+            lengthText: "—"
+        )
+    )
+
+    let expanded = await PlaylistQueueLoader.expandFastContainers(in: loaded)
+
+    #expect(expanded.tracks.count == 5)
+    #expect(expanded.tracks.allSatisfy { $0.isArchiveEntry })
+    #expect(Set(expanded.tracks.map(\.trackIndex)) == Set(0..<5))
+    #expect(expanded.tracks.allSatisfy { expanded.metadata[$0.id]?.comment != FastScanPlaceholder.metadataComment })
 }
 
 @Test func supportedExtensionsPreserveLegacyS98Compatibility() {
@@ -314,6 +552,103 @@ import Testing
 @Test func scanOperationTimeoutReturnsBeforeThirtySecondLimitForCompletedWork() async throws {
     let value = try await ScanOperationTimeout.run(description: "test") { 7 }
     #expect(value == 7)
+}
+
+@Test func deepScanMaterializesSelectedArchiveMembersInOneBatch() async throws {
+    let archiveURL = URL(fileURLWithPath: "/music/album.7z")
+    let fingerprint = ScanFingerprint(fileSize: 130_000, modifiedAt: Date(timeIntervalSince1970: 1))
+    let entries = ["01.spc", "02.spc", "03.spc"]
+    let route = ScanRoute(
+        pluginID: "gme",
+        formatExtension: "spc",
+        supportsArchiveMembers: true,
+        supportsMultiTrack: true
+    )
+    let provider = RecordingScanArchiveProvider(
+        members: entries.map {
+            ScanArchiveMember(
+                archiveURL: archiveURL,
+                entryPath: $0,
+                fingerprint: fingerprint,
+                route: route
+            )
+        }
+    )
+    let descriptor = ScanPluginDescriptor(
+        pluginID: "gme",
+        displayName: "Test GME",
+        supportedExtensions: ["spc"],
+        supportsMultiTrack: true
+    )
+    let handler = RecordingScanFormatHandler(descriptor: descriptor)
+    let executor = ScanPipelineExecutor(
+        pluginRegistry: ScanPluginRegistry(descriptors: [descriptor]),
+        handlerRegistry: ScanPluginHandlerRegistry(handlers: [handler]),
+        archiveProvider: provider
+    )
+    let candidate = ScanCandidate(
+        identity: ScanItemIdentity(rootID: 1, path: archiveURL.path, archiveEntry: nil),
+        fingerprint: fingerprint,
+        sourceURL: archiveURL,
+        route: nil
+    )
+
+    let results = await executor.process(candidate)
+    let calls = await provider.calls()
+    let inspectedURLs = await handler.inspectedURLs()
+
+    #expect(results.count == entries.count)
+    #expect(calls.list == 1)
+    #expect(calls.selectedEntry == 0)
+    #expect(calls.selectedBatch == 1)
+    #expect(calls.completeArchive == 0)
+    #expect(calls.batchEntries == entries)
+    #expect(Set(inspectedURLs.map(\.lastPathComponent)) == Set(entries))
+}
+
+@Test func deepScanPreservesCompleteArchiveMaterializationForDependencyFormats() async throws {
+    let archiveURL = URL(fileURLWithPath: "/music/album.7z")
+    let fingerprint = ScanFingerprint(fileSize: 1_000, modifiedAt: Date(timeIntervalSince1970: 1))
+    let route = ScanRoute(
+        pluginID: "play-psf2",
+        formatExtension: "minipsf2",
+        supportsArchiveMembers: true,
+        supportsMultiTrack: false
+    )
+    let provider = RecordingScanArchiveProvider(members: [
+        ScanArchiveMember(
+            archiveURL: archiveURL,
+            entryPath: "music/01.minipsf2",
+            fingerprint: fingerprint,
+            route: route
+        )
+    ])
+    let descriptor = ScanPluginDescriptor(
+        pluginID: "play-psf2",
+        displayName: "Test PSF2",
+        supportedExtensions: ["minipsf2"]
+    )
+    let executor = ScanPipelineExecutor(
+        pluginRegistry: ScanPluginRegistry(descriptors: [descriptor]),
+        handlerRegistry: ScanPluginHandlerRegistry(
+            handlers: [RecordingScanFormatHandler(descriptor: descriptor)]
+        ),
+        archiveProvider: provider
+    )
+    let candidate = ScanCandidate(
+        identity: ScanItemIdentity(rootID: 1, path: archiveURL.path, archiveEntry: nil),
+        fingerprint: fingerprint,
+        sourceURL: archiveURL,
+        route: nil
+    )
+
+    let results = await executor.process(candidate)
+    let calls = await provider.calls()
+
+    #expect(results.count == 1)
+    #expect(calls.selectedEntry == 0)
+    #expect(calls.selectedBatch == 0)
+    #expect(calls.completeArchive == 1)
 }
 
 @Test func scanPipelineProcessesFirstJoshWSPCArchive() async throws {
@@ -442,6 +777,88 @@ private enum CocoaSpiceTestError: Error {
     case expected
 }
 
+private actor RecordingScanArchiveProvider: ScanArchiveProvider {
+    private let members: [ScanArchiveMember]
+    private var listCallCount = 0
+    private var selectedEntryCallCount = 0
+    private var selectedBatchCallCount = 0
+    private var completeArchiveCallCount = 0
+    private var selectedBatchEntries: [String] = []
+
+    init(members: [ScanArchiveMember]) {
+        self.members = members
+    }
+
+    func listMembers(
+        in archiveURL: URL,
+        supportedExtensions: Set<String>
+    ) async throws -> [ScanArchiveMember] {
+        listCallCount += 1
+        return members
+    }
+
+    func materialize(archiveURL: URL, entryPath: String) async throws -> URL {
+        selectedEntryCallCount += 1
+        return URL(fileURLWithPath: "/materialized").appendingPathComponent(entryPath)
+    }
+
+    func materializeEntries(archiveURL: URL, entryPaths: [String]) async throws -> URL {
+        selectedBatchCallCount += 1
+        selectedBatchEntries = entryPaths
+        return URL(fileURLWithPath: "/materialized")
+    }
+
+    func materializeArchive(at archiveURL: URL) async throws -> URL {
+        completeArchiveCallCount += 1
+        return URL(fileURLWithPath: "/materialized")
+    }
+
+    func calls() -> (
+        list: Int,
+        selectedEntry: Int,
+        selectedBatch: Int,
+        completeArchive: Int,
+        batchEntries: [String]
+    ) {
+        (
+            listCallCount,
+            selectedEntryCallCount,
+            selectedBatchCallCount,
+            completeArchiveCallCount,
+            selectedBatchEntries
+        )
+    }
+}
+
+private struct RecordingScanFormatHandler: ScanFormatHandler {
+    let descriptor: ScanPluginDescriptor
+    private let recorder = ScanURLRecorder()
+
+    init(descriptor: ScanPluginDescriptor) {
+        self.descriptor = descriptor
+    }
+
+    func inspect(fileURL: URL, route: ScanRoute) async throws -> ScanInspection {
+        await recorder.append(fileURL)
+        return ScanInspection(
+            route: route,
+            tracks: [ScanTrackMetadata(trackIndex: 0, trackCount: 1, metadata: nil)]
+        )
+    }
+
+    func inspectedURLs() async -> [URL] {
+        await recorder.values
+    }
+}
+
+private actor ScanURLRecorder {
+    private(set) var values: [URL] = []
+
+    func append(_ url: URL) {
+        values.append(url)
+    }
+}
+
 @Test func scanDiscoveryWalksNestedSupportedFilesAndArchives() async throws {
     let rootURL = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -508,15 +925,24 @@ private enum CocoaSpiceTestError: Error {
     #expect(!GMEFormatSupport.requiresTrackEnumeration(forPathExtension: "psf2"))
     #expect(!GMEFormatSupport.requiresTrackEnumeration(forPathExtension: "psf"))
     #expect(!GMEFormatSupport.requiresTrackEnumeration(forPathExtension: "mini2sf"))
+    #expect(!GMEFormatSupport.requiresTrackEnumeration(forPathExtension: "spc"))
     #expect(GMEFormatSupport.requiresTrackEnumeration(forPathExtension: "nsf"))
     #expect(GMEFormatSupport.requiresTrackEnumeration(forPathExtension: "adx"))
     #expect(GMEFormatSupport.requiresTrackEnumeration(forPathExtension: "xa"))
     #expect(GMEFormatSupport.module(forPathExtension: "minipsf")?.pluginID == "play-psf1")
     #expect(GMEFormatSupport.module(forPathExtension: "minipsf2")?.pluginID == "play-psf2")
+    #expect(GMEFormatSupport.module(forPathExtension: "spc")?.pluginID == "gme")
+    #expect(GMEFormatSupport.module(forPathExtension: "nsf")?.pluginID == "gme-multitrack")
     #expect(GMEFormatSupport.module(forPathExtension: "psf")?.archiveMaterialization == .completeSet)
     #expect(GMEFormatSupport.module(forPathExtension: "psf2")?.archiveMaterialization == .completeSet)
     #expect(GMEFormatSupport.module(forPathExtension: "miniusf")?.archiveMaterialization == .completeSetWithLazyUSFAliases)
     #expect(GMEFormatSupport.module(forPathExtension: "adx")?.archiveMaterialization == .selectedEntry)
+    let expectedGMEConcurrency = min(
+        3,
+        max(1, ProcessInfo.processInfo.activeProcessorCount / 2)
+    )
+    #expect(GMEFormatSupport.module(forPathExtension: "spc")?.scanInspectionConcurrency == expectedGMEConcurrency)
+    #expect(GMEFormatSupport.module(forPathExtension: "minipsf2")?.scanInspectionConcurrency == 1)
     #expect(GMEFormatSupport.scanPluginDescriptors.count == GMEFormatSupport.modules.count)
     #expect(ScanCoreHandlers.registry.route(for: "PSF", archiveMember: true)?.pluginID == "play-psf1")
     #expect(ScanCoreHandlers.registry.route(for: "PSF2", archiveMember: true)?.pluginID == "play-psf2")
@@ -526,6 +952,70 @@ private enum CocoaSpiceTestError: Error {
         $0 + $1.supportedExtensions.count
     }
     #expect(GMEFormatSupport.supportedExtensions.count == registeredExtensionCount)
+}
+
+@Test func archiveInspectionPolicyPreservesDependencySets() {
+    #expect(GMEFormatSupport.archiveMaterializationForInspection(
+        entryPaths: ["01.spc", "02.spc"]
+    ) == .selectedEntry)
+    #expect(GMEFormatSupport.archiveMaterializationForInspection(
+        entryPaths: ["01.minipsf2", "02.psf2"]
+    ) == .completeSet)
+    #expect(GMEFormatSupport.archiveMaterializationForInspection(
+        entryPaths: ["01.spc", "02.miniusf"]
+    ) == .completeSetWithLazyUSFAliases)
+}
+
+@Test func playlistMetadataPreparationBatchesArchiveMembersByContainer() {
+    let firstArchive = URL(fileURLWithPath: "/music/first.7z")
+    let secondArchive = URL(fileURLWithPath: "/music/second.zip")
+    let batches = PlaybackInspection.archiveBatches(for: [
+        TrackItem(archiveURL: firstArchive, entryPath: "01.spc"),
+        TrackItem(archiveURL: firstArchive, entryPath: "01.spc", trackIndex: 1, trackCount: 2),
+        TrackItem(url: URL(fileURLWithPath: "/music/direct.spc")),
+        TrackItem(archiveURL: firstArchive, entryPath: "02.spc"),
+        TrackItem(archiveURL: secondArchive, entryPath: "03.spc")
+    ])
+
+    #expect(batches == [
+        PlaylistMetadataArchiveBatch(
+            archiveURL: firstArchive.standardizedFileURL,
+            entryPaths: ["01.spc", "02.spc"]
+        ),
+        PlaylistMetadataArchiveBatch(
+            archiveURL: secondArchive.standardizedFileURL,
+            entryPaths: ["03.spc"]
+        )
+    ])
+    #expect(PlaybackInspection.metadataWorkerLimit == 2)
+}
+
+@Test func playlistMetadataPreparationUsesOneMaterializedSPCSet() async throws {
+    let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/JoshW/SPC/0-9/3 Ninjas Kick Back (1994-11)(Malibu)(Sony Imagesoft)[SNES].7z")
+    guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }
+    let entries = try ZipArchiveSupport.listPlayableEntries(
+        in: archiveURL,
+        supportedExtensions: ["spc"]
+    )
+    let jobs = PlaybackInspection.prepareMetadataInspectionJobs(
+        tracks: entries.map {
+            TrackItem(archiveURL: archiveURL, entryPath: $0.entryPath)
+        }
+    )
+
+    #expect(jobs.count == entries.count)
+    #expect(jobs.allSatisfy { FileManager.default.fileExists(atPath: $0.fileURL.path) })
+    let selectionDirectories = Set(jobs.compactMap { job in
+        job.fileURL.pathComponents.first(where: { $0.hasPrefix("selection-") })
+    })
+    #expect(selectionDirectories.count == 1)
+    if let firstJob = jobs.first {
+        let metadata = try await PlaybackInspection.inspectMetadata(
+            track: firstJob.track,
+            fileURL: firstJob.fileURL
+        )
+        #expect(metadata.playLengthMs > 0)
+    }
 }
 
 @Test func frameAccountingUsesSuppliedOutputFrames() {

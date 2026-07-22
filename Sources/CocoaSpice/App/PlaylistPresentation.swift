@@ -105,7 +105,7 @@ enum PlaylistPresentation {
         case .system:
             return compare(systemText(for: lhsMetadata), systemText(for: rhsMetadata))
         case .path:
-            return compare(lhs.statusPathText, rhs.statusPathText)
+            return compare(lhs.fullPathText, rhs.fullPathText)
         case .length:
             return compare(lhsMetadata?.playLengthMs ?? 0, rhsMetadata?.playLengthMs ?? 0)
         }

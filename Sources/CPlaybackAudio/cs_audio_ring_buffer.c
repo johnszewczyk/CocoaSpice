@@ -13,6 +13,7 @@ struct CSAudioRingBuffer {
     _Atomic uint64_t frames_read;
     _Atomic uint64_t frames_requested;
     _Atomic uint64_t underrun_count;
+    _Atomic uint64_t clipped_sample_count;
 };
 
 CSAudioRingBuffer *cs_audio_ring_buffer_create(uint64_t capacity_frames) {
@@ -40,6 +41,7 @@ CSAudioRingBuffer *cs_audio_ring_buffer_create(uint64_t capacity_frames) {
     atomic_init(&buffer->frames_read, 0);
     atomic_init(&buffer->frames_requested, 0);
     atomic_init(&buffer->underrun_count, 0);
+    atomic_init(&buffer->clipped_sample_count, 0);
     return buffer;
 }
 
@@ -63,6 +65,7 @@ void cs_audio_ring_buffer_clear(CSAudioRingBuffer *buffer) {
     atomic_store_explicit(&buffer->frames_read, 0, memory_order_release);
     atomic_store_explicit(&buffer->frames_requested, 0, memory_order_release);
     atomic_store_explicit(&buffer->underrun_count, 0, memory_order_release);
+    atomic_store_explicit(&buffer->clipped_sample_count, 0, memory_order_release);
 }
 
 uint64_t cs_audio_ring_buffer_capacity_frames(const CSAudioRingBuffer *buffer) {
@@ -97,6 +100,12 @@ uint64_t cs_audio_ring_buffer_underrun_count(const CSAudioRingBuffer *buffer) {
         : atomic_load_explicit(&buffer->underrun_count, memory_order_acquire);
 }
 
+uint64_t cs_audio_ring_buffer_clipped_sample_count(const CSAudioRingBuffer *buffer) {
+    return buffer == NULL
+        ? 0
+        : atomic_load_explicit(&buffer->clipped_sample_count, memory_order_acquire);
+}
+
 uint64_t cs_audio_ring_buffer_write_stereo(
     CSAudioRingBuffer *buffer,
     const float *left,
@@ -111,11 +120,24 @@ uint64_t cs_audio_ring_buffer_write_stereo(
     uint64_t read_index = atomic_load_explicit(&buffer->read_index, memory_order_acquire);
     uint64_t available = buffer->capacity_frames - (write_index - read_index);
     uint64_t frames_to_write = frame_count < available ? frame_count : available;
+    uint64_t clipped_samples = 0;
 
     for (uint64_t offset = 0; offset < frames_to_write; offset += 1) {
         uint64_t slot = (write_index + offset) % buffer->capacity_frames;
-        buffer->left[slot] = left[offset];
-        buffer->right[slot] = right[offset];
+        float left_sample = left[offset];
+        float right_sample = right[offset];
+        if (left_sample > 1.0f || left_sample < -1.0f) {
+            clipped_samples += 1;
+        }
+        if (right_sample > 1.0f || right_sample < -1.0f) {
+            clipped_samples += 1;
+        }
+        buffer->left[slot] = left_sample;
+        buffer->right[slot] = right_sample;
+    }
+
+    if (clipped_samples > 0) {
+        atomic_fetch_add_explicit(&buffer->clipped_sample_count, clipped_samples, memory_order_relaxed);
     }
 
     atomic_store_explicit(

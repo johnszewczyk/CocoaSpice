@@ -12,12 +12,14 @@
 - Playback state mutation and rolling-buffer refill now run on a dedicated serial playback queue rather than the main actor.
 - Playback startup should be effectively immediate.
 - Playback does not convert SPC to WAV before play.
+- Decoder-native PCM is resampled at the playback boundary whenever its clock differs from the shared 44.1 kHz output clock. This preserves pitch, duration, fades, and seek timing for native-rate formats such as PlayStation CD-XA (37.8 kHz).
 - Stream scheduling keeps only a small rolling buffer window ahead.
 - Native-end playback modes can stream until libgme reports track completion rather than requiring a fixed prerendered duration.
 - Seek rebuilds the rolling stream from the requested offset rather than rendering a replacement file.
 - Old refill work is dropped when a new track, stop, or seek invalidates the prior stream generation.
 - Audio-engine configuration changes rebuild the current stream from its elapsed position and preserve its playing or paused state.
 - Native output state is represented by immutable value-type snapshots with explicit transport/output states, frame counters, buffer counters, underruns, end state, and stream generation.
+- The Options Playback Diagnostics panel samples those snapshots at the existing 250 ms transport cadence. It shows buffered PCM headroom, underruns, and source samples beyond full scale; source clip counts are collected while the refill worker writes PCM, never in the realtime output callback.
 - Frame-accounting helpers derive position from the session origin and frames supplied to output; completion helpers require planned/native completion and an empty output buffer.
 - The native output boundary uses a preallocated C11 atomic stereo ring buffer and an `AVAudioSourceNode` endpoint.
 - `NativePlaybackSession` owns decoder creation, generation invalidation, dedicated refill work, high-water priming, seek rebuilds, route-change recovery, and one completion callback per generation.

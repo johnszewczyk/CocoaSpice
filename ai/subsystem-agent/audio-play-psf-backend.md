@@ -18,7 +18,7 @@ The backend is built headlessly with `PSFCORE_ONLY=ON` and merged into `.build/p
 
 ## Concurrency
 
-The sound bridge uses a fixed one-second stereo ring buffer. Play!'s producer stops requesting work when that buffer lacks room for its next block, so a paused or stalled consumer cannot grow memory without bound. Pausing transport suspends the VM and cancels CocoaSpice's refill timer; resuming restarts both. The build helper defaults to four parallel compile jobs and accepts `COCOASPICE_BUILD_JOBS` when a different explicit limit is needed.
+The sound bridge uses a fixed one-second stereo ring buffer. Play!'s producer stops requesting work when that buffer lacks room for its next block, so a paused or stalled consumer cannot grow memory without bound. The first read allows up to five seconds for a newly loaded PSF VM to produce PCM; later starved reads retain the 250 ms bound. This preserves startup for slower PSF programs while keeping ordinary decoder stalls finite. Pausing transport suspends the VM and cancels CocoaSpice's refill timer; resuming restarts both. The build helper defaults to four parallel compile jobs and accepts `COCOASPICE_BUILD_JOBS` when a different explicit limit is needed.
 
 ## Lifecycle
 

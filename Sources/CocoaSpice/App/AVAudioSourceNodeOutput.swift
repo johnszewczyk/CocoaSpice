@@ -125,6 +125,7 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
             framesRequested: ringBuffer.framesRequested,
             framesSupplied: ringBuffer.framesRead,
             underrunCount: ringBuffer.underrunCount,
+            clippedSampleCount: ringBuffer.clippedSampleCount,
             positionFrames: ringBuffer.framesRead,
             generation: generation
         )

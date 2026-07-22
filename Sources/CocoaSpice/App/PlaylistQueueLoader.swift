@@ -90,7 +90,7 @@ enum PlaylistQueueLoader {
         )
     }
 
-    private static func expandFastContainers(in loaded: LoadedPlaylistData) async -> LoadedPlaylistData {
+    static func expandFastContainers(in loaded: LoadedPlaylistData) async -> LoadedPlaylistData {
         var tracks: [TrackItem] = []
         var metadata = loaded.metadata
 
@@ -126,30 +126,21 @@ enum PlaylistQueueLoader {
 
             let game = track.url.deletingPathExtension().lastPathComponent
             for entry in entries {
-                if URL(fileURLWithPath: entry.entryPath).pathExtension.lowercased() == "gbs" {
-                    let inspectedTracks = await inspectPlayableTracks(forArchiveEntry: entry)
-                    if !inspectedTracks.isEmpty {
-                        for inspected in inspectedTracks {
-                            tracks.append(inspected.track)
-                            metadata[inspected.track.id] = inspected.metadata
-                        }
-                        continue
-                    }
+                let firstAppendedIndex = tracks.endIndex
+                await appendArchiveEntry(entry, into: &tracks, metadata: &metadata)
+                for memberTrack in tracks[firstAppendedIndex...] where metadata[memberTrack.id] == nil {
+                    metadata[memberTrack.id] = TrackMetadata(
+                        game: game,
+                        song: URL(fileURLWithPath: entry.entryPath).deletingPathExtension().lastPathComponent,
+                        system: "",
+                        author: "",
+                        comment: FastScanPlaceholder.metadataComment,
+                        introLengthMs: 0,
+                        loopLengthMs: 0,
+                        playLengthMs: 0,
+                        fadeLengthMs: 0
+                    )
                 }
-
-                let memberTrack = TrackItem(archiveURL: entry.archiveURL, entryPath: entry.entryPath)
-                tracks.append(memberTrack)
-                metadata[memberTrack.id] = TrackMetadata(
-                    game: game,
-                    song: URL(fileURLWithPath: entry.entryPath).deletingPathExtension().lastPathComponent,
-                    system: "",
-                    author: "",
-                    comment: FastScanPlaceholder.metadataComment,
-                    introLengthMs: 0,
-                    loopLengthMs: 0,
-                    playLengthMs: 0,
-                    fadeLengthMs: 0
-                )
             }
             metadata.removeValue(forKey: track.id)
         }

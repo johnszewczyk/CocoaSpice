@@ -119,11 +119,6 @@ final class PlayerViewModel {
     var sidebarSystemMode = false
     var fastLibraryScan = false
     private(set) var expandedDatabaseSystems: Set<String> = []
-    var playlistSearchText: String = "" {
-        didSet {
-            scheduleVisiblePlaylistRefresh()
-        }
-    }
     var databaseGameItems: [DatabaseGameItem] { databaseSidebar.gameItems }
     var visibleDatabaseGameItems: [DatabaseGameItem] { databaseSidebar.visibleGameItems }
     var selectedDatabaseGameID: String? {
@@ -137,19 +132,8 @@ final class PlayerViewModel {
     var browsedFolderTracks: [TrackItem] = []
     var selectedTrackID: TrackItem.ID?
     var selectedTrackIDs: Set<TrackItem.ID> = []
-    var playlist: [TrackItem] = [] {
-        didSet {
-            scheduleVisiblePlaylistRefresh()
-        }
-    }
-    var metadataCache: [String: TrackMetadata] = [:] {
-        didSet {
-            if !playlistSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                scheduleVisiblePlaylistRefresh()
-            }
-        }
-    }
-    var visiblePlaylistItems: [TrackItem] = []
+    var playlist: [TrackItem] = []
+    var metadataCache: [String: TrackMetadata] = [:]
     var playlistColumnWidthHints: PlaylistColumnWidthHints?
     var playlistSortColumn: PlaylistSortColumn?
     var playlistSortDirection: PlaylistSortDirection = .ascending
@@ -198,6 +182,7 @@ final class PlayerViewModel {
     var isLoading = false
     var isPlaying = false
     var playbackElapsedSeconds: TimeInterval = 0
+    private(set) var playbackDiagnostics = PlaybackDiagnosticsSnapshot.idle
     var isSeeking = false
     var seekPreviewSeconds: Double = 0
     var playlistMetadataLoadToken = 0
@@ -223,6 +208,7 @@ final class PlayerViewModel {
     @ObservationIgnored private var playbackStorage: PlaybackEngine?
     @ObservationIgnored private var remoteTransportStorage: RemoteTransportController?
     @ObservationIgnored private var audioExportWindowController: AudioExportProgressWindowController?
+    @ObservationIgnored private var audioExportProgressSnapshot: AudioExportProgressSnapshot?
     @ObservationIgnored private var lastAudioExportDirectoryURL: URL?
     private var remoteTransportConfigured = false
     private let libraryDatabase: LibraryDatabase?
@@ -234,14 +220,15 @@ final class PlayerViewModel {
     private var libraryScanGeneration = 0
     private var folderSelectionTask: Task<Void, Never>?
     private var queueBuildTask: Task<Void, Never>?
-    private var visiblePlaylistTask: Task<Void, Never>?
+    private var randomLibraryLoadTask: Task<Void, Never>?
     private var audioExportTask: Task<Void, Never>?
     private var playlistMetadataRefreshWorkItem: DispatchWorkItem?
     private var playlistLoadGeneration = 0
     private var playbackRequestGeneration = 0
     private var folderSelectionGeneration = 0
     private var queueBuildGeneration = 0
-    private var visiblePlaylistGeneration = 0
+    private var randomLibraryLoadGeneration = 0
+    private var randomLibraryPlaybackPending = false
     private var didAutoAdvanceForCurrentTrack = false
     private var playbackReachedEnd = false
     private var pendingPlaybackTrack: TrackItem?
@@ -314,7 +301,6 @@ final class PlayerViewModel {
         restorePersistedPlaylist()
         restorePlaylistColumnState()
         sidebarSearchText = AppSessionPersistence.lastSidebarSearchText()
-        playlistSearchText = AppSessionPersistence.lastPlaylistSearchText()
         startPlaybackTimer()
         restoreInitialSidebarMode()
         updateRemoteTransportState()
@@ -957,8 +943,7 @@ final class PlayerViewModel {
     }
 
     var canDragReorderTracks: Bool {
-        playlistSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-            allowsManualPlaylistReordering &&
+        allowsManualPlaylistReordering &&
             !selectedTrackIDs.isEmpty
     }
 
@@ -1126,13 +1111,18 @@ final class PlayerViewModel {
         let fadeSetting = fadeSeconds
 
         let windowController = ensureAudioExportWindowController()
-        windowController.present(
-            snapshot: AudioExportProgressSnapshot(
-                title: "Preparing AAC export",
-                detail: outputDirectory.path,
-                progress: nil
-            )
+        let preparingSnapshot = AudioExportProgressSnapshot(
+            phase: .preparing,
+            title: "Preparing AAC export",
+            outputDirectoryPath: outputDirectory.path,
+            currentFileName: nil,
+            completedFiles: 0,
+            totalFiles: deduplicatedTracks.count,
+            currentFileProgress: nil,
+            batchProgress: 0
         )
+        audioExportProgressSnapshot = preparingSnapshot
+        windowController.present(snapshot: preparingSnapshot)
         statusText = "Preparing AAC export…"
 
         audioExportTask = Task { [weak self] in
@@ -1156,44 +1146,62 @@ final class PlayerViewModel {
 
                 let result = try await AudioExportAACService.export(requests: requests) { snapshot in
                     Task { @MainActor [weak self] in
+                        self?.audioExportProgressSnapshot = snapshot
                         self?.audioExportWindowController?.apply(snapshot: snapshot)
                     }
                 }
 
                 await MainActor.run {
-                    self.audioExportWindowController?.apply(
-                        snapshot: AudioExportProgressSnapshot(
-                            title: "AAC export complete",
-                            detail: result.outputDirectory.path,
-                            progress: 1
-                        )
+                    let snapshot = AudioExportProgressSnapshot(
+                        phase: .completed,
+                        title: "AAC export complete",
+                        outputDirectoryPath: result.outputDirectory.path,
+                        currentFileName: nil,
+                        completedFiles: result.exportedCount,
+                        totalFiles: result.exportedCount,
+                        currentFileProgress: 1,
+                        batchProgress: 1
                     )
+                    self.audioExportProgressSnapshot = snapshot
+                    self.audioExportWindowController?.apply(snapshot: snapshot)
                     self.audioExportWindowController?.closeAutomatically()
                     self.statusText = "Exported \(result.exportedCount) AAC file\(result.exportedCount == 1 ? "" : "s")"
                     self.audioExportTask = nil
                 }
             } catch is CancellationError {
                 await MainActor.run {
-                    self.audioExportWindowController?.apply(
-                        snapshot: AudioExportProgressSnapshot(
-                            title: "AAC export cancelled",
-                            detail: outputDirectory.path,
-                            progress: nil
-                        )
+                    let previous = self.audioExportProgressSnapshot
+                    let snapshot = AudioExportProgressSnapshot(
+                        phase: .cancelled,
+                        title: "AAC export cancelled",
+                        outputDirectoryPath: outputDirectory.path,
+                        currentFileName: previous?.currentFileName,
+                        completedFiles: previous?.completedFiles ?? 0,
+                        totalFiles: deduplicatedTracks.count,
+                        currentFileProgress: previous?.currentFileProgress,
+                        batchProgress: previous?.batchProgress ?? 0
                     )
+                    self.audioExportProgressSnapshot = snapshot
+                    self.audioExportWindowController?.apply(snapshot: snapshot)
                     self.audioExportWindowController?.closeAutomatically()
                     self.statusText = "AAC export cancelled"
                     self.audioExportTask = nil
                 }
             } catch {
                 await MainActor.run {
-                    self.audioExportWindowController?.apply(
-                        snapshot: AudioExportProgressSnapshot(
-                            title: "AAC export failed",
-                            detail: outputDirectory.path,
-                            progress: nil
-                        )
+                    let previous = self.audioExportProgressSnapshot
+                    let snapshot = AudioExportProgressSnapshot(
+                        phase: .failed,
+                        title: "AAC export failed",
+                        outputDirectoryPath: outputDirectory.path,
+                        currentFileName: previous?.currentFileName,
+                        completedFiles: previous?.completedFiles ?? 0,
+                        totalFiles: deduplicatedTracks.count,
+                        currentFileProgress: previous?.currentFileProgress,
+                        batchProgress: previous?.batchProgress ?? 0
                     )
+                    self.audioExportProgressSnapshot = snapshot
+                    self.audioExportWindowController?.apply(snapshot: snapshot)
                     self.audioExportWindowController?.closeAutomatically()
                     self.statusText = "AAC export failed"
                     self.audioExportTask = nil
@@ -1373,7 +1381,11 @@ final class PlayerViewModel {
     }
 
     func playNext() {
-        if randomPlaybackScope != .off, let randomTrack = randomPlaybackTarget() {
+        if randomPlaybackScope == .library {
+            playRandomLibraryTrackWhenReady()
+            return
+        }
+        if randomPlaybackScope == .playlist, let randomTrack = randomPlaybackTarget() {
             requestPlayback(for: randomTrack)
             return
         }
@@ -1392,8 +1404,15 @@ final class PlayerViewModel {
         case .library: randomPlaybackScope = .playlist
         case .playlist: randomPlaybackScope = .off
         }
-        if randomPlaybackScope == .library { loadRandomLibraryTracks() }
-        if randomPlaybackScope == .off { randomLibraryTracks = [] }
+        if randomPlaybackScope == .library {
+            loadRandomLibraryTracks()
+        } else {
+            randomLibraryPlaybackPending = false
+            randomLibraryLoadGeneration += 1
+            randomLibraryLoadTask?.cancel()
+            randomLibraryLoadTask = nil
+            if randomPlaybackScope == .off { randomLibraryTracks = [] }
+        }
         savePreferencesNow()
     }
 
@@ -1404,14 +1423,70 @@ final class PlayerViewModel {
         return (eligible.isEmpty ? candidates : eligible).randomElement()
     }
 
-    private func loadRandomLibraryTracks() {
-        guard let databaseURL = libraryDatabaseURL, !databaseGameItems.isEmpty else { return }
-        let items = databaseGameItems
-        Task { [weak self] in
-            let loaded = await PlaylistQueueLoader.loadLibraryTracksForGames(databaseURL: databaseURL, gameItems: items)
-            guard let self, self.randomPlaybackScope == .library else { return }
-            self.randomLibraryTracks = loaded.tracks
+    private func playRandomLibraryTrackWhenReady() {
+        if let randomTrack = randomPlaybackTarget() {
+            startRandomLibraryPlayback(randomTrack)
+            return
         }
+
+        randomLibraryPlaybackPending = true
+        statusText = "Loading Random Library…"
+        loadRandomLibraryTracks()
+    }
+
+    private func loadRandomLibraryTracks() {
+        guard randomPlaybackScope == .library, randomLibraryLoadTask == nil else { return }
+        guard let databaseURL = libraryDatabaseURL, !databaseGameItems.isEmpty else {
+            if randomLibraryPlaybackPending {
+                randomLibraryPlaybackPending = false
+                statusText = "Random Library has no playable tracks."
+            }
+            return
+        }
+        guard let item = randomLibraryGame() else {
+            randomLibraryPlaybackPending = false
+            statusText = "Random Library has no playable tracks."
+            return
+        }
+        randomLibraryLoadGeneration += 1
+        let generation = randomLibraryLoadGeneration
+        randomLibraryLoadTask = Task { [weak self] in
+            let loaded = await PlaylistQueueLoader.loadLibraryTracksForGames(databaseURL: databaseURL, gameItems: [item])
+            guard let self,
+                  self.randomPlaybackScope == .library,
+                  generation == self.randomLibraryLoadGeneration else { return }
+            self.randomLibraryLoadTask = nil
+            self.randomLibraryTracks = loaded.tracks
+            guard self.randomLibraryPlaybackPending else { return }
+            self.randomLibraryPlaybackPending = false
+            guard let randomTrack = self.randomPlaybackTarget() else {
+                self.statusText = "Random Library has no playable tracks."
+                return
+            }
+            self.startRandomLibraryPlayback(randomTrack)
+        }
+    }
+
+    private func startRandomLibraryPlayback(_ track: TrackItem) {
+        randomLibraryTracks = []
+        requestPlayback(for: track)
+        loadRandomLibraryTracks()
+    }
+
+    private func randomLibraryGame() -> DatabaseGameItem? {
+        let candidates = databaseGameItems.filter { $0.trackCount > 0 }
+        let totalWeight = candidates.reduce(Int64(0)) { partial, item in
+            partial + Int64(item.trackCount)
+        }
+        guard totalWeight > 0 else { return nil }
+
+        var offset = Int64.random(in: 0..<totalWeight)
+        for item in candidates {
+            let weight = Int64(item.trackCount)
+            if offset < weight { return item }
+            offset -= weight
+        }
+        return candidates.last
     }
 
     func handleMediaNextCommand() {
@@ -1634,7 +1709,7 @@ final class PlayerViewModel {
     }
 
     var visiblePlaylist: [TrackItem] {
-        visiblePlaylistItems
+        playlist
     }
 
     func libraryScanRootStatusText(_ root: LibraryScanRoot) -> String {
@@ -1716,6 +1791,7 @@ final class PlayerViewModel {
                 guard let self else { return }
                 let playback = self.playback
                 let snapshot = await playback.statusSnapshot()
+                self.playbackDiagnostics = await playback.diagnosticsSnapshot()
                 if !self.isSeeking {
                     self.playbackElapsedSeconds = snapshot.elapsedSeconds
                 }
@@ -1747,7 +1823,11 @@ final class PlayerViewModel {
             requestPlayback(for: currentTrack)
             return
         }
-        if randomPlaybackScope != .off, let randomTrack = randomPlaybackTarget() {
+        if randomPlaybackScope == .library {
+            playRandomLibraryTrackWhenReady()
+            return
+        }
+        if randomPlaybackScope == .playlist, let randomTrack = randomPlaybackTarget() {
             requestPlayback(for: randomTrack)
             return
         }
@@ -1910,24 +1990,51 @@ final class PlayerViewModel {
         playlistLoadTask = Task.detached(priority: .utility) { [weak self] in
             guard let self else { return }
             var resolvedMetadata = cachedMetadata
+            let jobs = PlaybackInspection.prepareMetadataInspectionJobs(
+                tracks: missingTracks
+            )
             await withTaskGroup(of: (String, TrackMetadata?).self) { group in
-                for track in missingTracks {
+                var nextJobIndex = 0
+                let initialJobCount = min(
+                    PlaybackInspection.metadataWorkerLimit,
+                    jobs.count
+                )
+                for _ in 0..<initialJobCount {
+                    let job = jobs[nextJobIndex]
+                    nextJobIndex += 1
                     group.addTask {
-                        let metadata = try? await PlaybackInspection.inspectMetadata(track: track)
-                        return (track.id, metadata)
+                        let metadata = try? await PlaybackInspection.inspectMetadata(
+                            track: job.track,
+                            fileURL: job.fileURL
+                        )
+                        return (job.track.id, metadata)
                     }
                 }
 
-                for await (trackID, metadata) in group {
+                while let (trackID, metadata) = await group.next() {
                     if Task.isCancelled {
+                        group.cancelAll()
                         break
                     }
 
-                    guard let metadata else { continue }
-                    resolvedMetadata[trackID] = metadata
-                    await MainActor.run {
-                        guard generation == self.playlistLoadGeneration else { return }
-                        self.updatePlaylistMetadata(for: trackID, metadata: metadata)
+                    if let metadata {
+                        resolvedMetadata[trackID] = metadata
+                        await MainActor.run {
+                            guard generation == self.playlistLoadGeneration else { return }
+                            self.updatePlaylistMetadata(for: trackID, metadata: metadata)
+                        }
+                    }
+
+                    if nextJobIndex < jobs.count {
+                        let job = jobs[nextJobIndex]
+                        nextJobIndex += 1
+                        group.addTask {
+                            let metadata = try? await PlaybackInspection.inspectMetadata(
+                                track: job.track,
+                                fileURL: job.fileURL
+                            )
+                            return (job.track.id, metadata)
+                        }
                     }
                 }
             }
@@ -1974,29 +2081,6 @@ final class PlayerViewModel {
         DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(100), execute: workItem)
     }
 
-    private func scheduleVisiblePlaylistRefresh() {
-        visiblePlaylistTask?.cancel()
-        visiblePlaylistGeneration += 1
-        let generation = visiblePlaylistGeneration
-        let tracks = playlist
-        let metadata = metadataCache
-        let query = playlistSearchText.trimmingCharacters(in: .whitespacesAndNewlines)
-
-        guard !query.isEmpty else {
-            visiblePlaylistItems = tracks
-            return
-        }
-
-        visiblePlaylistTask = Task { [weak self] in
-            let filtered = await Task.detached(priority: .userInitiated) {
-                Self.filterPlaylistTracks(tracks, metadata: metadata, query: query)
-            }.value
-            guard let self else { return }
-            guard !Task.isCancelled, generation == self.visiblePlaylistGeneration else { return }
-            self.visiblePlaylistItems = filtered
-        }
-    }
-
     private func syncManualPlaylistOrder() {
         var order: [TrackItem.ID: Int] = [:]
         for (index, track) in playlist.enumerated() where order[track.id] == nil {
@@ -2028,6 +2112,13 @@ final class PlayerViewModel {
         databaseSidebar.replaceGameItems((try? libraryDatabase?.loadGameItems()) ?? [])
         if sidebarSystemMode, expandedDatabaseSystems.isEmpty {
             expandedDatabaseSystems = Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
+        }
+        if randomPlaybackScope == .library {
+            randomLibraryTracks = []
+            randomLibraryLoadGeneration += 1
+            randomLibraryLoadTask?.cancel()
+            randomLibraryLoadTask = nil
+            loadRandomLibraryTracks()
         }
     }
 
@@ -2150,8 +2241,7 @@ final class PlayerViewModel {
             rootPath: rootURL?.path,
             selectedFolderPath: selectedFolderPath,
             librarySelectedFolderPath: librarySelectedFolderPath,
-            sidebarSearchText: sidebarSearchText,
-            playlistSearchText: playlistSearchText
+            sidebarSearchText: sidebarSearchText
         )
         savePreferencesNow()
         AppSessionPersistence.savePlaylistColumnState(
@@ -2211,7 +2301,10 @@ final class PlayerViewModel {
         if let audioExportWindowController {
             return audioExportWindowController
         }
-        let controller = AudioExportProgressWindowController()
+        let controller = AudioExportProgressWindowController { [weak self] in
+            self?.audioExportTask?.cancel()
+            self?.statusText = "Cancelling AAC export…"
+        }
         audioExportWindowController = controller
         return controller
     }
@@ -2396,19 +2489,11 @@ final class PlayerViewModel {
         PlaylistPresentation.lengthText(for: metadataCache[track.id])
     }
 
-    func pathText(for track: TrackItem) -> String { track.statusPathText }
+    func pathText(for track: TrackItem) -> String { track.fullPathText }
 
     func indexText(for track: TrackItem) -> String {
         guard let index = playlist.firstIndex(of: track) else { return "—" }
         return String(index + 1)
-    }
-
-    nonisolated private static func filterPlaylistTracks(
-        _ tracks: [TrackItem],
-        metadata: [String: TrackMetadata],
-        query: String
-    ) -> [TrackItem] {
-        PlaylistPresentation.filterTracks(tracks, metadata: metadata, query: query)
     }
 
     nonisolated private static func buildPlaylistColumnWidthHints(

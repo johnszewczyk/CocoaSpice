@@ -83,6 +83,15 @@ enum TrackSource: Hashable, Sendable {
         }
     }
 
+    var fullSourcePath: String {
+        switch self {
+        case .file(let url):
+            return url.path
+        case .zipEntry(let archiveURL, let entryPath):
+            return "\(archiveURL.path)#\(entryPath)"
+        }
+    }
+
     var isArchiveEntry: Bool {
         if case .zipEntry = self {
             return true
@@ -216,6 +225,10 @@ struct TrackItem: Identifiable, Hashable, Sendable {
             return "\(groupDisplayName)\\\(relativeSourcePath) [\(displayTrackNumber)]"
         }
         return "\(groupDisplayName)\\\(relativeSourcePath)"
+    }
+    var fullPathText: String {
+        let trackSuffix = isMultiTrackContainer ? " [\(displayTrackNumber)]" : ""
+        return "\(source.fullSourcePath)\(trackSuffix)"
     }
     var persistedValue: String {
         let payload = PersistedTrackItem(

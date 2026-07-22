@@ -14,6 +14,7 @@ uint64_t cs_audio_ring_buffer_buffered_frames(const CSAudioRingBuffer *buffer);
 uint64_t cs_audio_ring_buffer_frames_read(const CSAudioRingBuffer *buffer);
 uint64_t cs_audio_ring_buffer_frames_requested(const CSAudioRingBuffer *buffer);
 uint64_t cs_audio_ring_buffer_underrun_count(const CSAudioRingBuffer *buffer);
+uint64_t cs_audio_ring_buffer_clipped_sample_count(const CSAudioRingBuffer *buffer);
 
 uint64_t cs_audio_ring_buffer_write_stereo(
     CSAudioRingBuffer *buffer,

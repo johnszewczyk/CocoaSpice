@@ -36,6 +36,10 @@ final class RealtimePCMFrameRingBuffer: @unchecked Sendable {
         Int64(cs_audio_ring_buffer_underrun_count(rawBuffer))
     }
 
+    var clippedSampleCount: Int64 {
+        Int64(cs_audio_ring_buffer_clipped_sample_count(rawBuffer))
+    }
+
     func clear() {
         cs_audio_ring_buffer_clear(rawBuffer)
     }
