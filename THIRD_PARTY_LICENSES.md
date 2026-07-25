@@ -5,6 +5,7 @@ CocoaSpice embeds third-party decoder and emulator code. This repository does no
 | Component | Purpose | Upstream | License / notice location |
 | --- | --- | --- | --- |
 | libgme | Classic game-music decoding | [game-music-emu](https://github.com/libgme/game-music-emu) | LGPL-2.1-or-later; upstream license files and Homebrew package notice |
+| libopenmpt | FastTracker XM module decoding | [libopenmpt](https://lib.openmpt.org/libopenmpt/) | BSD-3-Clause; Homebrew package notice |
 | libvgm | VGM and Sega playback | [libvgm](https://github.com/ValleyBell/libvgm) | Mixed upstream component licenses; preserve source headers and bundled notices |
 | vgmstream | Streamed game-audio playback | [vgmstream](https://github.com/vgmstream/vgmstream) | ISC; `vendor/vgmstream/COPYING` |
 | mGBA / Highly Complete | GBA GSF playback | [mGBA](https://github.com/mgba-emu/mgba) | MPL-2.0; `vendor/mgba/LICENSE` |

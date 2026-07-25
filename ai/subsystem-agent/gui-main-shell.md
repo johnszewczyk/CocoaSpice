@@ -13,7 +13,7 @@
 - The left pane is the source browser surface.
 - The right pane is the active editable queue.
 - The temporary startup-isolation shell has been removed; the app always boots the live native shell now.
-- The top toolbar holds previous, play-pause, and next.
+- The top toolbar holds previous, play-pause, and next. Its playback-options toolset holds Long Play, repeat, and random controls. The infinity button uses the shared persisted Long Play state and restarts a supported current track under the updated timing plan.
 - A dedicated spectrum analyzer capsule is mounted at the far right of the titlebar as a separate accessory rather than being packed into the SwiftUI toolbar item flow.
 - The bottom status bar shows path or status context on the left and elapsed or total time on the right.
 - Empty states use native `ContentUnavailableView`.

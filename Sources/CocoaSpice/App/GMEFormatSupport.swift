@@ -2,6 +2,8 @@ import Foundation
 
 enum PlaybackDecoderBackend: Hashable, Sendable {
     case gme
+    case openMPT
+    case standardAudio
     case libvgm
     case highlyComplete
     case lazyUSF
@@ -23,6 +25,10 @@ struct PlaybackDecoderModule: Sendable {
     let supportedExtensions: Set<String>
     let requiresTrackEnumeration: Bool
     let archiveMaterialization: ArchiveMaterializationPolicy
+    /// Scanning can sometimes read an entry's container metadata without the
+    /// sibling libraries that playback needs. Keep that optimization separate
+    /// from the playback materialization contract.
+    let scanArchiveMaterialization: ArchiveMaterializationPolicy
     let scanInspectionConcurrency: Int
 
     init(
@@ -32,6 +38,7 @@ struct PlaybackDecoderModule: Sendable {
         supportedExtensions: Set<String>,
         requiresTrackEnumeration: Bool,
         archiveMaterialization: ArchiveMaterializationPolicy,
+        scanArchiveMaterialization: ArchiveMaterializationPolicy? = nil,
         scanInspectionConcurrency: Int = 1
     ) {
         self.pluginID = pluginID
@@ -40,6 +47,7 @@ struct PlaybackDecoderModule: Sendable {
         self.supportedExtensions = supportedExtensions
         self.requiresTrackEnumeration = requiresTrackEnumeration
         self.archiveMaterialization = archiveMaterialization
+        self.scanArchiveMaterialization = scanArchiveMaterialization ?? archiveMaterialization
         self.scanInspectionConcurrency = max(1, scanInspectionConcurrency)
     }
 
@@ -79,6 +87,10 @@ enum GMEFormatSupport {
         "vgz"
     ]
 
+    static let openMPTSupportedExtensions: Set<String> = ["xm"]
+
+    static let standardAudioSupportedExtensions: Set<String> = ["flac", "wav"]
+
     static let highlyCompleteSupportedExtensions: Set<String> = [
         "gsf",
         "minigsf"
@@ -95,10 +107,10 @@ enum GMEFormatSupport {
     ]
 
     // vgmstream handles the PS2 rip families found in the Zophar collection,
-    // not only SVAG/IECS. Keep this list explicit so archive discovery and
+    // plus 3DO's AIFC and GENH rips. Keep this list explicit so archive discovery and
     // deep scanning agree about what the backend can actually open.
     static let vgmstreamSupportedExtensions: Set<String> = [
-        "adx", "ads", "aus", "hd", "hbd", "iecs", "int", "mib", "mtaf", "rws", "ss2", "svag", "vag", "xa"
+        "adx", "ads", "aifc", "aus", "genh", "hd", "hbd", "iecs", "int", "mib", "mtaf", "rws", "ss2", "stream", "svag", "vag", "xa"
     ]
     static let psfSupportedExtensions: Set<String> = ["psf", "minipsf"]
     static let psf2SupportedExtensions: Set<String> = ["psf2", "minipsf2"]
@@ -119,6 +131,16 @@ enum GMEFormatSupport {
             scanInspectionConcurrency: libGMEScanInspectionConcurrency
         ),
         PlaybackDecoderModule(
+            pluginID: "openmpt", displayName: "libopenmpt", backend: .openMPT,
+            supportedExtensions: openMPTSupportedExtensions,
+            requiresTrackEnumeration: false, archiveMaterialization: .selectedEntry
+        ),
+        PlaybackDecoderModule(
+            pluginID: "standard-audio", displayName: "Core Audio", backend: .standardAudio,
+            supportedExtensions: standardAudioSupportedExtensions,
+            requiresTrackEnumeration: false, archiveMaterialization: .selectedEntry
+        ),
+        PlaybackDecoderModule(
             pluginID: "libvgm", displayName: "libVGM", backend: .libvgm,
             supportedExtensions: libVGMSupportedExtensions,
             requiresTrackEnumeration: true, archiveMaterialization: .selectedEntry
@@ -131,12 +153,14 @@ enum GMEFormatSupport {
         PlaybackDecoderModule(
             pluginID: "lazyusf", displayName: "LazyUSF", backend: .lazyUSF,
             supportedExtensions: lazyUSFSupportedExtensions,
-            requiresTrackEnumeration: false, archiveMaterialization: .completeSetWithLazyUSFAliases
+            requiresTrackEnumeration: false, archiveMaterialization: .completeSetWithLazyUSFAliases,
+            scanArchiveMaterialization: .selectedEntry
         ),
         PlaybackDecoderModule(
             pluginID: "twosf", displayName: "2SF", backend: .twoSF,
             supportedExtensions: twoSFSupportedExtensions,
-            requiresTrackEnumeration: false, archiveMaterialization: .completeSet
+            requiresTrackEnumeration: false, archiveMaterialization: .completeSet,
+            scanArchiveMaterialization: .selectedEntry
         ),
         PlaybackDecoderModule(
             pluginID: "vgmstream", displayName: "vgmstream", backend: .vgmstream,
@@ -146,12 +170,14 @@ enum GMEFormatSupport {
         PlaybackDecoderModule(
             pluginID: "play-psf1", displayName: "Play! PSF", backend: .playPSF,
             supportedExtensions: psfSupportedExtensions,
-            requiresTrackEnumeration: false, archiveMaterialization: .completeSet
+            requiresTrackEnumeration: false, archiveMaterialization: .completeSet,
+            scanArchiveMaterialization: .selectedEntry
         ),
         PlaybackDecoderModule(
             pluginID: "play-psf2", displayName: "Play! PSF2", backend: .playPSF,
             supportedExtensions: psf2SupportedExtensions,
-            requiresTrackEnumeration: false, archiveMaterialization: .completeSet
+            requiresTrackEnumeration: false, archiveMaterialization: .completeSet,
+            scanArchiveMaterialization: .selectedEntry
         )
     ]
 
@@ -175,6 +201,29 @@ enum GMEFormatSupport {
                 return nil
             }
             switch module.archiveMaterialization {
+            case .selectedEntry:
+                break
+            case .completeSet:
+                if resolved == .selectedEntry { resolved = .completeSet }
+            case .completeSetWithLazyUSFAliases:
+                resolved = .completeSetWithLazyUSFAliases
+            }
+        }
+        return resolved
+    }
+
+    static func scanArchiveMaterializationForInspection(
+        entryPaths: [String]
+    ) -> ArchiveMaterializationPolicy? {
+        guard !entryPaths.isEmpty else { return nil }
+        var resolved = ArchiveMaterializationPolicy.selectedEntry
+        for entryPath in entryPaths {
+            guard let module = module(
+                forPathExtension: URL(fileURLWithPath: entryPath).pathExtension
+            ) else {
+                return nil
+            }
+            switch module.scanArchiveMaterialization {
             case .selectedEntry:
                 break
             case .completeSet:

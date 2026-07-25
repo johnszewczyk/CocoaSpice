@@ -17,6 +17,7 @@
 
 - Selection: standard Shift and Command multi-selection.
 - Selection: selected rows can be dragged together.
+- Selection: moving a single selected row glides its background to the next row over 100 ms; multi-selection remains immediate.
 
 ## Activation
 

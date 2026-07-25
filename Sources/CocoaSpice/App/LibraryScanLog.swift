@@ -24,6 +24,8 @@ final class ScanIssueCollector: @unchecked Sendable {
 }
 
 enum LibraryScanLogStore {
+    static let maximumReadBytes = 2 * 1_024 * 1_024
+    static let maximumRenderedIssues = 2_000
     static func fileURL(rootID: Int64) -> URL {
         let baseURL =
             (try? FileManager.default.url(
@@ -45,10 +47,25 @@ enum LibraryScanLogStore {
     }
 
     static func read(rootID: Int64) -> [String] {
-        guard let contents = try? String(contentsOf: fileURL(rootID: rootID), encoding: .utf8) else {
+        let url = fileURL(rootID: rootID)
+        guard let handle = try? FileHandle(forReadingFrom: url) else {
             return []
         }
-        return contents.split(whereSeparator: \.isNewline).map(String.init)
+        defer { try? handle.close() }
+        guard let data = try? handle.read(upToCount: maximumReadBytes),
+              let contents = String(data: data, encoding: .utf8) else {
+            return ["Unable to read scan log."]
+        }
+        var issues = contents.split(whereSeparator: \.isNewline).map(String.init)
+        let fileSize = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
+        if fileSize > maximumReadBytes {
+            issues.append("Log truncated after \(maximumReadBytes / 1_024 / 1_024) MiB to keep this window responsive.")
+        }
+        if issues.count > maximumRenderedIssues {
+            issues = Array(issues.prefix(maximumRenderedIssues - 1))
+            issues.append("Log truncated after \(maximumRenderedIssues) issues to keep this window responsive.")
+        }
+        return issues
     }
 
     static func write(
@@ -66,7 +83,11 @@ enum LibraryScanLogStore {
                 at: fileURL.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
-            try issues.joined(separator: "\n").appending("\n").write(
+            let boundedIssues = Array(issues.prefix(maximumRenderedIssues - 1))
+                + (issues.count > maximumRenderedIssues
+                    ? ["Log truncated after \(maximumRenderedIssues) issues."]
+                    : [])
+            try boundedIssues.joined(separator: "\n").appending("\n").write(
                 to: fileURL,
                 atomically: true,
                 encoding: .utf8

@@ -4,7 +4,7 @@
 
 - SwiftPM target graph.
 - App bundle assembly.
-- Runtime `libgme` packaging.
+- Runtime `libgme` and `libopenmpt` packaging.
 - Local static `libvgm` build bootstrap.
 - Local static `mGBA` build bootstrap for `Highly Complete`.
 - Local launch behavior.
@@ -22,6 +22,7 @@
 - `build.sh` also runs `scripts/build-mgba.sh` so the vendored `mGBA` archive exists when SwiftPM links the `Highly Complete` backend.
 - `build.sh` runs the bounded `scripts/build-play-psf.sh` and `scripts/build-vgmstream.sh` helpers before SwiftPM links their bridge targets.
 - `build.sh` stages the `.app` in a temporary directory outside the project tree, copies `libgme.0.dylib` into the bundle, rewrites install names, clears recursive macOS extended attributes before and after signing, then copies the verified bundle back into `dist/`.
+- `build.sh` also stages `libopenmpt` and its non-system runtime dylibs in `Contents/Frameworks`, then rewrites their mutual install names before signing.
 - `launch.sh` invokes `build.sh` before launch.
 - `launch.sh` writes app stdout or stderr to `/tmp/CocoaSpice.log`.
 - `launch.sh` exports `COCOASPICE_LIBRARY_ROOT`, defaulting to the sibling `spcsets_extracted` path when unset.
@@ -31,6 +32,7 @@
 
 - Keep bundle assembly explicit.
 - Do not rely on system-global `libgme` at runtime.
+- Do not rely on system-global `libopenmpt`, `libmpg123`, `libogg`, or `libvorbis` at runtime.
 - Keep `libvgm` statically linked so the app does not need a second third-party runtime dylib in the bundle.
 - Keep `mGBA` statically linked as a backend dependency of `Highly Complete`; it is not a separate runtime app feature.
 - Keep the bridge compile-time feature flags aligned with the vendored `mGBA` archive build; mismatched flags can corrupt `mCore` layout and crash playback immediately.

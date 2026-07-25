@@ -192,6 +192,7 @@ struct OptionsView: View {
 
     private static let externalComponents = [
         ExternalComponent(name: "Game Music Emu / libgme", version: "0.6.5"),
+        ExternalComponent(name: "libopenmpt", version: "0.8.7"),
         ExternalComponent(name: "libvgm", version: "vendored snapshot"),
         ExternalComponent(name: "vgmstream", version: "vendored snapshot"),
         ExternalComponent(name: "mGBA / Highly Complete", version: "vendored snapshot"),
@@ -504,7 +505,6 @@ struct OptionsView: View {
 
                 HStack(spacing: 8) {
                     Button("Scan") { model.scanLibraryRoot(root.id) }
-                    Button("Retry") { model.retryFailedLibraryRoot(root.id) }
                     Button("Log") { model.openLibraryScanLog(root.id) }
                         .disabled(!model.hasLibraryScanLog(root.id))
                     Button("Del") { model.removeLibraryScanRoot(root.id) }

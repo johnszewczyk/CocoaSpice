@@ -12,6 +12,14 @@ struct AboutView: View {
             licenseURL: URL(string: "https://github.com/libgme/game-music-emu/blob/master/COPYING")!
         ),
         Dependency(
+            name: "libopenmpt",
+            version: "0.8.7",
+            purpose: "FastTracker XM module playback",
+            license: "BSD 3-Clause",
+            sourceURL: URL(string: "https://lib.openmpt.org/libopenmpt/")!,
+            licenseURL: URL(string: "https://github.com/OpenMPT/openmpt/blob/master/LICENSE")!
+        ),
+        Dependency(
             name: "libvgm",
             version: "0.1 / 867223e",
             purpose: "VGM, VGZ, GYM, and S98 formats",

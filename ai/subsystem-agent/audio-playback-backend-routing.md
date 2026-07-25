@@ -4,12 +4,14 @@
 
 - Which decoder backend owns which file types.
 - How streamed playback stays backend-agnostic above the decoder layer.
-- The current `libgme`, `libvgm`, and `Highly Complete` split.
+- The current `libgme`, `libopenmpt`, `libvgm`, and `Highly Complete` split.
 
 ## Current State
 
 - `PlaybackEngine` now builds a decoder through a backend-routing factory rather than instantiating `libgme` directly.
 - `libgme` remains the backend for container and dump formats such as `spc`, `nsf`, `nsfe`, `gbs`, `hes`, `kss`, `sap`, and `ay`.
+- `libopenmpt` owns independent FastTracker XM modules. It supplies metadata, seeking, and PCM directly from the module's embedded patterns and samples; Long Play maps to the module's native infinite-repeat setting.
+- Core Audio owns native WAV and FLAC playback through one standard-audio decoder. It returns decoded PCM at the file's native sample rate, while the shared playback stream performs any output-rate conversion.
 - `lazyusf2` owns `usf` and `miniusf` through the `CLazyUSF` bridge; keep its PSF-chain loading and N64 emulation behind that bridge.
 - LazyUSF scanning reads each file's PSF tags without constructing the emulator or loading its dependency chain; full chain loading remains playback-only.
 - Backend modules expose app-owned PCM, metadata, seeking, and timing hooks; the player model must not call decoder-specific C APIs directly.
@@ -17,7 +19,7 @@
 - `Highly Complete` now owns `gsf` and `minigsf`.
 - The vendored `2sf2wav` core owns `2sf` and `mini2sf` through `C2SF`. Its bridge is serialized because the underlying DS core uses shared global state.
 - The vendored Play! `PsfCore` owns both PlayStation `psf`/`minipsf` and PlayStation 2 `psf2`/`minipsf2` through one `CPlayPSF` bridge. Separate registry modules share that backend so admission and platform identity remain explicit without duplicating VM code.
-- `vgmstream` owns PlayStation XA streams as well as its registered PlayStation 2 stream families. XA inspection enumerates embedded subsongs before playlist rows are finalized.
+- `vgmstream` owns PlayStation XA streams, 3DO AIFC, GENH, and STREAM files, and its registered PlayStation 2 stream families. XA inspection enumerates embedded subsongs before playlist rows are finalized.
 - The vgmstream compatibility patch admits Silent Hill 2's self-contained `.iecs` HD+BD bodies and its zero-padded stereo `.svag` streams. Rebuild the static library through `scripts/build-vgmstream.sh` whenever this patch or the vendored source changes.
 - File inspection and playback share the same backend-routing table, so scan results, playlist import, and playback no longer disagree about VGM-family ownership.
 - Each static decoder module registers its plugin identifier, display name, extensions, subtrack-enumeration requirement, and archive materialization policy once. Scanner descriptors, playlist admission, and dependency-aware archive materialization derive from that registration.
@@ -46,6 +48,8 @@
 - [PlaybackDecoderRouting.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackDecoderRouting.swift)
 - [PlaybackEngine.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackEngine.swift)
 - [GMEFormatSupport.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/GMEFormatSupport.swift)
+- [OpenMPTDecoder.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/OpenMPTDecoder.swift)
+- [openmpt_bridge.c](/Users/john/Downloads/Code/CocoaSpice/Sources/COpenMPT/openmpt_bridge.c)
 - [libvgm_bridge.h](/Users/john/Downloads/Code/CocoaSpice/Sources/CLibVGM/include/libvgm_bridge.h)
 - [libvgm_bridge.cpp](/Users/john/Downloads/Code/CocoaSpice/Sources/CLibVGM/libvgm_bridge.cpp)
 - [highlycomplete_bridge.h](/Users/john/Downloads/Code/CocoaSpice/Sources/CHighlyComplete/include/highlycomplete_bridge.h)

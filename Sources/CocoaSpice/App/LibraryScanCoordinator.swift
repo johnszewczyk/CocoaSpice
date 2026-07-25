@@ -26,8 +26,7 @@ final class LibraryScanCoordinator {
         activity: @escaping @MainActor @Sendable (Int, Int, String) -> Void = { _, _, _ in },
         issue: @escaping @MainActor @Sendable (String) -> Void = { _ in }
     ) async throws -> ScanSummary {
-        let operationName = mode == .retryFailed ? "retry" : "scan"
-        report("Starting \(operationName): \(root.standardizedURL.lastPathComponent)")
+        report("Starting scan: \(root.standardizedURL.lastPathComponent)")
         try database.markScanStarted(rootID: root.id)
         if mode == .newScan, archiveScanDepth == .deep {
             // A new scan is a replacement inventory. Retaining old tracks
@@ -46,24 +45,39 @@ final class LibraryScanCoordinator {
         let priorItems = try database.loadScanInventory(rootID: root.id)
         let priorByIdentity = Dictionary(uniqueKeysWithValues: priorItems.map { ($0.identity, $0) })
 
-        let selected: [ScanCandidate]
-        if mode == .retryFailed {
-            selected = priorItems.filter { $0.state == .failed }.map { item in
-                ScanCandidate(
-                    identity: item.identity,
-                    fingerprint: item.fingerprint,
-                    sourceURL: URL(fileURLWithPath: item.identity.path),
-                    route: item.route
+        var selected: [ScanCandidate] = []
+        selected.reserveCapacity(discovered.count)
+        for candidate in discovered {
+            guard let prior = priorByIdentity[candidate.identity] else {
+                // The deep archive listing will supply its native signature
+                // while the archive is already being scanned. Do not spend a
+                // separate process on first discovery.
+                selected.append(candidate)
+                continue
+            }
+            guard mode == .incremental else {
+                selected.append(candidate)
+                continue
+            }
+            guard ScanSelection.includes(prior, mode: mode, currentFingerprint: candidate.fingerprint) else {
+                continue
+            }
+
+            let enriched = await ArchiveScanSignature.enrich(candidate)
+            if !ScanSelection.includes(prior, mode: mode, currentFingerprint: enriched.fingerprint) {
+                // A copied or timestamp-touched archive has the same native
+                // manifest/checksum. Keep its successful inventory current so
+                // the next incremental pass skips it without recomputing.
+                try database.refreshScanFingerprint(
+                    identity: candidate.identity,
+                    fingerprint: enriched.fingerprint
                 )
+                continue
             }
-        } else {
-            selected = discovered.filter { candidate in
-                guard let prior = priorByIdentity[candidate.identity] else { return true }
-                return ScanSelection.includes(prior, mode: mode, currentFingerprint: candidate.fingerprint)
-            }
+            selected.append(enriched)
         }
 
-        report("Planned \(selected.count) files for \(operationName)…")
+        report("Planned \(selected.count) files for scan…")
         progress(0, selected.count)
         let preserveExistingTracks = archiveScanDepth == .fast
         let progressReporter = ScanProgressReporter(report: report, progress: progress, activity: activity)

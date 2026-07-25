@@ -6,6 +6,7 @@ extension LibraryDatabase {
         let sql = """
         SELECT id, path, is_enabled, display_order, last_scan_started_at, last_scan_completed_at, last_scan_track_count, last_scan_error
         FROM library_roots
+        WHERE is_attached = 1
         ORDER BY lower(path) ASC, path ASC;
         """
         var statement: OpaquePointer?
@@ -41,6 +42,7 @@ extension LibraryDatabase {
             VALUES (?, 1, ?, ?)
             ON CONFLICT(path) DO UPDATE SET
                 is_enabled = 1,
+                is_attached = 1,
                 path = excluded.path;
             """,
             bindings: [
@@ -58,8 +60,11 @@ extension LibraryDatabase {
         )
     }
 
-    func deleteRoot(id: Int64) throws {
-        try execute("DELETE FROM library_roots WHERE id = ?;", bindings: [.int(id)])
+    func detachRoot(id: Int64) throws {
+        try execute(
+            "UPDATE library_roots SET is_attached = 0, is_enabled = 0 WHERE id = ?;",
+            bindings: [.int(id)]
+        )
     }
 
     func updateRootOrder(idsInOrder: [Int64]) throws {

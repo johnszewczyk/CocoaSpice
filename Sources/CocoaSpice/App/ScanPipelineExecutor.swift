@@ -1,18 +1,35 @@
 import Foundation
 
 enum ScanPipelineError: LocalizedError {
-    case operationTimedOut(String)
+    case operationTimedOut(String, seconds: Int)
 
     var errorDescription: String? {
         switch self {
-        case .operationTimedOut(let description):
-            return "Timed out after 30 seconds: \(description)"
+        case .operationTimedOut(let description, let seconds):
+            return "Timed out after \(seconds) seconds: \(description)"
         }
     }
 }
 
 enum ScanOperationTimeout {
+    enum Kind {
+        case archiveListing
+        case archiveExtraction
+        case metadataInspection
+
+        var seconds: Int {
+            switch self {
+            case .archiveListing: return 30
+            // A valid large archive can take several minutes to extract on a
+            // slower disk. This is a validity boundary, not a speed governor.
+            case .archiveExtraction: return 600
+            case .metadataInspection: return 60
+            }
+        }
+    }
+
     static func run<T: Sendable>(
+        kind: Kind = .metadataInspection,
         description: String,
         operation: @escaping @Sendable () async throws -> T
     ) async throws -> T {
@@ -21,8 +38,8 @@ enum ScanOperationTimeout {
                 try await operation()
             }
             group.addTask {
-                try await Task.sleep(nanoseconds: 30_000_000_000)
-                throw ScanPipelineError.operationTimedOut(description)
+                try await Task.sleep(nanoseconds: UInt64(kind.seconds) * 1_000_000_000)
+                throw ScanPipelineError.operationTimedOut(description, seconds: kind.seconds)
             }
             defer { group.cancelAll() }
             guard let result = try await group.next() else {
@@ -134,7 +151,8 @@ struct ScanPipelineExecutor: Sendable {
 
     private func processArchive(_ candidate: ScanCandidate) async -> [ScanPipelineResult] {
         do {
-            let members = try await ScanOperationTimeout.run(
+            let archiveListing = try await ScanOperationTimeout.run(
+                kind: .archiveListing,
                 description: "listing \(candidate.sourceURL.lastPathComponent)"
             ) {
                 try await archiveProvider.listMembers(
@@ -142,10 +160,23 @@ struct ScanPipelineExecutor: Sendable {
                     supportedExtensions: pluginRegistry.supportedExtensions
                 )
             }
+            let members = archiveListing.members
+            let completedCandidate = ScanCandidate(
+                identity: candidate.identity,
+                fingerprint: ScanFingerprint(
+                    fileSize: candidate.fingerprint.fileSize,
+                    modifiedAt: candidate.fingerprint.modifiedAt,
+                    contentSignature: archiveListing.scanSignature
+                ),
+                sourceURL: candidate.sourceURL,
+                route: candidate.route
+            )
 
             var results: [ScanPipelineResult] = []
             results.reserveCapacity(members.count)
-            guard !members.isEmpty else { return results }
+            guard !members.isEmpty else {
+                return [.archiveCompleted(await ArchiveScanSignature.enrich(completedCandidate))]
+            }
             let memberCandidates = members.map { member in
                 ScanCandidate(
                     identity: ScanItemIdentity(
@@ -158,7 +189,7 @@ struct ScanPipelineExecutor: Sendable {
                     route: member.route
                 )
             }
-            guard let materializationPolicy = GMEFormatSupport.archiveMaterializationForInspection(
+            guard let materializationPolicy = GMEFormatSupport.scanArchiveMaterializationForInspection(
                 entryPaths: members.map(\.entryPath)
             ) else {
                 throw ZipArchiveSupport.ArchiveError.invalidEntryPath(
@@ -170,21 +201,20 @@ struct ScanPipelineExecutor: Sendable {
                 switch materializationPolicy {
                 case .selectedEntry:
                     materializedRoot = try await ScanOperationTimeout.run(
+                        kind: .archiveExtraction,
                         description: "extracting playable members from \(candidate.sourceURL.lastPathComponent)"
                     ) {
-                        try await archiveProvider.materializeEntries(
+                        try await archiveProvider.materializeEntriesForScan(
                             archiveURL: candidate.sourceURL,
                             entryPaths: members.map(\.entryPath)
                         )
                     }
                 case .completeSet, .completeSetWithLazyUSFAliases:
                     materializedRoot = try await ScanOperationTimeout.run(
+                        kind: .archiveExtraction,
                         description: "extracting dependency set \(candidate.sourceURL.lastPathComponent)"
                     ) {
-                        try await archiveProvider.materializeArchive(at: candidate.sourceURL)
-                    }
-                    if materializationPolicy == .completeSetWithLazyUSFAliases {
-                        try ZipArchiveSupport.prepareLazyUSFDependencies(in: materializedRoot)
+                        try await archiveProvider.materializeArchiveForScan(at: candidate.sourceURL)
                     }
                 }
             } catch is CancellationError {
@@ -194,6 +224,17 @@ struct ScanPipelineExecutor: Sendable {
             } catch {
                 return memberCandidates.map {
                     failure($0, stage: .archiveExtraction, message: error.localizedDescription)
+                }
+            }
+
+            if materializationPolicy == .completeSetWithLazyUSFAliases {
+                do {
+                    try ZipArchiveSupport.prepareLazyUSFDependencies(in: materializedRoot)
+                } catch {
+                    await archiveProvider.discardScanMaterialization(at: materializedRoot)
+                    return memberCandidates.map {
+                        failure($0, stage: .archiveExtraction, message: error.localizedDescription)
+                    }
                 }
             }
 
@@ -228,6 +269,13 @@ struct ScanPipelineExecutor: Sendable {
                 }
             }
             results.append(contentsOf: orderedResults.compactMap { $0 })
+            await archiveProvider.discardScanMaterialization(at: materializedRoot)
+            if results.allSatisfy({ result in
+                if case .success = result { return true }
+                return false
+            }) {
+                results.append(.archiveCompleted(await ArchiveScanSignature.enrich(completedCandidate)))
+            }
             return results
         } catch {
             return [failure(candidate, stage: .archiveListing, message: error.localizedDescription)]
@@ -313,11 +361,11 @@ struct ScanPipelineExecutor: Sendable {
 
         switch module.archiveMaterialization {
         case .selectedEntry:
-            return try await ScanOperationTimeout.run(description: "extracting \(candidate.identityDescription)") {
+            return try await ScanOperationTimeout.run(kind: .archiveExtraction, description: "extracting \(candidate.identityDescription)") {
                 try await archiveProvider.materialize(archiveURL: candidate.sourceURL, entryPath: archiveEntry)
             }
         case .completeSet, .completeSetWithLazyUSFAliases:
-            let root = try await ScanOperationTimeout.run(description: "extracting dependency set \(candidate.sourceURL.lastPathComponent)") {
+            let root = try await ScanOperationTimeout.run(kind: .archiveExtraction, description: "extracting dependency set \(candidate.sourceURL.lastPathComponent)") {
                 try await archiveProvider.materializeArchive(at: candidate.sourceURL)
             }
             if case .completeSetWithLazyUSFAliases = module.archiveMaterialization {
@@ -341,7 +389,7 @@ struct ScanPipelineExecutor: Sendable {
             return failure(candidate, stage: .routing, message: "No handler registered for \(route.pluginID)")
         }
         let inspection = try await scheduler.withPermit {
-            try await ScanOperationTimeout.run(description: "inspecting \(candidate.identityDescription)") {
+            try await ScanOperationTimeout.run(kind: .metadataInspection, description: "inspecting \(candidate.identityDescription)") {
                 try await handler.inspect(fileURL: fileURL ?? candidate.sourceURL, route: route)
             }
         }

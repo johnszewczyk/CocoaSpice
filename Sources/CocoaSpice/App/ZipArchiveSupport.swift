@@ -1,9 +1,12 @@
 import CryptoKit
+import Darwin
 import Dispatch
 import Foundation
 
 enum ZipArchiveSupport {
     static let supportedArchiveExtensions: Set<String> = ["zip", "7z", "rsn", "tzst"]
+    private static let archiveListingTimeout: TimeInterval = 30
+    private static let archiveExtractionTimeout: TimeInterval = 600
     /// Archive commands are deliberately one-thread-per-process. The scanner
     /// fans those processes across the machine instead of allowing every 7zz
     /// process to spawn its own full-width worker pool.
@@ -23,6 +26,11 @@ enum ZipArchiveSupport {
     struct ArchiveEntry: Hashable, Sendable {
         let archiveURL: URL
         let entryPath: String
+    }
+
+    struct PlayableEntryListing: Sendable {
+        let entries: [ArchiveEntry]
+        let scanSignature: String?
     }
 
     enum ArchiveError: LocalizedError {
@@ -53,14 +61,23 @@ enum ZipArchiveSupport {
         in archiveURL: URL,
         supportedExtensions: Set<String>
     ) throws -> [ArchiveEntry] {
+        try listPlayableEntryListing(
+            in: archiveURL,
+            supportedExtensions: supportedExtensions
+        ).entries
+    }
+
+    static func listPlayableEntryListing(
+        in archiveURL: URL,
+        supportedExtensions: Set<String>
+    ) throws -> PlayableEntryListing {
         let archiveURL = archiveURL.standardizedFileURL
         guard canHandle(archiveURL) else {
             throw ArchiveError.unsupportedArchive(archiveURL)
         }
 
         let listing = try listEntries(in: archiveURL)
-
-        return listing
+        let entries: [ArchiveEntry] = listing.entries
             .map(normalizeEntryPath)
             .compactMap { rawEntry in
                 let normalized = rawEntry
@@ -73,6 +90,30 @@ enum ZipArchiveSupport {
                 guard supportedExtensions.contains(ext) else { return nil }
                 return ArchiveEntry(archiveURL: archiveURL, entryPath: normalized)
             }
+        return PlayableEntryListing(entries: entries, scanSignature: listing.scanSignature)
+    }
+
+    /// Returns tool-reported archive details for an incremental scan. It
+    /// never reads member payloads or derives a checksum: ZIP/7z retain the
+    /// 7-Zip header report and TAR+Zstandard retains Zstandard's own report.
+    /// Unsupported or checksum-less containers return nil and retain ordinary
+    /// file-size/modification-date incremental behavior.
+    static func scanSignature(for archiveURL: URL) throws -> String? {
+        let archiveURL = archiveURL.standardizedFileURL
+        switch archiveKind(for: archiveURL) {
+        case .zip, .sevenZip:
+            return try listEntries(in: archiveURL).scanSignature
+        case .tarZstandard:
+            let data = try runProcess(
+                executable: try executable(named: "zstd"),
+                arguments: ["-lv", archiveURL.path]
+            )
+            let report = String(decoding: data, as: UTF8.self)
+            guard report.contains("Check: XXH64") else { return nil }
+            return "zstd-report:\n\(report)"
+        case .rsn:
+            return nil
+        }
     }
 
     static func materializePlayableFile(for track: TrackItem) throws -> URL {
@@ -100,6 +141,20 @@ enum ZipArchiveSupport {
     static func materializeEntry(archiveURL: URL, entryPath: String) throws -> URL {
         let archiveURL = archiveURL.standardizedFileURL
         let normalizedEntryPath = normalizeEntryPath(entryPath)
+
+        // BSD tar can report its Zstandard helper as failed after `-xO` has
+        // already written a valid selected member. Read TAR+Zstandard archives
+        // to completion into the managed cache instead, then resolve the
+        // requested member from that complete set.
+        if archiveKind(for: archiveURL) == .tarZstandard {
+            let rootURL = try materializeArchive(at: archiveURL)
+            let memberURL = archiveMemberURL(in: rootURL, entryPath: normalizedEntryPath)
+            guard FileManager.default.fileExists(atPath: memberURL.path) else {
+                throw ArchiveError.invalidEntryPath(entryPath)
+            }
+            return memberURL
+        }
+
         let destinationURL = try materializedEntryURL(
             archiveURL: archiveURL,
             entryPath: normalizedEntryPath
@@ -138,11 +193,7 @@ enum ZipArchiveSupport {
                 outputURL: temporaryURL
             )
         case .tarZstandard:
-            try runProcessWritingOutput(
-                executable: try executable(named: "tar"),
-                arguments: ["-xOf", archiveURL.path, normalizedEntryPath],
-                outputURL: temporaryURL
-            )
+            fatalError("TAR+Zstandard entries are materialized as complete archives above")
         }
 
         if fileManager.fileExists(atPath: destinationURL.path) {
@@ -168,10 +219,7 @@ enum ZipArchiveSupport {
         case .zip, .sevenZip:
             _ = try runProcess(executable: try executable(named: "7zz"), arguments: ["x", "-mmt=1", "-y", "-o\(stagingURL.path)", archiveURL.path])
         case .tarZstandard:
-            _ = try runProcess(
-                executable: try executable(named: "tar"),
-                arguments: ["-xf", archiveURL.path, "-C", stagingURL.path]
-            )
+            try materializeTarZstandardArchive(archiveURL, into: stagingURL)
         }
         try Data().write(to: stagingURL.appendingPathComponent(".complete"))
         try FileManager.default.createDirectory(at: rootURL.deletingLastPathComponent(), withIntermediateDirectories: true)
@@ -221,9 +269,10 @@ enum ZipArchiveSupport {
                 arguments: ["x", "-mmt=1", "-y", "-o\(stagingURL.path)", archiveURL.path] + normalizedPaths
             )
         case .tarZstandard:
-            _ = try runProcess(
-                executable: try executable(named: "tar"),
-                arguments: ["-xf", archiveURL.path, "-C", stagingURL.path] + normalizedPaths
+            try extractTarZstandardEntries(
+                from: archiveURL,
+                entryPaths: normalizedPaths,
+                into: stagingURL
             )
         }
 
@@ -236,6 +285,50 @@ enum ZipArchiveSupport {
             try FileManager.default.moveItem(at: stagingURL, to: rootURL)
         }
         return rootURL
+    }
+
+    /// Scan extraction is deliberately non-persistent. The scanner consumes a
+    /// materialized archive once, then removes it before advancing to another
+    /// source. Playback continues to use the durable archive cache above.
+    static func materializeEntriesForScan(at archiveURL: URL, entryPaths: [String]) throws -> URL {
+        let archiveURL = archiveURL.standardizedFileURL
+        let normalizedPaths = try normalizedEntryPaths(entryPaths)
+        let rootURL = try makeScanScratchDirectory()
+        do {
+            try extractEntries(
+                from: archiveURL,
+                entryPaths: normalizedPaths,
+                into: rootURL
+            )
+            return rootURL
+        } catch {
+            discardScanMaterialization(at: rootURL)
+            throw error
+        }
+    }
+
+    static func materializeArchiveForScan(at archiveURL: URL) throws -> URL {
+        let archiveURL = archiveURL.standardizedFileURL
+        let rootURL = try makeScanScratchDirectory()
+        do {
+            switch archiveKind(for: archiveURL) {
+            case .rsn:
+                _ = try runProcess(executable: try executable(named: "unar"), arguments: ["-q", "-f", "-D", "-o", rootURL.path, archiveURL.path])
+            case .zip, .sevenZip:
+                _ = try runProcess(executable: try executable(named: "7zz"), arguments: ["x", "-mmt=1", "-y", "-o\(rootURL.path)", archiveURL.path])
+            case .tarZstandard:
+                try materializeTarZstandardArchive(archiveURL, into: rootURL)
+            }
+            return rootURL
+        } catch {
+            discardScanMaterialization(at: rootURL)
+            throw error
+        }
+    }
+
+    static func discardScanMaterialization(at rootURL: URL) {
+        guard rootURL.standardizedFileURL.path.hasPrefix(scanScratchRootURL().path + "/") else { return }
+        try? FileManager.default.removeItem(at: rootURL)
     }
 
     static func materializeInspectionSet(
@@ -293,6 +386,46 @@ enum ZipArchiveSupport {
         return destinationURL
     }
 
+    private static func normalizedEntryPaths(_ entryPaths: [String]) throws -> [String] {
+        let normalizedPaths = try Array(Set(entryPaths.map { entryPath in
+            let normalized = normalizeEntryPath(entryPath)
+            guard !normalized.isEmpty,
+                  sanitizedEntryPathComponents(normalized).joined(separator: "/") == normalized else {
+                throw ArchiveError.invalidEntryPath(entryPath)
+            }
+            return normalized
+        })).sorted()
+        guard !normalizedPaths.isEmpty else {
+            throw ArchiveError.invalidEntryPath("")
+        }
+        return normalizedPaths
+    }
+
+    private static func extractEntries(
+        from archiveURL: URL,
+        entryPaths: [String],
+        into destinationURL: URL
+    ) throws {
+        switch archiveKind(for: archiveURL) {
+        case .rsn:
+            _ = try runProcess(
+                executable: try executable(named: "unar"),
+                arguments: ["-q", "-f", "-D", "-o", destinationURL.path, archiveURL.path] + entryPaths
+            )
+        case .zip, .sevenZip:
+            _ = try runProcess(
+                executable: try executable(named: "7zz"),
+                arguments: ["x", "-mmt=1", "-y", "-o\(destinationURL.path)", archiveURL.path] + entryPaths
+            )
+        case .tarZstandard:
+            try extractTarZstandardEntries(
+                from: archiveURL,
+                entryPaths: entryPaths,
+                into: destinationURL
+            )
+        }
+    }
+
     private static func archiveCacheURL(for archiveURL: URL) -> URL {
         let archiveModifiedAt =
             (try? archiveURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
@@ -315,32 +448,57 @@ enum ZipArchiveSupport {
             .appendingPathComponent("ArchiveCache", isDirectory: true)
     }
 
-    private static func listEntries(in archiveURL: URL) throws -> [String] {
+    private static func scanScratchRootURL() -> URL {
+        cacheRootURL().appendingPathComponent("ScanScratch", isDirectory: true)
+    }
+
+    private static func makeScanScratchDirectory() throws -> URL {
+        let rootURL = scanScratchRootURL()
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        let scratchURL = rootURL.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: scratchURL, withIntermediateDirectories: false)
+        return scratchURL
+    }
+
+    private struct ArchiveListing {
+        let entries: [String]
+        let scanSignature: String?
+    }
+
+    private static func listEntries(in archiveURL: URL) throws -> ArchiveListing {
         switch archiveKind(for: archiveURL) {
         case .zip:
             let data = try runProcess(
                 executable: try executable(named: "7zz"),
                 arguments: ["l", "-mmt=1", "-slt", "-ba", archiveURL.path]
             )
-            return String(decoding: data, as: UTF8.self)
+            let report = String(decoding: data, as: UTF8.self)
+            return ArchiveListing(
+                entries: report
                 .split(whereSeparator: \.isNewline)
                 .compactMap { line in
                     let value = String(line)
                     guard value.hasPrefix("Path = ") else { return nil }
                     return String(value.dropFirst("Path = ".count))
-                }
+                },
+                scanSignature: report.isEmpty ? nil : "7zz-report:\n\(report)"
+            )
         case .sevenZip:
             let data = try runProcess(
                 executable: try executable(named: "7zz"),
                 arguments: ["l", "-mmt=1", "-slt", "-ba", archiveURL.path]
             )
-            return String(decoding: data, as: UTF8.self)
+            let report = String(decoding: data, as: UTF8.self)
+            return ArchiveListing(
+                entries: report
                 .split(whereSeparator: \.isNewline)
                 .compactMap { line in
                     let value = String(line)
                     guard value.hasPrefix("Path = ") else { return nil }
                     return String(value.dropFirst("Path = ".count))
-                }
+                },
+                scanSignature: report.isEmpty ? nil : "7zz-report:\n\(report)"
+            )
         case .rsn:
             let data = try runProcess(
                 executable: try executable(named: "lsar"),
@@ -352,15 +510,18 @@ enum ZipArchiveSupport {
             else {
                 throw ArchiveError.processFailed(executable: "lsar", message: "invalid JSON listing")
             }
-            return contents.compactMap { $0["XADFileName"] as? String }
-        case .tarZstandard:
-            let data = try runProcess(
-                executable: try executable(named: "tar"),
-                arguments: ["-tf", archiveURL.path]
+            return ArchiveListing(
+                entries: contents.compactMap { $0["XADFileName"] as? String },
+                scanSignature: nil
             )
-            return String(decoding: data, as: UTF8.self)
-                .split(whereSeparator: \.isNewline)
-                .map(String.init)
+        case .tarZstandard:
+            let data = try runTarZstandardListing(archiveURL)
+            return ArchiveListing(
+                entries: String(decoding: data, as: UTF8.self)
+                    .split(whereSeparator: \.isNewline)
+                    .map(String.init),
+                scanSignature: nil
+            )
         }
     }
 
@@ -385,6 +546,7 @@ enum ZipArchiveSupport {
         case "unar": environmentKey = "COCOASPICE_UNAR_BINARY"
         case "lsar": environmentKey = "COCOASPICE_LSAR_BINARY"
         case "tar": environmentKey = "COCOASPICE_TAR_BINARY"
+        case "zstd": environmentKey = "COCOASPICE_ZSTD_BINARY"
         default: environmentKey = "COCOASPICE_ZIPINFO_BINARY"
         }
 
@@ -402,6 +564,192 @@ enum ZipArchiveSupport {
             executable: name,
             message: "Install the required archive tool, then retry archive playback."
         )
+    }
+
+    private static func archiveProcessEnvironment() -> [String: String] {
+        var environment = ProcessInfo.processInfo.environment
+        let inheritedPaths = (environment["PATH"] ?? "")
+            .split(separator: ":")
+            .map(String.init)
+        let paths = ["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
+            + inheritedPaths.filter { !["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"].contains($0) }
+        environment["PATH"] = paths.joined(separator: ":")
+        return environment
+    }
+
+    private static func materializeTarZstandardArchive(_ archiveURL: URL, into destinationURL: URL) throws {
+        let rawTarURL = destinationURL.deletingLastPathComponent()
+            .appendingPathComponent(".\(UUID().uuidString).tar", isDirectory: false)
+        defer { try? FileManager.default.removeItem(at: rawTarURL) }
+
+        try runProcessWritingOutput(
+            executable: try executable(named: "zstd"),
+            arguments: ["-d", "-q", "-c", archiveURL.path],
+            outputURL: rawTarURL
+        )
+        _ = try runProcess(
+            executable: try executable(named: "tar"),
+            arguments: ["-xf", rawTarURL.path, "-C", destinationURL.path]
+        )
+    }
+
+    /// BSD tar's built-in Zstandard helper is unreliable for selected-member
+    /// extraction. Decompress the container ourselves so every TAR+Zstandard
+    /// path uses the same stable `tar` input.
+    private static func extractTarZstandardEntries(
+        from archiveURL: URL,
+        entryPaths: [String],
+        into destinationURL: URL
+    ) throws {
+        let rawTarURL = destinationURL.deletingLastPathComponent()
+            .appendingPathComponent(".\(UUID().uuidString).tar", isDirectory: false)
+        defer { try? FileManager.default.removeItem(at: rawTarURL) }
+
+        try runProcessWritingOutput(
+            executable: try executable(named: "zstd"),
+            arguments: ["-d", "-q", "-c", archiveURL.path],
+            outputURL: rawTarURL
+        )
+        _ = try runProcess(
+            executable: try executable(named: "tar"),
+            arguments: ["-xf", rawTarURL.path, "-C", destinationURL.path]
+                + tarMemberSelectionPatterns(entryPaths)
+        )
+    }
+
+    /// BSD tar treats selected member arguments as patterns. Quote its pattern
+    /// metacharacters so a scanned archive path is always an exact member name.
+    private static func tarMemberSelectionPatterns(_ entryPaths: [String]) -> [String] {
+        entryPaths.map { entryPath in
+            entryPath
+                .replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "*", with: "\\*")
+                .replacingOccurrences(of: "?", with: "\\?")
+                .replacingOccurrences(of: "[", with: "\\[")
+        }
+    }
+
+    /// BSD tar's automatic Zstandard helper exits spuriously when many archive
+    /// listings run at once. Keep the same fully concurrent scanner behavior,
+    /// but connect the reliable `zstd` binary to tar explicitly instead.
+    private static func runTarZstandardListing(_ archiveURL: URL) throws -> Data {
+        while processGate.wait(timeout: .now() + .milliseconds(100)) != .success {
+            if Task.isCancelled { throw CancellationError() }
+        }
+        defer { processGate.signal() }
+
+        let outputURL = try processOutputURL()
+        FileManager.default.createFile(atPath: outputURL.path, contents: nil)
+        let outputHandle = try FileHandle(forWritingTo: outputURL)
+        defer {
+            try? outputHandle.close()
+            try? FileManager.default.removeItem(at: outputURL)
+        }
+
+        let archiveData = Pipe()
+        let decompressor = Process()
+        decompressor.executableURL = URL(fileURLWithPath: try executable(named: "zstd"))
+        decompressor.arguments = ["-d", "-q", "-c", archiveURL.path]
+        decompressor.environment = archiveProcessEnvironment()
+        decompressor.standardOutput = archiveData
+        let decompressorError = Pipe()
+        decompressor.standardError = decompressorError
+
+        let lister = Process()
+        lister.executableURL = URL(fileURLWithPath: try executable(named: "tar"))
+        lister.arguments = ["-tf", "-"]
+        lister.environment = archiveProcessEnvironment()
+        lister.standardInput = archiveData
+        lister.standardOutput = outputHandle
+        let listerError = Pipe()
+        lister.standardError = listerError
+
+        let decompressorCompletion = DispatchSemaphore(value: 0)
+        let listerCompletion = DispatchSemaphore(value: 0)
+        decompressor.terminationHandler = { _ in decompressorCompletion.signal() }
+        lister.terminationHandler = { _ in listerCompletion.signal() }
+        defer {
+            decompressor.terminationHandler = nil
+            lister.terminationHandler = nil
+        }
+
+        try lister.run()
+        do {
+            try decompressor.run()
+        } catch {
+            lister.terminate()
+            lister.waitUntilExit()
+            throw error
+        }
+        try? archiveData.fileHandleForWriting.close()
+        try? archiveData.fileHandleForReading.close()
+        try? decompressorError.fileHandleForWriting.close()
+        try? listerError.fileHandleForWriting.close()
+
+        let decompressorErrors = ProcessOutputCollector()
+        let listerErrors = ProcessOutputCollector()
+        let readers = DispatchGroup()
+        for (handle, collector) in [
+            (decompressorError.fileHandleForReading, decompressorErrors),
+            (listerError.fileHandleForReading, listerErrors)
+        ] {
+            readers.enter()
+            DispatchQueue.global(qos: .utility).async {
+                collector.set(handle.readDataToEndOfFile())
+                try? handle.close()
+                readers.leave()
+            }
+        }
+
+        do {
+            try waitForProcess(lister, completion: listerCompletion, executable: lister.executableURL!.path, timeout: archiveListingTimeout)
+            try waitForProcess(decompressor, completion: decompressorCompletion, executable: decompressor.executableURL!.path, timeout: archiveListingTimeout)
+        } catch {
+            if decompressor.isRunning { decompressor.terminate() }
+            if lister.isRunning { lister.terminate() }
+            if decompressor.isRunning { decompressor.waitUntilExit() }
+            if lister.isRunning { lister.waitUntilExit() }
+            readers.wait()
+            throw error
+        }
+        readers.wait()
+        try outputHandle.close()
+
+        // `tar -tf -` can close the pipe after it has parsed the TAR end
+        // markers. zstd then reports SIGPIPE even though the listing is
+        // complete. Tar is the authoritative consumer here.
+        let decompressorSucceeded = decompressor.terminationStatus == 0
+            || (decompressor.terminationReason == .uncaughtSignal
+                && decompressor.terminationStatus == SIGPIPE)
+        guard decompressorSucceeded, lister.terminationStatus == 0 else {
+            let messages = [decompressorErrors.value, listerErrors.value]
+                .map { String(decoding: $0, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+            throw ArchiveError.processFailed(
+                executable: "zstd/tar",
+                message: messages.isEmpty ? "exit code \(decompressor.terminationStatus)/\(lister.terminationStatus)" : messages.joined(separator: "\n")
+            )
+        }
+        return try Data(contentsOf: outputURL)
+    }
+
+    private static func archiveFilePaths(in rootURL: URL) throws -> [String] {
+        guard let enumerator = FileManager.default.enumerator(
+            at: rootURL,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            throw ArchiveError.processFailed(executable: "tar", message: "Could not enumerate extracted archive.")
+        }
+        let rootPath = rootURL.standardizedFileURL.path + "/"
+        return enumerator.compactMap { element in
+            guard let url = element as? URL,
+                  (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true,
+                  url.standardizedFileURL.path.hasPrefix(rootPath) else {
+                return nil
+            }
+            return String(url.standardizedFileURL.path.dropFirst(rootPath.count))
+        }.sorted()
     }
 
     private static func sanitizedEntryPathComponents(_ entryPath: String) -> [String] {
@@ -437,10 +785,18 @@ enum ZipArchiveSupport {
         }
         defer { processGate.signal() }
 
-        let processTimeout: TimeInterval = 30
+        // Listing is bounded tightly, but a valid extraction must be allowed
+        // to decompress a large solid TAR+Zstandard source. The scan pipeline
+        // uses the same 10-minute extraction boundary.
+        let executableName = URL(fileURLWithPath: executable).lastPathComponent
+        let isExtraction = executableName == "unar"
+            || arguments.first == "x"
+            || arguments.contains("-xf")
+        let processTimeout = isExtraction ? archiveExtractionTimeout : archiveListingTimeout
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
+        process.environment = archiveProcessEnvironment()
 
         let outputURL = try processOutputURL()
         FileManager.default.createFile(atPath: outputURL.path, contents: nil)
@@ -514,6 +870,7 @@ enum ZipArchiveSupport {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable)
         process.arguments = arguments
+        process.environment = archiveProcessEnvironment()
         process.standardOutput = outputHandle
 
         let stderr = Pipe()
@@ -540,7 +897,7 @@ enum ZipArchiveSupport {
                 process,
                 completion: completion,
                 executable: executable,
-                timeout: 30
+                timeout: archiveExtractionTimeout
             )
         } catch {
             readers.wait()

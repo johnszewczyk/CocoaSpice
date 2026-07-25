@@ -13,6 +13,7 @@
 - Right-click rows open queue-action menus.
 - Drag reorder is supported for selected rows.
 - One primary selected row and a multiselect set can both exist.
+- A single-row selection uses a 100 ms ease-out background transition. Multi-selection and programmatic selection synchronization update immediately.
 - The browsing selection remains stable while playback starts, completes, or moves through previous/next media commands; the playing row is represented independently by current transport state.
 
 ## Rules
@@ -20,6 +21,7 @@
 - Keep Finder-style multiselect expectations.
 - Keep selection separate from playback.
 - Arrow-key movement is owned by the native playlist table; the following SwiftUI update must not overwrite the newly moved selection. Enter activates the table's current selected row, enabling arrow-key plus Enter seek/play workflows.
+- The custom background highlight is non-interactive and stays below row content. Retarget its layer animation from its presentation position so repeated arrow-key navigation does not snap backward.
 - If row activation behavior changes, update both selection semantics and playback-target semantics.
 
 ## Files

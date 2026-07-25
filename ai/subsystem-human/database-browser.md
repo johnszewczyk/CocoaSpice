@@ -7,6 +7,7 @@
 - Console View: Options can group games under expandable console headings.
 - Rows: show track counts and scan-root status.
 - Fast Scan playlist activation expands archived GBS files into their individual subtracks.
+- Incremental scans retain successful unchanged ZIP, 7z, and TAR+Zstandard archive results instead of re-inspecting their playable members.
 
 ## Search
 
@@ -14,6 +15,7 @@
 - Search: uses the same sidebar list rather than a separate results surface.
 - Search: matches game titles; console headings organize the results but are not an additional search field.
 - Search: preserves the active database selection when the query changes.
+- Search: clearing the query folds all Console View headings, returning the sidebar to its compact state.
 
 ## Selection
 

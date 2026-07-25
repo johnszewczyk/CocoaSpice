@@ -1,4 +1,5 @@
 import Foundation
+import COpenMPT
 import CLibVGM
 import CHighlyComplete
 import CLazyUSF
@@ -55,6 +56,10 @@ enum PlaybackDecoderFactory {
         switch try backend(forPathExtension: track.playablePathExtension) {
         case .gme:
             return try SPCDecoder(track: track, sampleRate: sampleRate)
+        case .openMPT:
+            return try OpenMPTDecoder(track: track, sampleRate: sampleRate)
+        case .standardAudio:
+            return try StandardAudioDecoder(track: track, sampleRate: sampleRate)
         case .libvgm:
             return try LibVGMDecoder(track: track, sampleRate: sampleRate)
         case .highlyComplete:
@@ -74,6 +79,10 @@ enum PlaybackDecoderFactory {
         switch try backend(forPathExtension: fileURL.pathExtension.lowercased()) {
         case .gme:
             return try SPCFileInspector(fileURL: fileURL)
+        case .openMPT:
+            return try OpenMPTFileInspector(fileURL: fileURL)
+        case .standardAudio:
+            return try StandardAudioFileInspector(fileURL: fileURL)
         case .libvgm:
             return try LibVGMFileInspector(fileURL: fileURL)
         case .highlyComplete:

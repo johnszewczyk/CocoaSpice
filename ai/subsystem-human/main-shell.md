@@ -5,7 +5,7 @@
 - Main window: two-pane layout.
 - Left pane: database browser.
 - Right pane: editable playlist.
-- Toolbar: previous, play-pause, and next controls.
+- Toolbar: previous, play-pause, and next transport controls, plus Long Play, repeat, and random playback options. The infinity button turns Long Play on or off.
 - Status bar: current context plus elapsed and total time.
 - Spectrum analyzer: titlebar accessory at the far right.
 

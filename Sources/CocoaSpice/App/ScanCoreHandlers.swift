@@ -52,6 +52,45 @@ struct SPCMetadataScanHandler: ScanFormatHandler {
     }
 }
 
+/// VGM and VGZ carry GD3 tags plus playback timing in their file header.
+/// Parse those directly during Deep Scan and retain libVGM for compatibility
+/// with untagged VGM-family files and the other libVGM formats.
+struct VGMMetadataScanHandler: ScanFormatHandler {
+    let descriptor: ScanPluginDescriptor
+    let fallback: DecoderCoreScanHandler
+
+    func inspect(fileURL: URL, route: ScanRoute) async throws -> ScanInspection {
+        if let metadata = await Task.detached(priority: .utility, operation: {
+            VGMMetadataReader.read(fileURL: fileURL)
+        }).value {
+            return ScanInspection(
+                route: route,
+                tracks: [ScanTrackMetadata(trackIndex: 0, trackCount: 1, metadata: metadata)]
+            )
+        }
+        return try await fallback.inspect(fileURL: fileURL, route: route)
+    }
+}
+
+/// PSF, PSF2, USF, and 2SF expose their scan metadata in the container footer.
+/// Unlike playback, this does not need sibling libraries or a decoder core.
+struct PSFMetadataScanHandler: ScanFormatHandler {
+    let descriptor: ScanPluginDescriptor
+    let fallback: DecoderCoreScanHandler
+
+    func inspect(fileURL: URL, route: ScanRoute) async throws -> ScanInspection {
+        if let metadata = try await Task.detached(priority: .utility, operation: {
+            try PSFMetadataReader.read(fileURL: fileURL)
+        }).value {
+            return ScanInspection(
+                route: route,
+                tracks: [ScanTrackMetadata(trackIndex: 0, trackCount: 1, metadata: metadata)]
+            )
+        }
+        return try await fallback.inspect(fileURL: fileURL, route: route)
+    }
+}
+
 enum ScanCoreHandlers {
     static let registry = ScanPluginRegistry(
         descriptors: GMEFormatSupport.scanPluginDescriptors
@@ -71,13 +110,10 @@ enum ScanCoreHandlers {
                 descriptor: module.scanDescriptor,
                 inspectionGate: scheduler
             )
-            if module.pluginID == "gme" {
-                return SPCMetadataScanHandler(
-                    descriptor: module.scanDescriptor,
-                    fallback: decoderHandler
-                )
-            }
-            return decoderHandler
+            return ScanMetadataShortcuts.handler(
+                for: module,
+                fallback: decoderHandler
+            )
         }
         return ScanPluginHandlerRegistry(handlers: handlers)
     }()

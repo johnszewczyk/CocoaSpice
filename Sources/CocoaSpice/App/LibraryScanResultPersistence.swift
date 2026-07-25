@@ -12,6 +12,15 @@ extension LibraryDatabase {
             )
             try upsertScanItem(item)
 
+        case .archiveCompleted(let candidate):
+            let item = ScanInventoryItem(
+                identity: candidate.identity,
+                fingerprint: candidate.fingerprint,
+                state: .successful,
+                route: candidate.route
+            )
+            try upsertScanItem(item)
+
         case .unsupported(let candidate):
             let item = ScanInventoryItem(
                 identity: candidate.identity,

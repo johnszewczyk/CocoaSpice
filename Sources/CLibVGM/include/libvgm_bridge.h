@@ -64,6 +64,14 @@ int32_t libvgm_inspect_file(
     char** error_message
 );
 
+/// Reads a valid GD3 tag from VGM/VGZ without constructing a libVGM player.
+/// Returns 0 when direct metadata is available; nonzero callers should use
+/// the full inspector for compatibility with untagged or unusual files.
+int32_t libvgm_read_vgm_metadata_fast(
+    const char* path,
+    libvgm_metadata_t* metadata
+);
+
 void libvgm_metadata_clear(libvgm_metadata_t* metadata);
 void libvgm_error_message_free(char* error_message);
 

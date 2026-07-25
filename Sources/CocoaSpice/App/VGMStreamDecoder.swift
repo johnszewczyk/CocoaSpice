@@ -69,7 +69,11 @@ final class VGMStreamDecoder: AudioTrackDecoder {
     }
 
     fileprivate static func systemName(forPathExtension extensionName: String) -> String {
-        extensionName.lowercased() == "xa" ? "PlayStation" : "PlayStation 2"
+        switch extensionName.lowercased() {
+        case "xa": "PlayStation"
+        case "aifc", "genh", "stream": "3DO"
+        default: "PlayStation 2"
+        }
     }
 }
 

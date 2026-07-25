@@ -14,6 +14,12 @@ extension LibraryDatabase {
         if version >= 4, version < 6 {
             try migrateTracksToRootScopedIdentity()
         }
+        if version < 7 {
+            try execute("ALTER TABLE library_roots ADD COLUMN is_attached INTEGER NOT NULL DEFAULT 1;")
+        }
+        if version >= 5, version < 8 {
+            try execute("ALTER TABLE scan_items ADD COLUMN content_signature TEXT;")
+        }
         guard version < Self.schemaVersion else { return }
         try setUserVersion(Self.schemaVersion)
     }
@@ -65,6 +71,7 @@ extension LibraryDatabase {
             archive_entry TEXT NOT NULL DEFAULT '',
             file_size INTEGER NOT NULL,
             modified_at REAL NOT NULL,
+            content_signature TEXT,
             state TEXT NOT NULL,
             plugin_id TEXT,
             format_extension TEXT,

@@ -8,12 +8,24 @@ APP_NAME="CocoaSpice"
 CONFIGURATION="${1:-debug}"
 APP_DIR="$DIST_DIR/$APP_NAME.app"
 LIBGME_SOURCE="/opt/homebrew/lib/libgme.0.dylib"
+OPENMPT_SOURCE="/opt/homebrew/opt/libopenmpt/lib/libopenmpt.0.dylib"
+MPG123_SOURCE="/opt/homebrew/opt/mpg123/lib/libmpg123.0.dylib"
+OGG_SOURCE="/opt/homebrew/opt/libogg/lib/libogg.0.dylib"
+VORBIS_SOURCE="/opt/homebrew/opt/libvorbis/lib/libvorbis.0.dylib"
+VORBISFILE_SOURCE="/opt/homebrew/opt/libvorbis/lib/libvorbisfile.3.dylib"
 
 if [[ ! -f "$LIBGME_SOURCE" ]]; then
   echo "Missing $LIBGME_SOURCE"
   echo "Install it with: brew install game-music-emu"
   exit 1
 fi
+for runtime_library in "$OPENMPT_SOURCE" "$MPG123_SOURCE" "$OGG_SOURCE" "$VORBIS_SOURCE" "$VORBISFILE_SOURCE"; do
+  if [[ ! -f "$runtime_library" ]]; then
+    echo "Missing $runtime_library"
+    echo "Install it with: brew install libopenmpt"
+    exit 1
+  fi
+done
 
 if [[ ! -x "$ROOT_DIR/scripts/build-libvgm.sh" ]]; then
   chmod +x "$ROOT_DIR/scripts/build-libvgm.sh"
@@ -90,10 +102,26 @@ if [[ -f "$ROOT_DIR/Resources/AppIcon.icns" ]]; then
 fi
 cp -X "$BUILD_DIR/$CONFIGURATION/$APP_NAME" "$STAGING_EXECUTABLE"
 cp -X "$LIBGME_SOURCE" "$STAGING_FRAMEWORKS_DIR/libgme.0.dylib"
+cp -X "$OPENMPT_SOURCE" "$STAGING_FRAMEWORKS_DIR/libopenmpt.0.dylib"
+cp -X "$MPG123_SOURCE" "$STAGING_FRAMEWORKS_DIR/libmpg123.0.dylib"
+cp -X "$OGG_SOURCE" "$STAGING_FRAMEWORKS_DIR/libogg.0.dylib"
+cp -X "$VORBIS_SOURCE" "$STAGING_FRAMEWORKS_DIR/libvorbis.0.dylib"
+cp -X "$VORBISFILE_SOURCE" "$STAGING_FRAMEWORKS_DIR/libvorbisfile.3.dylib"
 
 install_name_tool -id "@executable_path/../Frameworks/libgme.0.dylib" "$STAGING_FRAMEWORKS_DIR/libgme.0.dylib"
+for runtime_library in libopenmpt.0.dylib libmpg123.0.dylib libogg.0.dylib libvorbis.0.dylib libvorbisfile.3.dylib; do
+  install_name_tool -id "@executable_path/../Frameworks/$runtime_library" "$STAGING_FRAMEWORKS_DIR/$runtime_library"
+done
 install_name_tool -change "/opt/homebrew/opt/game-music-emu/lib/libgme.0.dylib" "@executable_path/../Frameworks/libgme.0.dylib" "$STAGING_EXECUTABLE" || true
 install_name_tool -change "/opt/homebrew/lib/libgme.0.dylib" "@executable_path/../Frameworks/libgme.0.dylib" "$STAGING_EXECUTABLE" || true
+install_name_tool -change "/opt/homebrew/opt/libopenmpt/lib/libopenmpt.0.dylib" "@executable_path/../Frameworks/libopenmpt.0.dylib" "$STAGING_EXECUTABLE"
+install_name_tool -change "/opt/homebrew/opt/mpg123/lib/libmpg123.0.dylib" "@executable_path/../Frameworks/libmpg123.0.dylib" "$STAGING_FRAMEWORKS_DIR/libopenmpt.0.dylib"
+install_name_tool -change "/opt/homebrew/opt/libogg/lib/libogg.0.dylib" "@executable_path/../Frameworks/libogg.0.dylib" "$STAGING_FRAMEWORKS_DIR/libopenmpt.0.dylib"
+install_name_tool -change "/opt/homebrew/opt/libvorbis/lib/libvorbis.0.dylib" "@executable_path/../Frameworks/libvorbis.0.dylib" "$STAGING_FRAMEWORKS_DIR/libopenmpt.0.dylib"
+install_name_tool -change "/opt/homebrew/opt/libvorbis/lib/libvorbisfile.3.dylib" "@executable_path/../Frameworks/libvorbisfile.3.dylib" "$STAGING_FRAMEWORKS_DIR/libopenmpt.0.dylib"
+install_name_tool -change "/opt/homebrew/opt/libogg/lib/libogg.0.dylib" "@executable_path/../Frameworks/libogg.0.dylib" "$STAGING_FRAMEWORKS_DIR/libvorbis.0.dylib"
+install_name_tool -change "/opt/homebrew/Cellar/libvorbis/1.3.7/lib/libvorbis.0.dylib" "@executable_path/../Frameworks/libvorbis.0.dylib" "$STAGING_FRAMEWORKS_DIR/libvorbisfile.3.dylib"
+install_name_tool -change "/opt/homebrew/opt/libogg/lib/libogg.0.dylib" "@executable_path/../Frameworks/libogg.0.dylib" "$STAGING_FRAMEWORKS_DIR/libvorbisfile.3.dylib"
 
 # Finder/File Provider metadata on the bundle will make codesign fail with
 # "resource fork, Finder information, or similar detritus not allowed".

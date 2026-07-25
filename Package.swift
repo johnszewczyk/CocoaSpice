@@ -39,6 +39,18 @@ let package = Package(
             ]
         ),
         .target(
+            name: "COpenMPT",
+            path: "Sources/COpenMPT",
+            publicHeadersPath: "include",
+            cSettings: [
+                .unsafeFlags(["-I/opt/homebrew/opt/libopenmpt/include"])
+            ],
+            linkerSettings: [
+                .unsafeFlags(["-L/opt/homebrew/opt/libopenmpt/lib"]),
+                .linkedLibrary("openmpt")
+            ]
+        ),
+        .target(
             name: "CLibVGM",
             path: "Sources/CLibVGM",
             publicHeadersPath: "include",
@@ -152,7 +164,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "CocoaSpice",
-            dependencies: ["CGME", "CLibVGM", "CHighlyComplete", "CLazyUSF", "C2SF", "CPlaybackAudio", "CVGMStream", "CPlayPSF"],
+            dependencies: ["CGME", "COpenMPT", "CLibVGM", "CHighlyComplete", "CLazyUSF", "C2SF", "CPlaybackAudio", "CVGMStream", "CPlayPSF"],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("AudioToolbox"),

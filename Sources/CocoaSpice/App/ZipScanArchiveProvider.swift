@@ -17,14 +17,14 @@ struct ZipScanArchiveProvider: ScanArchiveProvider {
     func listMembers(
         in archiveURL: URL,
         supportedExtensions: Set<String>
-    ) async throws -> [ScanArchiveMember] {
+    ) async throws -> ScanArchiveListing {
         try await scheduler.withPermit {
-            let entries = try ZipArchiveSupport.listPlayableEntries(
+            let listing = try ZipArchiveSupport.listPlayableEntryListing(
                 in: archiveURL,
                 supportedExtensions: supportedExtensions
             )
             let fingerprint = Self.fingerprint(for: archiveURL)
-            return entries.compactMap { entry in
+            let members: [ScanArchiveMember] = listing.entries.compactMap { entry in
                 let route = registry.route(
                     for: URL(fileURLWithPath: entry.entryPath).pathExtension,
                     archiveMember: true
@@ -37,6 +37,10 @@ struct ZipScanArchiveProvider: ScanArchiveProvider {
                     route: route
                 )
             }
+            return ScanArchiveListing(
+                members: members,
+                scanSignature: listing.scanSignature
+            )
         }
     }
 
@@ -62,6 +66,25 @@ struct ZipScanArchiveProvider: ScanArchiveProvider {
         try await scheduler.withPermit {
             try ZipArchiveSupport.materializeArchive(at: archiveURL)
         }
+    }
+
+    func materializeEntriesForScan(archiveURL: URL, entryPaths: [String]) async throws -> URL {
+        try await scheduler.withPermit {
+            try ZipArchiveSupport.materializeEntriesForScan(
+                at: archiveURL,
+                entryPaths: entryPaths
+            )
+        }
+    }
+
+    func materializeArchiveForScan(at archiveURL: URL) async throws -> URL {
+        try await scheduler.withPermit {
+            try ZipArchiveSupport.materializeArchiveForScan(at: archiveURL)
+        }
+    }
+
+    func discardScanMaterialization(at rootURL: URL) async {
+        ZipArchiveSupport.discardScanMaterialization(at: rootURL)
     }
 
     private static func fingerprint(for url: URL) -> ScanFingerprint {

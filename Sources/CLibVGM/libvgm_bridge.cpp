@@ -3,6 +3,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -60,6 +61,73 @@ void clearMetadata(libvgm_metadata_t* metadata) {
     std::free(metadata->artist);
     std::free(metadata->comment);
     std::memset(metadata, 0, sizeof(*metadata));
+}
+
+uint32_t readLE32(const std::vector<uint8_t>& data, size_t offset) {
+    return static_cast<uint32_t>(data[offset])
+        | (static_cast<uint32_t>(data[offset + 1]) << 8)
+        | (static_cast<uint32_t>(data[offset + 2]) << 16)
+        | (static_cast<uint32_t>(data[offset + 3]) << 24);
+}
+
+void appendUTF8(std::string& result, uint32_t scalar) {
+    if (scalar <= 0x7F) {
+        result.push_back(static_cast<char>(scalar));
+    } else if (scalar <= 0x7FF) {
+        result.push_back(static_cast<char>(0xC0 | (scalar >> 6)));
+        result.push_back(static_cast<char>(0x80 | (scalar & 0x3F)));
+    } else if (scalar <= 0xFFFF) {
+        result.push_back(static_cast<char>(0xE0 | (scalar >> 12)));
+        result.push_back(static_cast<char>(0x80 | ((scalar >> 6) & 0x3F)));
+        result.push_back(static_cast<char>(0x80 | (scalar & 0x3F)));
+    } else {
+        result.push_back(static_cast<char>(0xF0 | (scalar >> 18)));
+        result.push_back(static_cast<char>(0x80 | ((scalar >> 12) & 0x3F)));
+        result.push_back(static_cast<char>(0x80 | ((scalar >> 6) & 0x3F)));
+        result.push_back(static_cast<char>(0x80 | (scalar & 0x3F)));
+    }
+}
+
+bool readUTF16LEString(
+    const std::vector<uint8_t>& data,
+    size_t end,
+    size_t& offset,
+    std::string& result
+) {
+    result.clear();
+    while (offset + 2 <= end) {
+        uint32_t scalar = static_cast<uint32_t>(data[offset])
+            | (static_cast<uint32_t>(data[offset + 1]) << 8);
+        offset += 2;
+        if (scalar == 0) {
+            return true;
+        }
+        if (scalar >= 0xD800 && scalar <= 0xDBFF) {
+            if (offset + 2 > end) return false;
+            const uint32_t low = static_cast<uint32_t>(data[offset])
+                | (static_cast<uint32_t>(data[offset + 1]) << 8);
+            offset += 2;
+            if (low < 0xDC00 || low > 0xDFFF) return false;
+            scalar = 0x10000 + ((scalar - 0xD800) << 10) + (low - 0xDC00);
+        } else if (scalar >= 0xDC00 && scalar <= 0xDFFF) {
+            return false;
+        }
+        appendUTF8(result, scalar);
+    }
+    return false;
+}
+
+bool readGzipCompatibleFile(const char* path, std::vector<uint8_t>& data) {
+    gzFile file = gzopen(path, "rb");
+    if (file == nullptr) return false;
+    data.clear();
+    uint8_t buffer[64 * 1024];
+    int readLength = 0;
+    while ((readLength = gzread(file, buffer, sizeof(buffer))) > 0) {
+        data.insert(data.end(), buffer, buffer + readLength);
+    }
+    const int closeStatus = gzclose(file);
+    return readLength == 0 && closeStatus == Z_OK;
 }
 
 std::string fourCCToString(UINT32 value) {
@@ -574,6 +642,60 @@ int32_t libvgm_inspect_file(
 
     libvgm_player_destroy(handle);
     return status;
+}
+
+int32_t libvgm_read_vgm_metadata_fast(
+    const char* path,
+    libvgm_metadata_t* metadata
+) {
+    if (path == nullptr || metadata == nullptr) return 1;
+
+    std::vector<uint8_t> data;
+    if (!readGzipCompatibleFile(path, data)
+        || data.size() < 0x40
+        || std::memcmp(data.data(), "Vgm ", 4) != 0) {
+        return 1;
+    }
+
+    const uint32_t gd3RelativeOffset = readLE32(data, 0x14);
+    if (gd3RelativeOffset == 0) return 2;
+    const uint64_t gd3Offset64 = 0x14ULL + gd3RelativeOffset;
+    if (gd3Offset64 + 0x0C > data.size()) return 1;
+    const size_t gd3Offset = static_cast<size_t>(gd3Offset64);
+    if (std::memcmp(data.data() + gd3Offset, "Gd3 ", 4) != 0) return 1;
+
+    const uint32_t gd3Version = readLE32(data, gd3Offset + 0x04);
+    const uint32_t gd3Length = readLE32(data, gd3Offset + 0x08);
+    const uint64_t payloadEnd64 = static_cast<uint64_t>(gd3Offset) + 0x0C + gd3Length;
+    if (gd3Version < 0x100 || gd3Version >= 0x200 || payloadEnd64 > data.size()) return 1;
+
+    const size_t payloadEnd = static_cast<size_t>(payloadEnd64);
+    size_t offset = gd3Offset + 0x0C;
+    std::vector<std::string> fields(11);
+    for (std::string& field : fields) {
+        if (!readUTF16LEString(data, payloadEnd, offset, field)) return 1;
+    }
+
+    clearMetadata(metadata);
+    const uint32_t totalSamples = readLE32(data, 0x18);
+    const uint32_t loopRelativeOffset = readLE32(data, 0x1C);
+    const uint32_t loopSamples = readLE32(data, 0x20);
+    const bool hasLoop = loopRelativeOffset != 0 && loopSamples > 0 && loopSamples <= totalSamples;
+    const auto milliseconds = [](uint32_t samples) -> int32_t {
+        return static_cast<int32_t>((static_cast<uint64_t>(samples) * 1000) / 44100);
+    };
+
+    metadata->title = duplicateCString(fields[0]);
+    metadata->game = duplicateCString(fields[2]);
+    metadata->system = duplicateCString(fields[4]);
+    metadata->artist = duplicateCString(fields[6]);
+    metadata->comment = duplicateCString(combineComment(fields[10], fields[8], fields[9]));
+    metadata->intro_length_ms = hasLoop ? milliseconds(totalSamples - loopSamples) : 0;
+    metadata->loop_length_ms = hasLoop ? milliseconds(loopSamples) : 0;
+    metadata->play_length_ms = milliseconds(totalSamples);
+    metadata->fade_length_ms = 0;
+    metadata->track_count = 1;
+    return 0;
 }
 
 void libvgm_metadata_clear(libvgm_metadata_t* metadata) {

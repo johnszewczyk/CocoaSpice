@@ -76,7 +76,6 @@ struct ScanPluginRegistry: Sendable {
 enum ScanMode: String, CaseIterable, Sendable {
     case incremental
     case newScan
-    case retryFailed
 }
 
 enum ScanItemState: String, Sendable {
@@ -98,6 +97,22 @@ struct ScanItemIdentity: Hashable, Sendable {
 struct ScanFingerprint: Hashable, Sendable {
     let fileSize: Int64
     let modifiedAt: Date
+    /// Tool-reported archive details for a supported archive. It is nil for
+    /// ordinary files and legacy inventory rows until their next scan.
+    let contentSignature: String?
+
+    init(fileSize: Int64, modifiedAt: Date, contentSignature: String? = nil) {
+        self.fileSize = fileSize
+        self.modifiedAt = modifiedAt
+        self.contentSignature = contentSignature
+    }
+
+    func matches(_ current: ScanFingerprint) -> Bool {
+        if fileSize == current.fileSize, modifiedAt == current.modifiedAt {
+            return true
+        }
+        return contentSignature != nil && contentSignature == current.contentSignature
+    }
 }
 
 struct ScanInventoryItem: Sendable {
@@ -116,10 +131,8 @@ enum ScanSelection {
         switch mode {
         case .newScan:
             return true
-        case .retryFailed:
-            return item.state == .failed
         case .incremental:
-            return item.state != .successful || item.fingerprint != currentFingerprint
+            return item.state != .successful || !item.fingerprint.matches(currentFingerprint)
         }
     }
 }

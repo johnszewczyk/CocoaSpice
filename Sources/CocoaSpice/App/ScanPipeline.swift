@@ -22,6 +22,12 @@ struct ScanArchiveMember: Hashable, Sendable {
     }
 }
 
+struct ScanArchiveListing: Sendable {
+    let members: [ScanArchiveMember]
+    /// The archive tool's own report, when the listing operation provides it.
+    let scanSignature: String?
+}
+
 struct ScanTrackMetadata: Sendable {
     let trackIndex: Int
     let trackCount: Int
@@ -61,6 +67,10 @@ struct ScanFailure: Sendable {
 
 enum ScanPipelineResult: Sendable {
     case success(ScanCandidate, ScanInspection)
+    /// A deep archive scan completed every discovered member successfully.
+    /// This parent inventory item is the incremental-scan skip gate; it does
+    /// not create a synthetic playlist track.
+    case archiveCompleted(ScanCandidate)
     case unsupported(ScanCandidate)
     case failure(ScanFailure)
 }
@@ -70,6 +80,14 @@ extension ScanPipelineResult {
         let failure: ScanFailure
         switch self {
         case .success(let candidate, _), .unsupported(let candidate):
+            failure = ScanFailure(
+                identity: candidate.identity,
+                fingerprint: candidate.fingerprint,
+                route: candidate.route,
+                stage: .persistence,
+                message: message
+            )
+        case .archiveCompleted(let candidate):
             failure = ScanFailure(
                 identity: candidate.identity,
                 fingerprint: candidate.fingerprint,
@@ -123,13 +141,17 @@ actor ScanResultAccumulator: ScanResultSink {
 
     func accept(_ result: ScanPipelineResult) async throws {
         resultValues.append(result)
-        completedCount += 1
         switch result {
         case .success:
+            completedCount += 1
             successfulCount += 1
+        case .archiveCompleted:
+            break
         case .unsupported:
+            completedCount += 1
             unsupportedCount += 1
         case .failure(let failure):
+            completedCount += 1
             if failure.message == "Cancelled" {
                 cancelledCount += 1
             } else {
@@ -193,7 +215,7 @@ protocol ScanArchiveProvider: Sendable {
     func listMembers(
         in archiveURL: URL,
         supportedExtensions: Set<String>
-    ) async throws -> [ScanArchiveMember]
+    ) async throws -> ScanArchiveListing
 
     func materialize(
         archiveURL: URL,
@@ -206,6 +228,29 @@ protocol ScanArchiveProvider: Sendable {
     ) async throws -> URL
 
     func materializeArchive(at archiveURL: URL) async throws -> URL
+
+    func materializeEntriesForScan(
+        archiveURL: URL,
+        entryPaths: [String]
+    ) async throws -> URL
+
+    func materializeArchiveForScan(at archiveURL: URL) async throws -> URL
+
+    func discardScanMaterialization(at rootURL: URL) async
+}
+
+extension ScanArchiveProvider {
+    // Test and future providers can retain their existing behavior; the native
+    // provider overrides these with short-lived scan scratch directories.
+    func materializeEntriesForScan(archiveURL: URL, entryPaths: [String]) async throws -> URL {
+        try await materializeEntries(archiveURL: archiveURL, entryPaths: entryPaths)
+    }
+
+    func materializeArchiveForScan(at archiveURL: URL) async throws -> URL {
+        try await materializeArchive(at: archiveURL)
+    }
+
+    func discardScanMaterialization(at rootURL: URL) async {}
 }
 
 protocol ScanFormatHandler: Sendable {

@@ -21,7 +21,7 @@ struct PlaylistTableView: NSViewRepresentable {
         tableView.intercellSpacing = NSSize(width: 0, height: 0)
         tableView.focusRingType = .none
         tableView.style = .fullWidth
-        tableView.selectionHighlightStyle = .regular
+        tableView.selectionHighlightStyle = .none
         tableView.usesAutomaticRowHeights = false
         tableView.delegate = context.coordinator
         tableView.dataSource = context.coordinator
@@ -43,7 +43,14 @@ struct PlaylistTableView: NSViewRepresentable {
             coordinator?.autoSizeColumn(at: columnIndex)
         }
 
-        context.coordinator.attach(tableView: tableView)
+        let selectionHighlightView = PlaylistSelectionHighlightView(frame: tableView.bounds)
+        selectionHighlightView.autoresizingMask = [.width, .height]
+        tableView.addSubview(selectionHighlightView, positioned: .below, relativeTo: nil)
+
+        context.coordinator.attach(
+            tableView: tableView,
+            selectionHighlightView: selectionHighlightView
+        )
         context.coordinator.installColumns()
 
         let scrollView = NSScrollView(frame: .zero)
@@ -159,6 +166,7 @@ struct PlaylistTableView: NSViewRepresentable {
 
         @Bindable var model: PlayerViewModel
         private weak var tableView: NSTableView?
+        private weak var selectionHighlightView: PlaylistSelectionHighlightView?
         private var suppressSelectionSync = false
         private var lastAppliedMetadataLoadToken = -1
         private var lastVisibleTrackIDs: [String] = []
@@ -178,8 +186,12 @@ struct PlaylistTableView: NSViewRepresentable {
             self._model = Bindable(model)
         }
 
-        func attach(tableView: NSTableView) {
+        func attach(
+            tableView: NSTableView,
+            selectionHighlightView: PlaylistSelectionHighlightView? = nil
+        ) {
             self.tableView = tableView
+            self.selectionHighlightView = selectionHighlightView
         }
 
         func installColumns() {
@@ -233,6 +245,9 @@ struct PlaylistTableView: NSViewRepresentable {
 
             if rowsChanged || selectedTrackIDs != lastSelectedTrackIDs || primarySelectedTrackID != lastPrimarySelectedTrackID {
                 syncSelection(in: tableView)
+            } else if rowsChanged || sortChanged {
+                tableView.layoutSubtreeIfNeeded()
+                updateSelectionHighlight(in: tableView, animated: false)
             }
 
             if metadataTokenChanged {
@@ -329,6 +344,7 @@ struct PlaylistTableView: NSViewRepresentable {
                 // follows does not immediately reselect the previous row.
                 lastSelectedTrackIDs = model.selectedTrackIDs
                 lastPrimarySelectedTrackID = model.selectedTrackID
+                updateSelectionHighlight(in: tableView, animated: true)
             }
         }
 
@@ -525,13 +541,27 @@ struct PlaylistTableView: NSViewRepresentable {
 
             guard !rows.isEmpty else {
                 tableView.deselectAll(nil)
+                updateSelectionHighlight(in: tableView, animated: false)
                 return
             }
 
             tableView.selectRowIndexes(rows, byExtendingSelection: false)
+            updateSelectionHighlight(in: tableView, animated: false)
             if let row = rows.last {
                 tableView.scrollRowToVisible(row)
             }
+        }
+
+        private func updateSelectionHighlight(in tableView: NSTableView, animated: Bool) {
+            let selectedRows = tableView.selectedRowIndexes.filter {
+                $0 >= 0 && $0 < tableView.numberOfRows
+            }
+            let rowRects = selectedRows.map(tableView.rect(ofRow:))
+            selectionHighlightView?.update(
+                selectionRects: rowRects,
+                primaryRect: selectedRows.count == 1 ? rowRects.first : nil,
+                animated: animated
+            )
         }
 
         private func applyVisibility(to tableView: NSTableView) {
@@ -1018,6 +1048,78 @@ struct PlaylistTableView: NSViewRepresentable {
 private let playlistRowDragType = NSPasteboard.PasteboardType("com.cocoaspice.playlist-row")
 
 extension PlaylistTableView.Coordinator: @preconcurrency NSTableViewDataSource, NSTableViewDelegate {
+}
+
+@MainActor
+final class PlaylistSelectionHighlightView: NSView {
+    private let primarySelectionLayer = CALayer()
+    private let multipleSelectionLayer = CAShapeLayer()
+
+    override var isFlipped: Bool { true }
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+        wantsLayer = true
+        layer?.isGeometryFlipped = true
+        primarySelectionLayer.isHidden = true
+        multipleSelectionLayer.isHidden = true
+        layer?.addSublayer(primarySelectionLayer)
+        layer?.addSublayer(multipleSelectionLayer)
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        nil
+    }
+
+    func update(selectionRects: [NSRect], primaryRect: NSRect?, animated: Bool) {
+        let color = NSColor.selectedContentBackgroundColor.withAlphaComponent(0.9).cgColor
+        primarySelectionLayer.backgroundColor = color
+        multipleSelectionLayer.fillColor = color
+
+        guard let primaryRect, selectionRects.count == 1 else {
+            primarySelectionLayer.removeAllAnimations()
+            primarySelectionLayer.isHidden = true
+            multipleSelectionLayer.path = selectionPath(for: selectionRects)
+            multipleSelectionLayer.isHidden = selectionRects.isEmpty
+            return
+        }
+
+        multipleSelectionLayer.isHidden = true
+        multipleSelectionLayer.path = nil
+
+        let targetPosition = CGPoint(x: bounds.midX, y: primaryRect.midY)
+        let targetBounds = CGRect(x: 0, y: 0, width: bounds.width, height: primaryRect.height)
+        let wasVisible = !primarySelectionLayer.isHidden
+        let startPosition = primarySelectionLayer.presentation()?.position ?? primarySelectionLayer.position
+
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        primarySelectionLayer.bounds = targetBounds
+        primarySelectionLayer.position = targetPosition
+        primarySelectionLayer.isHidden = false
+        CATransaction.commit()
+
+        primarySelectionLayer.removeAllAnimations()
+        guard animated, wasVisible, startPosition != targetPosition else { return }
+
+        let movement = CABasicAnimation(keyPath: "position")
+        movement.fromValue = startPosition
+        movement.toValue = targetPosition
+        movement.duration = 0.1
+        movement.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        primarySelectionLayer.add(movement, forKey: "playlistSelectionMovement")
+    }
+
+    private func selectionPath(for rects: [NSRect]) -> CGPath? {
+        guard !rects.isEmpty else { return nil }
+        let path = CGMutablePath()
+        rects.forEach { path.addRect($0, transform: .identity) }
+        return path
+    }
 }
 
 @MainActor

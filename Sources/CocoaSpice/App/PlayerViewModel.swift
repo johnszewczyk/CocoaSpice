@@ -110,6 +110,12 @@ final class PlayerViewModel {
         get { databaseSidebar.searchText }
         set {
             databaseSidebar.searchText = newValue
+            if sidebarSystemMode {
+                let hasQuery = !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                expandedDatabaseSystems = hasQuery
+                    ? Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
+                    : []
+            }
             scheduleSidebarSearchPersistence()
         }
     }
@@ -339,7 +345,7 @@ final class PlayerViewModel {
         reloadDatabaseGameItems()
         syncActiveRootToLibraryScanRoots(preferredRoot: panel.urls.first?.standardizedFileURL)
         let addedRoots = libraryScanRoots.filter { addedPaths.contains($0.standardizedURL.path) && $0.isEnabled }
-        runModernLibraryScan(for: addedRoots, mode: .newScan)
+        runModernLibraryScan(for: addedRoots, mode: .incremental)
     }
 
     func loadLibraryRoot(_ root: LibraryScanRoot) {
@@ -368,8 +374,7 @@ final class PlayerViewModel {
     }
 
     func removeLibraryScanRoot(_ id: Int64) {
-        try? libraryDatabase?.deleteRoot(id: id)
-        LibraryScanLogStore.remove(rootID: id)
+        try? libraryDatabase?.detachRoot(id: id)
         liveScanLogs[id]?.close()
         liveScanLogs[id] = nil
         reloadLibraryScanRoots()
@@ -425,11 +430,6 @@ final class PlayerViewModel {
     func scanLibraryRoot(_ id: Int64) {
         guard let root = libraryScanRoots.first(where: { $0.id == id }) else { return }
         runModernLibraryScan(for: [root], mode: .newScan)
-    }
-
-    func retryFailedLibraryRoot(_ id: Int64) {
-        guard let root = libraryScanRoots.first(where: { $0.id == id }) else { return }
-        runModernLibraryScan(for: [root], mode: .retryFailed)
     }
 
     func trimMissingLibrary() {
@@ -515,8 +515,7 @@ final class PlayerViewModel {
     func resetLibraryPaths() {
         guard !libraryScanInProgress, let libraryDatabase else { return }
         for root in libraryScanRoots {
-            try? libraryDatabase.deleteRoot(id: root.id)
-            LibraryScanLogStore.remove(rootID: root.id)
+            try? libraryDatabase.detachRoot(id: root.id)
         }
         reloadLibraryScanRoots()
         clearLibraryState()
@@ -1086,9 +1085,9 @@ final class PlayerViewModel {
 
     func setSidebarSystemMode(_ enabled: Bool) {
         sidebarSystemMode = enabled
-        if enabled {
-            expandedDatabaseSystems = Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
-        }
+        expandedDatabaseSystems = enabled && !sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            ? Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
+            : []
         savePreferencesNow()
     }
 
@@ -1538,6 +1537,7 @@ final class PlayerViewModel {
     }
 
     func toggleLongPlayEnabled() {
+        savePreferencesNow()
         if currentTrackSupportsLongPlay {
             applyPlaybackTiming()
         }
@@ -2128,7 +2128,7 @@ final class PlayerViewModel {
 
     private func reloadDatabaseGameItems() {
         databaseSidebar.replaceGameItems((try? libraryDatabase?.loadGameItems()) ?? [])
-        if sidebarSystemMode, expandedDatabaseSystems.isEmpty {
+        if sidebarSystemMode, !sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             expandedDatabaseSystems = Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
         }
         if randomPlaybackScope == .library {
@@ -2243,7 +2243,7 @@ final class PlayerViewModel {
         databaseSidebarMonospaceFont = preferences.databaseSidebarMonospaceFont
         sidebarSystemMode = preferences.sidebarSystemMode
         fastLibraryScan = preferences.fastLibraryScan
-        if sidebarSystemMode {
+        if sidebarSystemMode, !sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             expandedDatabaseSystems = Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
         }
         if let storedSortColumn = preferences.playlistSortColumnRawValue.flatMap(PlaylistSortColumn.init(rawValue:)) {

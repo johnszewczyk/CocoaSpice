@@ -30,8 +30,19 @@ struct MainView: View {
                     Image(systemName: "forward.fill")
                 }
                 .disabled(model.playlist.isEmpty)
+
             }
             ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    model.longPlayEnabled.toggle()
+                    model.toggleLongPlayEnabled()
+                } label: {
+                    Image(systemName: "infinity")
+                        .foregroundStyle(model.longPlayEnabled ? .primary : .secondary)
+                }
+                .help(model.longPlayEnabled ? "Long Play: On" : "Long Play: Off")
+                .accessibilityLabel(model.longPlayEnabled ? "Turn Long Play Off" : "Turn Long Play On")
+
                 Button {
                     model.cycleRepeatMode()
                 } label: {

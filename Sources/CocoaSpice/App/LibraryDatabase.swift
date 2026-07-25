@@ -2,13 +2,13 @@ import Foundation
 import SQLite3
 
 final class LibraryDatabase {
-    static let schemaVersion = 6
+    static let schemaVersion = 8
     let db: OpaquePointer?
     private let dbURL: URL
 
     var databaseURL: URL { dbURL }
 
-    init() throws {
+    convenience init() throws {
         let supportURL = try Self.applicationSupportDirectory()
         try FileManager.default.createDirectory(at: supportURL, withIntermediateDirectories: true)
         let dbURL = supportURL.appendingPathComponent("Library.sqlite", isDirectory: false)
@@ -24,6 +24,15 @@ final class LibraryDatabase {
             }
             try FileManager.default.moveItem(at: legacyURL, to: dbURL)
         }
+        try self.init(databaseURL: dbURL)
+    }
+
+    init(databaseURL: URL) throws {
+        try FileManager.default.createDirectory(
+            at: databaseURL.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
+        let dbURL = databaseURL.standardizedFileURL
         self.dbURL = dbURL
 
         var handle: OpaquePointer?
@@ -34,6 +43,7 @@ final class LibraryDatabase {
         }
 
         db = handle
+        sqlite3_extended_result_codes(handle, 1)
         try execute("PRAGMA foreign_keys = ON;")
         // The scan writes many short transactions while sidebar readers may
         // still hold a statement. Wait for that ordinary contention instead
@@ -61,7 +71,7 @@ final class LibraryDatabase {
 
     func loadScanInventory(rootID: Int64) throws -> [ScanInventoryItem] {
         let sql = """
-        SELECT path, archive_entry, file_size, modified_at, state, plugin_id, format_extension, supports_archive_members, supports_multi_track
+        SELECT path, archive_entry, file_size, modified_at, content_signature, state, plugin_id, format_extension, supports_archive_members, supports_multi_track
         FROM scan_items
         WHERE root_id = ?
         ORDER BY path ASC, archive_entry ASC;
@@ -76,13 +86,13 @@ final class LibraryDatabase {
         var items: [ScanInventoryItem] = []
         while sqlite3_step(statement) == SQLITE_ROW {
             let entry = sqliteNullableString(statement, index: 1)
-            let pluginID = sqliteNullableString(statement, index: 5)
+            let pluginID = sqliteNullableString(statement, index: 6)
             let route = pluginID.map {
                 ScanRoute(
                     pluginID: $0,
-                    formatExtension: sqliteString(statement, index: 6),
-                    supportsArchiveMembers: sqlite3_column_int(statement, 7) != 0,
-                    supportsMultiTrack: sqlite3_column_int(statement, 8) != 0
+                    formatExtension: sqliteString(statement, index: 7),
+                    supportsArchiveMembers: sqlite3_column_int(statement, 8) != 0,
+                    supportsMultiTrack: sqlite3_column_int(statement, 9) != 0
                 )
             }
             items.append(
@@ -94,9 +104,10 @@ final class LibraryDatabase {
                     ),
                     fingerprint: ScanFingerprint(
                         fileSize: sqlite3_column_int64(statement, 2),
-                        modifiedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 3))
+                        modifiedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 3)),
+                        contentSignature: sqliteNullableString(statement, index: 4)
                     ),
-                    state: ScanItemState(rawValue: sqliteString(statement, index: 4)) ?? .discovered,
+                    state: ScanItemState(rawValue: sqliteString(statement, index: 5)) ?? .discovered,
                     route: route
                 )
             )
@@ -139,11 +150,12 @@ final class LibraryDatabase {
     ) throws {
         try execute(
             """
-            INSERT INTO scan_items (root_id, path, archive_entry, file_size, modified_at, state, plugin_id, format_extension, supports_archive_members, supports_multi_track, failure_stage, failure_message, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO scan_items (root_id, path, archive_entry, file_size, modified_at, content_signature, state, plugin_id, format_extension, supports_archive_members, supports_multi_track, failure_stage, failure_message, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(root_id, path, archive_entry) DO UPDATE SET
                 file_size = excluded.file_size,
                 modified_at = excluded.modified_at,
+                content_signature = excluded.content_signature,
                 state = excluded.state,
                 plugin_id = excluded.plugin_id,
                 format_extension = excluded.format_extension,
@@ -159,6 +171,7 @@ final class LibraryDatabase {
                 .text(item.identity.archiveEntry ?? ""),
                 .int(item.fingerprint.fileSize),
                 .double(item.fingerprint.modifiedAt.timeIntervalSince1970),
+                item.fingerprint.contentSignature.map(SQLiteValue.text) ?? .null,
                 .text(item.state.rawValue),
                 item.route.map { .text($0.pluginID) } ?? .null,
                 item.route.map { .text($0.formatExtension) } ?? .null,
@@ -167,6 +180,28 @@ final class LibraryDatabase {
                 failure.map { .text($0.stage.rawValue) } ?? .null,
                 failure.map { .text($0.message) } ?? .null,
                 .double(Date().timeIntervalSince1970)
+            ]
+        )
+    }
+
+    func refreshScanFingerprint(
+        identity: ScanItemIdentity,
+        fingerprint: ScanFingerprint
+    ) throws {
+        try execute(
+            """
+            UPDATE scan_items
+            SET file_size = ?, modified_at = ?, content_signature = ?, updated_at = ?
+            WHERE root_id = ? AND path = ? AND archive_entry = ?;
+            """,
+            bindings: [
+                .int(fingerprint.fileSize),
+                .double(fingerprint.modifiedAt.timeIntervalSince1970),
+                fingerprint.contentSignature.map(SQLiteValue.text) ?? .null,
+                .double(Date().timeIntervalSince1970),
+                .int(identity.rootID),
+                .text(identity.path),
+                .text(identity.archiveEntry ?? "")
             ]
         )
     }
@@ -184,6 +219,7 @@ final class LibraryDatabase {
         do {
             try execute("DELETE FROM tracks;")
             try execute("DELETE FROM scan_items;")
+            try execute("DELETE FROM library_roots WHERE is_attached = 0;")
             try execute("""
             UPDATE library_roots
             SET last_scan_started_at = NULL,
@@ -1132,7 +1168,12 @@ final class LibraryDatabase {
 
     private static func databaseError(handle: OpaquePointer?) -> NSError {
         let message = handle.flatMap { String(cString: sqlite3_errmsg($0)) } ?? "Unknown SQLite error"
-        return NSError(domain: "LibraryDatabase", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+        let extendedCode = handle.map { sqlite3_extended_errcode($0) } ?? SQLITE_ERROR
+        return NSError(
+            domain: "LibraryDatabase",
+            code: Int(extendedCode),
+            userInfo: [NSLocalizedDescriptionKey: "\(message) (SQLite extended code \(extendedCode))"]
+        )
     }
 
     private static func databaseHasRoots(at url: URL) -> Bool {

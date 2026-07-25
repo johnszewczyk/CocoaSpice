@@ -9,7 +9,7 @@
 - Fast Scan: indexes supported files and archive containers using filenames only, without decoder metadata scans, archive member listing, or archive decompression. Archive members and their metadata load after an archive enters the playlist.
 - Scanning: each active library path shows its own label-free 200pt progress bar at the bottom-right of that path's panel.
 - The Library Paths section provides one `Trim Missing` action for the whole library. It checks only whether each unique indexed source path exists, then removes all entries backed by missing paths. It does not open archives or read metadata.
-- Library paths are automatically sorted by path and expose Scan, Retry, Log, and Del actions. Log shows current scan progress and errors while active, and reopens the latest completed scan details afterward.
+- Library paths are automatically sorted by path and expose Scan, Log, and Del actions. Scan reuses prior results for unchanged successful files, so it normally completes quickly after a folder is re-added or rescanned; failed or changed files are attempted again automatically. Scan-only archive files are removed as each archive completes. Log is a secondary-colored plain-text error list; its macOS title bar shows concise scan statistics, and very large error logs are safely shortened in the window.
 - The path is the top detail; current scan state is below it, and the right-aligned tally shows processed items over total items. A green check means a complete non-empty scan, yellow means some files did not process completely (or Trim Missing changed the path), and red means the scan found no playable files.
 
 ## Playback
