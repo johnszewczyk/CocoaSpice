@@ -6,6 +6,13 @@ struct LoadedPlaylistData: Sendable {
     let widthHints: PlaylistColumnWidthHints
 }
 
+/// A database-backed sidebar selection awaiting playlist materialization.
+enum LibraryPlaylistLoadRequest: Sendable {
+    case games([DatabaseGameItem])
+    case files([DatabaseFileItem])
+    case fileSidebar(fileItems: [DatabaseFileItem], folders: [DatabaseFileSidebarFolder])
+}
+
 enum PlaylistQueueLoader {
     static func loadTracks(in folderURL: URL) async -> [TrackItem] {
         let loaded = await loadDroppedTracks(from: [folderURL])
@@ -20,7 +27,7 @@ enum PlaylistQueueLoader {
         if url.pathExtension.lowercased() == "m3u" {
             return true
         }
-        if SPCFileScanner.supportedExtensions.contains(url.pathExtension.lowercased()) {
+        if PlaybackFormatRegistry.admits(fileURL: url) {
             return true
         }
         return (try? url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) ?? false
@@ -42,7 +49,39 @@ enum PlaylistQueueLoader {
                 databaseURL: databaseURL,
                 gameItems: gameItems
             )).map(loadedPlaylistData(from:)) ?? emptyLoadedPlaylistData()
-            return await expandFastContainers(in: loaded)
+            return loaded
+        }.value
+    }
+
+    static func loadLibraryTracks(
+        databaseURL: URL?,
+        request: LibraryPlaylistLoadRequest
+    ) async -> LoadedPlaylistData {
+        switch request {
+        case .games(let gameItems):
+            return await loadLibraryTracksForGames(databaseURL: databaseURL, gameItems: gameItems)
+        case .files(let fileItems):
+            return await loadLibraryTracksForFiles(databaseURL: databaseURL, fileItems: fileItems)
+        case .fileSidebar(let fileItems, let folders):
+            return await loadLibraryTracksForFileSidebarSelection(
+                databaseURL: databaseURL,
+                fileItems: fileItems,
+                folders: folders
+            )
+        }
+    }
+
+    static func loadLibraryTracksForFiles(
+        databaseURL: URL?,
+        fileItems: [DatabaseFileItem]
+    ) async -> LoadedPlaylistData {
+        await Task.detached(priority: .userInitiated) {
+            guard let databaseURL else { return emptyLoadedPlaylistData() }
+            let loaded = (try? LibraryDatabase.tracksAndMetadataForFiles(
+                databaseURL: databaseURL,
+                fileItems: fileItems
+            )).map(loadedPlaylistData(from:)) ?? emptyLoadedPlaylistData()
+            return loaded
         }.value
     }
 
@@ -58,6 +97,55 @@ enum PlaylistQueueLoader {
                 rootPath: rootPath,
                 folderPath: folderPath
             )).map(loadedPlaylistData(from:)) ?? emptyLoadedPlaylistData()
+        }.value
+    }
+
+    static func loadLibraryTracksForFileSidebarSelection(
+        databaseURL: URL?,
+        fileItems: [DatabaseFileItem],
+        folders: [DatabaseFileSidebarFolder]
+    ) async -> LoadedPlaylistData {
+        await Task.detached(priority: .userInitiated) {
+            guard let databaseURL else { return emptyLoadedPlaylistData() }
+
+            var tracks: [TrackItem] = []
+            var metadata: [String: TrackMetadata] = [:]
+            var seenTrackIDs = Set<String>()
+
+            func merge(_ loaded: (tracks: [TrackItem], metadata: [String: TrackMetadata], widthHints: PlaylistColumnWidthHints)) {
+                for track in loaded.tracks where seenTrackIDs.insert(track.id).inserted {
+                    tracks.append(track)
+                    if let itemMetadata = loaded.metadata[track.id] {
+                        metadata[track.id] = itemMetadata
+                    }
+                }
+            }
+
+            if !fileItems.isEmpty,
+               let loaded = try? LibraryDatabase.tracksAndMetadataForFiles(
+                   databaseURL: databaseURL,
+                   fileItems: fileItems
+               ) {
+                merge(loaded)
+            }
+
+            for folder in folders.sorted(by: { $0.path.localizedStandardCompare($1.path) == .orderedAscending }) {
+                guard let loaded = try? LibraryDatabase.tracksAndMetadataForFolder(
+                    databaseURL: databaseURL,
+                    rootPath: folder.rootPath,
+                    folderPath: folder.path
+                ) else {
+                    continue
+                }
+                merge(loaded)
+            }
+
+            guard !tracks.isEmpty else { return emptyLoadedPlaylistData() }
+            return LoadedPlaylistData(
+                tracks: tracks,
+                metadata: metadata,
+                widthHints: PlaylistPresentation.buildColumnWidthHints(tracks: tracks, metadata: metadata)
+            )
         }.value
     }
 
@@ -90,68 +178,6 @@ enum PlaylistQueueLoader {
         )
     }
 
-    static func expandFastContainers(in loaded: LoadedPlaylistData) async -> LoadedPlaylistData {
-        var tracks: [TrackItem] = []
-        var metadata = loaded.metadata
-
-        for track in loaded.tracks {
-            guard !track.isArchiveEntry,
-                  metadata[track.id]?.comment == FastScanPlaceholder.metadataComment else {
-                tracks.append(track)
-                continue
-            }
-
-            if !ZipArchiveSupport.canHandle(track.url) {
-                let inspectedTracks = await inspectPlayableTracks(forFileURL: track.url)
-                if inspectedTracks.count > 1 {
-                    for inspected in inspectedTracks {
-                        tracks.append(inspected.track)
-                        metadata[inspected.track.id] = inspected.metadata
-                    }
-                    metadata.removeValue(forKey: track.id)
-                } else {
-                    tracks.append(track)
-                }
-                continue
-            }
-
-            let entries = (try? ZipArchiveSupport.listPlayableEntries(
-                in: track.url,
-                supportedExtensions: SPCFileScanner.supportedExtensions
-            )) ?? []
-            guard !entries.isEmpty else {
-                tracks.append(track)
-                continue
-            }
-
-            let game = track.url.deletingPathExtension().lastPathComponent
-            for entry in entries {
-                let firstAppendedIndex = tracks.endIndex
-                await appendArchiveEntry(entry, into: &tracks, metadata: &metadata)
-                for memberTrack in tracks[firstAppendedIndex...] where metadata[memberTrack.id] == nil {
-                    metadata[memberTrack.id] = TrackMetadata(
-                        game: game,
-                        song: URL(fileURLWithPath: entry.entryPath).deletingPathExtension().lastPathComponent,
-                        system: "",
-                        author: "",
-                        comment: FastScanPlaceholder.metadataComment,
-                        introLengthMs: 0,
-                        loopLengthMs: 0,
-                        playLengthMs: 0,
-                        fadeLengthMs: 0
-                    )
-                }
-            }
-            metadata.removeValue(forKey: track.id)
-        }
-
-        return LoadedPlaylistData(
-            tracks: tracks,
-            metadata: metadata,
-            widthHints: PlaylistPresentation.buildColumnWidthHints(tracks: tracks, metadata: metadata)
-        )
-    }
-
     private static func loadDroppedTracksDetached(from urls: [URL]) async -> LoadedPlaylistData {
         var importedTracks: [TrackItem] = []
         var importedMetadata: [String: TrackMetadata] = [:]
@@ -169,18 +195,11 @@ enum PlaylistQueueLoader {
                 let fileURLs = directoryPlayableFileURLs(in: url)
                 for fileURL in fileURLs {
                     if ZipArchiveSupport.canHandle(fileURL) {
-                        let entries =
-                            (try? ZipArchiveSupport.listPlayableEntries(
-                                in: fileURL,
-                                supportedExtensions: SPCFileScanner.supportedExtensions
-                        )) ?? []
-                        for entry in entries {
-                            await appendArchiveEntry(
-                                entry,
-                                into: &importedTracks,
-                                metadata: &importedMetadata
-                            )
-                        }
+                        await appendArchive(
+                            fileURL,
+                            into: &importedTracks,
+                            metadata: &importedMetadata
+                        )
                         continue
                     }
                     await appendFile(
@@ -193,18 +212,11 @@ enum PlaylistQueueLoader {
             }
 
             if ZipArchiveSupport.canHandle(url) {
-                let entries =
-                    (try? ZipArchiveSupport.listPlayableEntries(
-                        in: url,
-                        supportedExtensions: SPCFileScanner.supportedExtensions
-                    )) ?? []
-                for entry in entries {
-                    await appendArchiveEntry(
-                        entry,
-                        into: &importedTracks,
-                        metadata: &importedMetadata
-                    )
-                }
+                await appendArchive(
+                    url,
+                    into: &importedTracks,
+                    metadata: &importedMetadata
+                )
                 continue
             }
 
@@ -215,7 +227,7 @@ enum PlaylistQueueLoader {
                 let tracks = PlaylistM3UCodec.decode(
                     contents,
                     baseDirectory: url.deletingLastPathComponent(),
-                    supportedExtensions: SPCFileScanner.supportedExtensions
+                    supportedExtensions: PlaybackFormatRegistry.supportedExtensions
                 )
                 merge(
                     inspectedTracks: tracks.map { InspectedTrack(track: $0, metadata: emptyMetadata()) },
@@ -225,7 +237,7 @@ enum PlaylistQueueLoader {
                 continue
             }
 
-            guard SPCFileScanner.supportedExtensions.contains(url.pathExtension.lowercased()) else {
+            guard PlaybackFormatRegistry.admits(fileURL: url) else {
                 continue
             }
 
@@ -274,7 +286,7 @@ enum PlaylistQueueLoader {
         return urls
             .filter {
                 ZipArchiveSupport.canHandle($0)
-                    || SPCFileScanner.supportedExtensions.contains($0.pathExtension.lowercased())
+                    || PlaybackFormatRegistry.admits(fileURL: $0)
             }
             .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
     }
@@ -295,7 +307,7 @@ enum PlaylistQueueLoader {
         into tracks: inout [TrackItem],
         metadata: inout [String: TrackMetadata]
     ) async {
-        guard GMEFormatSupport.requiresTrackEnumeration(
+        guard PlaybackFormatRegistry.requiresTrackEnumeration(
             forPathExtension: fileURL.pathExtension
         ) else {
             tracks.append(TrackItem(url: fileURL))
@@ -315,7 +327,7 @@ enum PlaylistQueueLoader {
         metadata: inout [String: TrackMetadata]
     ) async {
         let extensionName = URL(fileURLWithPath: entry.entryPath).pathExtension
-        guard GMEFormatSupport.requiresTrackEnumeration(
+        guard PlaybackFormatRegistry.requiresTrackEnumeration(
             forPathExtension: extensionName
         ) else {
             tracks.append(TrackItem(archiveURL: entry.archiveURL, entryPath: entry.entryPath))
@@ -327,6 +339,95 @@ enum PlaylistQueueLoader {
             into: &tracks,
             metadata: &metadata
         )
+    }
+
+    private static func appendArchive(
+        _ archiveURL: URL,
+        into tracks: inout [TrackItem],
+        metadata: inout [String: TrackMetadata]
+    ) async {
+        // An archive M3U deliberately owns its queue. If an archive provides
+        // one, do not also append every sibling audio member afterwards.
+        let playlistEntries = (try? ZipArchiveSupport.listPlaylistEntries(in: archiveURL)) ?? []
+        let entries: [ZipArchiveSupport.ArchiveEntry]
+        if playlistEntries.isEmpty {
+            entries = (try? ZipArchiveSupport.listPlayableEntries(
+                in: archiveURL,
+                supportedExtensions: PlaybackFormatRegistry.supportedExtensions
+            )) ?? []
+        } else {
+            entries = archivePlaylistReferencedEntries(
+                archiveURL: archiveURL,
+                playlistEntries: playlistEntries,
+                supportedExtensions: PlaybackFormatRegistry.supportedExtensions
+            )
+        }
+
+        for entry in entries {
+            await appendArchiveEntry(entry, into: &tracks, metadata: &metadata)
+        }
+    }
+
+    private static func archivePlaylistReferencedEntries(
+        archiveURL: URL,
+        playlistEntries: [ZipArchiveSupport.ArchiveEntry],
+        supportedExtensions: Set<String>
+    ) -> [ZipArchiveSupport.ArchiveEntry] {
+        guard let allEntries = try? ZipArchiveSupport.listPlayableEntries(
+            in: archiveURL,
+            supportedExtensions: supportedExtensions
+        ) else {
+            return []
+        }
+        let playablePaths = Set(allEntries.map(\.entryPath))
+        var referencedEntries: [ZipArchiveSupport.ArchiveEntry] = []
+
+        for playlistEntry in playlistEntries {
+            guard let playlistURL = try? ZipArchiveSupport.materializeEntry(
+                archiveURL: archiveURL,
+                entryPath: playlistEntry.entryPath
+            ),
+            let contents = try? String(contentsOf: playlistURL, encoding: .utf8) else {
+                continue
+            }
+
+            for rawLine in contents.split(whereSeparator: \.isNewline).map(String.init) {
+                let line = rawLine.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !line.isEmpty, !line.hasPrefix("#"), !line.hasPrefix("/") else { continue }
+                guard let entryPath = resolvedArchivePlaylistEntryPath(
+                    line,
+                    playlistEntryPath: playlistEntry.entryPath
+                ) else { continue }
+                guard playablePaths.contains(entryPath) else { continue }
+                referencedEntries.append(
+                    ZipArchiveSupport.ArchiveEntry(archiveURL: archiveURL, entryPath: entryPath)
+                )
+            }
+        }
+        return referencedEntries
+    }
+
+    /// Resolve within the archive namespace, not the host filesystem. A URL
+    /// relative to a non-absolute path silently resolves from `/`, which would
+    /// lose the M3U's directory and make `../audio/track.mp3` unfindable.
+    private static func resolvedArchivePlaylistEntryPath(
+        _ reference: String,
+        playlistEntryPath: String
+    ) -> String? {
+        var components = playlistEntryPath.split(separator: "/").dropLast().map(String.init)
+        for component in reference.split(separator: "/", omittingEmptySubsequences: true) {
+            switch component {
+            case ".":
+                continue
+            case "..":
+                guard !components.isEmpty else { return nil }
+                components.removeLast()
+            default:
+                components.append(String(component))
+            }
+        }
+        guard !components.isEmpty else { return nil }
+        return components.joined(separator: "/")
     }
 
     private static func inspectPlayableTracks(

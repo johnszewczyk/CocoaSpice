@@ -5,8 +5,10 @@
 - Main window: two-pane layout.
 - Left pane: database browser.
 - Right pane: editable playlist.
-- Toolbar: previous, play-pause, and next transport controls, plus Long Play, repeat, and random playback options. The infinity button turns Long Play on or off.
-- Status bar: current context plus elapsed and total time.
+- Toolbar: previous, play-pause, and next transport controls, plus Long Play, repeat, random playback, and Equalizer on/off. The infinity button turns Long Play on or off.
+- Sidebar toolbar: switches between scanned Games and Files views beside the standard sidebar control.
+- Sidebar: shows a loading indicator while database game/file aggregation completes, keeping the main window interactive at launch.
+- Status bar: current-track time / elapsed time / playlist total duration. A plus suffix means some queued tracks do not yet have a known duration.
 - Spectrum analyzer: titlebar accessory at the far right.
 
 ## Options

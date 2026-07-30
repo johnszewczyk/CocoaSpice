@@ -12,12 +12,11 @@
 - The spectrum analyzer is a dedicated titlebar accessory anchored to the far right of the main window rather than a normal SwiftUI toolbar item.
 - This avoids SwiftUI toolbar coalescing and gives the analyzer a stable titlebar lane of its own.
 - The analyzer is fed from the live mixed playback output through `AVAudioEngine.mainMixerNode`.
-- The analyzer uses 8 logarithmically spaced bands across a chiptune-oriented range rather than a textbook full-range EQ map.
-- The band range is `80 Hz` through `4 kHz`, with equal relative spacing across the range and one center-frequency probe per band.
-- The display updates on a 60 Hz UI timer only while playback is active; spectrum analysis is throttled to 12 Hz over 256 samples. The display stops and clears when playback stops so an idle window does not continuously redraw.
+- The analyzer uses a ten-octave, logarithmic full-range layout from `20 Hz` through `20.48 kHz`. The selectable 10/20/40 layouts mean 1/2/4 bands per octave; each higher-detail layout splits the preceding range at its logarithmic midpoint.
+- A 4,096-point real FFT samples the mixed output at 10 Hz. A Hann window limits leakage, and FFT-bin energy is integrated proportionally by each bin's overlap with a fractional-octave interval. Do not assign whole bins to one band: narrow low-frequency 40-band intervals can otherwise be empty between bins.
+- The display draws at 45 FPS only while playback is active. Bars use the latest measured target directly; peak caps have a short hold and fall independently. The display stops and clears when playback stops so an idle window does not continuously redraw.
 - The persisted `Enable Spectrum` preference gates analyzer processing at the audio-tap boundary; disabling it stops spectrum analysis and clears the display without stopping playback.
 - Rising bars are raw and immediate.
-- Falling bars use one light exponential settle with a `50 ms` time constant.
 - Peak caps are separate from the bars and use a short hold plus exponential fall.
 - Options exposes three user-facing color controls:
   - `Base`: lower bar gradient color
@@ -27,23 +26,23 @@
 ## User-Facing Technical Specification
 
 - Placement: far-right titlebar accessory with no scrubber competing for titlebar width.
-- Layout: 8 vertical bars.
+- Layout: 10, 20, or 40 vertical bands across 20 Hz–20.48 kHz.
 - Bar geometry: `5 px` bar width with `1 px` gap between bars.
 - Meter height: `22 px`.
 - Peak cap geometry: `1 px` cap height with `1 px` gap above the live bar.
 - Bar fill: vertical linear gradient from `Base` at the bottom to `Peak` at the top.
 - Background: dark capsule membrane using the app's toolbar-style `20/20/20` surface.
-- Frame rate: 60 frames per second.
+- Frame rate: 45 frames per second.
 - Rise behavior: bars snap directly to stronger incoming energy.
-- Fall behavior: bars settle exponentially toward lower measured values with a `50 ms` time constant.
+- Fall behavior: bars take their latest measured value directly; only peak caps fall independently.
 - Peak behavior: caps snap upward instantly, hold for `100 ms`, then decay exponentially.
 - Signal source: live playback mix, not fabricated demo data.
-- Frequency focus: `80 Hz` through `4 kHz`, tuned to be more legible for retro and chiptune material than a full-range `16 kHz` spread.
+- Frequency layout: IEC/ANSI-style fractional-octave spacing from `20 Hz` through `20.48 kHz`; this is a visualization, not a certified measurement instrument.
 
 ## Rules
 
-- Keep analyzer motion simple: instant rise, one light fall settle, and separate cap decay.
-- Do not reintroduce stacked smoothing stages in both the audio-analysis path and the UI path.
+- Keep analyzer motion direct: measured targets set bars, and only peak caps decay.
+- Do not reintroduce whole-bin band assignment or stacked smoothing stages.
 - Keep toolbar placement independent from SwiftUI toolbar-item packing.
 - Keep user-facing appearance controls limited to explicit persisted settings rather than hidden magic constants.
 - Treat the analyzer as playback-adjacent visualization, not as part of transport logic.

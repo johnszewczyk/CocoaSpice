@@ -1,39 +1,35 @@
 import Foundation
 
-@MainActor
 final class LibraryScanCoordinator {
     let database: LibraryDatabase
     let registry: ScanPluginRegistry
     let executor: ScanPipelineExecutor
-    let archiveScanDepth: ArchiveScanDepth
 
     init(
         database: LibraryDatabase,
-        registry: ScanPluginRegistry = ScanCoreHandlers.registry,
-        archiveScanDepth: ArchiveScanDepth = .deep
+        registry: ScanPluginRegistry = ScanCoreHandlers.registry
     ) {
         self.database = database
         self.registry = registry
-        self.archiveScanDepth = archiveScanDepth
-        self.executor = ScanPipelineExecutor(pluginRegistry: registry, archiveScanDepth: archiveScanDepth)
+        self.executor = ScanPipelineExecutor(pluginRegistry: registry)
     }
 
     func run(
         root: LibraryScanRoot,
         mode: ScanMode,
-        report: @escaping @MainActor @Sendable (String) -> Void = { _ in },
-        progress: @escaping @MainActor @Sendable (Int, Int) -> Void = { _, _ in },
-        activity: @escaping @MainActor @Sendable (Int, Int, String) -> Void = { _, _, _ in },
-        issue: @escaping @MainActor @Sendable (String) -> Void = { _ in }
+        report: @escaping @Sendable (String) -> Void = { _ in },
+        progress: @escaping @Sendable (Int, Int) -> Void = { _, _ in },
+        activity: @escaping @Sendable (Int, Int, String) -> Void = { _, _, _ in },
+        issues: @escaping @Sendable ([String]) -> Void = { _ in }
     ) async throws -> ScanSummary {
         report("Starting scan: \(root.standardizedURL.lastPathComponent)")
         try database.markScanStarted(rootID: root.id)
-        if mode == .newScan, archiveScanDepth == .deep {
-            // A new scan is a replacement inventory. Retaining old tracks
-            // here would surface entries whose file or archive member no
-            // longer exists after a source changes.
-            try database.clearScanInventory(rootID: root.id)
-            try database.clearTracks(rootID: root.id)
+        if mode == .newScan {
+            // Replace live inventory while preserving sources explicitly
+            // marked dead by Fix Missing. They may return later with their
+            // complete metadata and archive identity intact.
+            try database.clearLiveScanInventory(rootID: root.id)
+            try database.clearLiveTracks(rootID: root.id)
         }
         report("Discovering supported files recursively: \(root.standardizedURL.lastPathComponent)…")
         let discovered = await ScanFilesystemDiscovery.discover(
@@ -45,8 +41,16 @@ final class LibraryScanCoordinator {
         let priorItems = try database.loadScanInventory(rootID: root.id)
         let priorByIdentity = Dictionary(uniqueKeysWithValues: priorItems.map { ($0.identity, $0) })
 
+        // A source marked dead by Fix Missing becomes live again the moment it
+        // is rediscovered. Its existing inventory and metadata stay intact.
+        try database.restoreSources(discovered.map {
+            LibraryIndexedSource(rootID: $0.identity.rootID, path: $0.identity.path, archiveEntry: nil)
+        })
+
         var selected: [ScanCandidate] = []
+        var candidatesNeedingSignature: [(candidate: ScanCandidate, prior: ScanInventoryItem)] = []
         selected.reserveCapacity(discovered.count)
+        candidatesNeedingSignature.reserveCapacity(discovered.count)
         for candidate in discovered {
             guard let prior = priorByIdentity[candidate.identity] else {
                 // The deep archive listing will supply its native signature
@@ -62,14 +66,28 @@ final class LibraryScanCoordinator {
             guard ScanSelection.includes(prior, mode: mode, currentFingerprint: candidate.fingerprint) else {
                 continue
             }
+            guard ArchiveScanSignature.supports(candidate.sourceURL) else {
+                selected.append(candidate)
+                continue
+            }
+            candidatesNeedingSignature.append((candidate, prior))
+        }
 
-            let enriched = await ArchiveScanSignature.enrich(candidate)
+        // Native manifest checks avoid extraction, but were previously awaited
+        // one at a time after a bulk move or timestamp change. Keep archive
+        // tool pressure bounded while letting independent signatures overlap.
+        let enrichedCandidates = await enrichArchiveCandidates(
+            candidatesNeedingSignature.map(\.candidate),
+            maximumConcurrency: ZipArchiveSupport.archiveProcessConcurrency
+        )
+        for (index, enriched) in enrichedCandidates.enumerated() {
+            let prior = candidatesNeedingSignature[index].prior
             if !ScanSelection.includes(prior, mode: mode, currentFingerprint: enriched.fingerprint) {
                 // A copied or timestamp-touched archive has the same native
                 // manifest/checksum. Keep its successful inventory current so
                 // the next incremental pass skips it without recomputing.
                 try database.refreshScanFingerprint(
-                    identity: candidate.identity,
+                    identity: enriched.identity,
                     fingerprint: enriched.fingerprint
                 )
                 continue
@@ -79,29 +97,33 @@ final class LibraryScanCoordinator {
 
         report("Planned \(selected.count) files for scan…")
         progress(0, selected.count)
-        let preserveExistingTracks = archiveScanDepth == .fast
         let progressReporter = ScanProgressReporter(report: report, progress: progress, activity: activity)
+        let issueReporter = ScanIssueReporter(issues: issues)
+        let persistence = ScanResultPersistence(database: database)
         let accumulator = try await executor.process(
             plan: ScanPlan(mode: mode, candidates: selected),
             progress: { current, total, detail in
-                Task { @MainActor in
-                    progressReporter.update(current: current, total: total, detail: detail)
+                Task {
+                    await progressReporter.update(current: current, total: total, detail: detail)
+                }
+            },
+            activity: { current, total, detail in
+                Task {
+                    await progressReporter.reportActivity(current: current, total: total, detail: detail)
                 }
             },
             issue: { failure in
                 let archiveEntry = failure.identity.archiveEntry.map { "#\($0)" } ?? ""
                 let line = "\(failure.identity.path)\(archiveEntry): \(failure.stage.rawValue): \(failure.message)"
-                Task { @MainActor in
-                    issue(line)
+                Task {
+                    await issueReporter.append(line)
                 }
             },
-            persist: { [database, preserveExistingTracks] results in
-                try database.persistScanResults(
-                    results,
-                    preservingExistingTracks: preserveExistingTracks
-                )
+            persist: { results in
+                try await persistence.persist(results)
             }
         )
+        await issueReporter.flush()
         let summary = await accumulator.summary
         try database.markScanCompleted(rootID: root.id)
         let issues = summary.failures.map {
@@ -117,18 +139,45 @@ final class LibraryScanCoordinator {
     }
 }
 
-@MainActor
-private final class ScanProgressReporter {
-    private let report: @MainActor @Sendable (String) -> Void
-    private let progress: @MainActor @Sendable (Int, Int) -> Void
-    private let activity: @MainActor @Sendable (Int, Int, String) -> Void
+private func enrichArchiveCandidates(
+    _ candidates: [ScanCandidate],
+    maximumConcurrency: Int
+) async -> [ScanCandidate] {
+    guard candidates.count > 1 else {
+        guard let candidate = candidates.first else { return [] }
+        return [await ArchiveScanSignature.enrich(candidate)]
+    }
+
+    let workerCount = min(max(1, maximumConcurrency), candidates.count)
+    var ordered = Array<ScanCandidate?>(repeating: nil, count: candidates.count)
+    var nextIndex = workerCount
+    await withTaskGroup(of: (Int, ScanCandidate).self) { group in
+        for index in 0..<workerCount {
+            group.addTask { (index, await ArchiveScanSignature.enrich(candidates[index])) }
+        }
+        while let (index, candidate) = await group.next() {
+            ordered[index] = candidate
+            guard nextIndex < candidates.count else { continue }
+            let queuedIndex = nextIndex
+            nextIndex += 1
+            group.addTask { (queuedIndex, await ArchiveScanSignature.enrich(candidates[queuedIndex])) }
+        }
+    }
+    return ordered.enumerated().map { index, candidate in candidate ?? candidates[index] }
+}
+
+private actor ScanProgressReporter {
+    private let report: @Sendable (String) -> Void
+    private let progress: @Sendable (Int, Int) -> Void
+    private let activity: @Sendable (Int, Int, String) -> Void
     private var lastReportedCurrent = -1
     private var lastReportDate = Date.distantPast
+    private var lastActivityDate = Date.distantPast
 
     init(
-        report: @escaping @MainActor @Sendable (String) -> Void,
-        progress: @escaping @MainActor @Sendable (Int, Int) -> Void,
-        activity: @escaping @MainActor @Sendable (Int, Int, String) -> Void
+        report: @escaping @Sendable (String) -> Void,
+        progress: @escaping @Sendable (Int, Int) -> Void,
+        activity: @escaping @Sendable (Int, Int, String) -> Void
     ) {
         self.report = report
         self.progress = progress
@@ -136,8 +185,6 @@ private final class ScanProgressReporter {
     }
 
     func update(current: Int, total: Int, detail: String) {
-        progress(current, total)
-
         let now = Date()
         let reachedEnd = current >= total
         let advancedEnough = current - lastReportedCurrent >= 25
@@ -146,7 +193,55 @@ private final class ScanProgressReporter {
         }
         lastReportedCurrent = current
         lastReportDate = now
+        progress(current, total)
         activity(current, total, detail)
         report("Scanning \(current)/\(total): \(detail)")
+    }
+
+    func reportActivity(current: Int, total: Int, detail: String) {
+        let now = Date()
+        guard now.timeIntervalSince(lastActivityDate) >= 0.15 else { return }
+        lastActivityDate = now
+        activity(current, total, detail)
+        report("Scanning \(current)/\(total): \(detail)")
+    }
+}
+
+private actor ScanIssueReporter {
+    private let issues: @Sendable ([String]) -> Void
+    private var pending: [String] = []
+    private let batchSize = 25
+
+    init(issues: @escaping @Sendable ([String]) -> Void) {
+        self.issues = issues
+    }
+
+    func append(_ line: String) {
+        pending.append(line)
+        guard pending.count >= batchSize else { return }
+        publishPending()
+    }
+
+    func flush() {
+        publishPending()
+    }
+
+    private func publishPending() {
+        guard !pending.isEmpty else { return }
+        let lines = pending
+        pending.removeAll(keepingCapacity: true)
+        issues(lines)
+    }
+}
+
+private actor ScanResultPersistence {
+    private let database: LibraryDatabase
+
+    init(database: LibraryDatabase) {
+        self.database = database
+    }
+
+    func persist(_ results: [ScanPipelineResult]) throws {
+        try database.persistScanResults(results)
     }
 }

@@ -62,7 +62,11 @@ struct PlaybackDecoderModule: Sendable {
     }
 }
 
-enum GMEFormatSupport {
+/// The one registry for extension-based admission, decoder routing, archive
+/// dependency policy, scan concurrency, and multi-track behavior. Payload
+/// recognizers for deliberately misnamed files are kept outside this table:
+/// they run only after a supported container has been materialized.
+enum PlaybackFormatRegistry {
     // Keep Long Play policy separate; these tables only define intake and decoder routing.
     static let libGMESupportedExtensions: Set<String> = [
         "ay",
@@ -89,7 +93,12 @@ enum GMEFormatSupport {
 
     static let openMPTSupportedExtensions: Set<String> = ["xm"]
 
-    static let standardAudioSupportedExtensions: Set<String> = ["flac", "wav"]
+    // AVAudioFile provides the same streamed PCM and seek contract for these
+    // containers. Keep them together so discovery, scanning, drag-and-drop,
+    // and archive playback cannot drift apart.
+    static let standardAudioSupportedExtensions: Set<String> = [
+        "aif", "aiff", "flac", "m4a", "mp3", "wav"
+    ]
 
     static let highlyCompleteSupportedExtensions: Set<String> = [
         "gsf",
@@ -110,7 +119,7 @@ enum GMEFormatSupport {
     // plus 3DO's AIFC and GENH rips. Keep this list explicit so archive discovery and
     // deep scanning agree about what the backend can actually open.
     static let vgmstreamSupportedExtensions: Set<String> = [
-        "adx", "ads", "aifc", "aus", "genh", "hd", "hbd", "iecs", "int", "mib", "mtaf", "rws", "ss2", "stream", "svag", "vag", "xa"
+        "aa3", "adx", "ads", "aifc", "at3", "aus", "bnk", "fsb", "genh", "int", "mib", "msf", "mtaf", "ogg", "rws", "ss2", "stream", "svag", "vag", "xa"
     ]
     static let psfSupportedExtensions: Set<String> = ["psf", "minipsf"]
     static let psf2SupportedExtensions: Set<String> = ["psf2", "minipsf2"]
@@ -163,6 +172,16 @@ enum GMEFormatSupport {
             scanArchiveMaterialization: .selectedEntry
         ),
         PlaybackDecoderModule(
+            pluginID: "vgmstream-hd-bank", displayName: "vgmstream", backend: .vgmstream,
+            supportedExtensions: ["hd", "hbd", "iecs"],
+            requiresTrackEnumeration: true, archiveMaterialization: .completeSet
+        ),
+        PlaybackDecoderModule(
+            pluginID: "vgmstream-txtp", displayName: "vgmstream", backend: .vgmstream,
+            supportedExtensions: ["txtp"],
+            requiresTrackEnumeration: true, archiveMaterialization: .completeSet
+        ),
+        PlaybackDecoderModule(
             pluginID: "vgmstream", displayName: "vgmstream", backend: .vgmstream,
             supportedExtensions: vgmstreamSupportedExtensions,
             requiresTrackEnumeration: true, archiveMaterialization: .selectedEntry
@@ -184,8 +203,16 @@ enum GMEFormatSupport {
     static let supportedExtensions: Set<String> = Set(modules.flatMap(\.supportedExtensions))
     static let scanPluginDescriptors = modules.map(\.scanDescriptor)
 
+    static func admits(pathExtension: String) -> Bool {
+        supportedExtensions.contains(normalize(pathExtension))
+    }
+
+    static func admits(fileURL: URL) -> Bool {
+        admits(pathExtension: fileURL.pathExtension)
+    }
+
     static func module(forPathExtension extensionName: String) -> PlaybackDecoderModule? {
-        let normalized = extensionName.lowercased()
+        let normalized = normalize(extensionName)
         return modules.first { $0.supportedExtensions.contains(normalized) }
     }
 
@@ -241,5 +268,11 @@ enum GMEFormatSupport {
 
     static func requiresTrackEnumeration(forPathExtension extensionName: String) -> Bool {
         module(forPathExtension: extensionName)?.requiresTrackEnumeration ?? false
+    }
+
+    private static func normalize(_ pathExtension: String) -> String {
+        pathExtension
+            .trimmingCharacters(in: CharacterSet(charactersIn: ". "))
+            .lowercased()
     }
 }

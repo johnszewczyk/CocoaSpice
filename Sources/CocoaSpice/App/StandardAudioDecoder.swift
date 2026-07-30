@@ -1,6 +1,6 @@
 import AVFoundation
 
-/// Core Audio owns ordinary, self-contained PCM and FLAC files. Keep it behind
+/// Core Audio owns ordinary, self-contained audio containers. Keep it behind
 /// the app's decoder contract so library scanning and playback use one route.
 final class StandardAudioDecoder: AudioTrackDecoder {
     let sampleRate: Int
@@ -106,7 +106,10 @@ final class StandardAudioDecoder: AudioTrackDecoder {
 
     static func formatName(for extensionName: String) -> String {
         switch extensionName.lowercased() {
+        case "aif", "aiff": "AIFF"
         case "flac": "FLAC"
+        case "m4a": "M4A"
+        case "mp3": "MP3"
         case "wav": "WAV"
         default: extensionName.uppercased()
         }

@@ -13,6 +13,12 @@ MPG123_SOURCE="/opt/homebrew/opt/mpg123/lib/libmpg123.0.dylib"
 OGG_SOURCE="/opt/homebrew/opt/libogg/lib/libogg.0.dylib"
 VORBIS_SOURCE="/opt/homebrew/opt/libvorbis/lib/libvorbis.0.dylib"
 VORBISFILE_SOURCE="/opt/homebrew/opt/libvorbis/lib/libvorbisfile.3.dylib"
+FFMPEG_SOURCES=(
+  "/opt/homebrew/opt/ffmpeg/lib/libavcodec.dylib"
+  "/opt/homebrew/opt/ffmpeg/lib/libavformat.dylib"
+  "/opt/homebrew/opt/ffmpeg/lib/libavutil.dylib"
+  "/opt/homebrew/opt/ffmpeg/lib/libswresample.dylib"
+)
 
 if [[ ! -f "$LIBGME_SOURCE" ]]; then
   echo "Missing $LIBGME_SOURCE"
@@ -23,6 +29,13 @@ for runtime_library in "$OPENMPT_SOURCE" "$MPG123_SOURCE" "$OGG_SOURCE" "$VORBIS
   if [[ ! -f "$runtime_library" ]]; then
     echo "Missing $runtime_library"
     echo "Install it with: brew install libopenmpt"
+    exit 1
+  fi
+done
+for runtime_library in "${FFMPEG_SOURCES[@]}"; do
+  if [[ ! -f "$runtime_library" ]]; then
+    echo "Missing $runtime_library"
+    echo "Install it with: brew install ffmpeg"
     exit 1
   fi
 done
@@ -71,9 +84,7 @@ fi
 if [[ ! -f "$BUILD_DIR/play-psf/libcocoaspice_play_psf.a" ]]; then
   "$ROOT_DIR/scripts/build-play-psf.sh"
 fi
-if [[ ! -f "$BUILD_DIR/vgmstream/src/libvgmstream.a" ]]; then
-  "$ROOT_DIR/scripts/build-vgmstream.sh"
-fi
+"$ROOT_DIR/scripts/build-vgmstream.sh"
 
 swift build \
   --package-path "$ROOT_DIR" \
@@ -81,7 +92,7 @@ swift build \
   --configuration "$CONFIGURATION" \
   --scratch-path "$BUILD_DIR"
 
-STAGING_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/CocoaSpice-bundle.XXXXXX")"
+STAGING_ROOT="$(mktemp -d "/private/tmp/CocoaSpice-bundle.XXXXXX")"
 trap 'rm -rf "$STAGING_ROOT"' EXIT
 
 STAGING_APP_DIR="$STAGING_ROOT/$APP_NAME.app"
@@ -103,10 +114,50 @@ fi
 cp -X "$BUILD_DIR/$CONFIGURATION/$APP_NAME" "$STAGING_EXECUTABLE"
 cp -X "$LIBGME_SOURCE" "$STAGING_FRAMEWORKS_DIR/libgme.0.dylib"
 cp -X "$OPENMPT_SOURCE" "$STAGING_FRAMEWORKS_DIR/libopenmpt.0.dylib"
-cp -X "$MPG123_SOURCE" "$STAGING_FRAMEWORKS_DIR/libmpg123.0.dylib"
+ditto --noextattr --noqtn "$MPG123_SOURCE" "$STAGING_FRAMEWORKS_DIR/libmpg123.0.dylib"
 cp -X "$OGG_SOURCE" "$STAGING_FRAMEWORKS_DIR/libogg.0.dylib"
 cp -X "$VORBIS_SOURCE" "$STAGING_FRAMEWORKS_DIR/libvorbis.0.dylib"
 cp -X "$VORBISFILE_SOURCE" "$STAGING_FRAMEWORKS_DIR/libvorbisfile.3.dylib"
+
+# vgmstream uses FFmpeg for ATRAC3/MSF decoding. Copy the four directly linked
+# FFmpeg dylibs and every Homebrew dylib they depend on, then retarget all
+# bundled edges below so the completed app has no Homebrew runtime requirement.
+bundled_runtime_basenames=()
+bundled_runtime_sources=()
+has_bundled_runtime_library() {
+  local candidate="$1"
+  local existing
+  for existing in "${bundled_runtime_basenames[@]:-}"; do
+    if [[ "$existing" == "$candidate" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+bundle_runtime_library() {
+  local source="$1"
+  local basename
+  basename="$(otool -D "$source" | tail -n 1 | xargs basename)"
+  if has_bundled_runtime_library "$basename"; then
+    return
+  fi
+  bundled_runtime_basenames+=("$basename")
+  bundled_runtime_sources+=("$source")
+  if [[ -e "$STAGING_FRAMEWORKS_DIR/$basename" ]]; then
+    return
+  fi
+  cp -X "$source" "$STAGING_FRAMEWORKS_DIR/$basename"
+
+  local dependency
+  while IFS= read -r dependency; do
+    if [[ "$dependency" == /opt/homebrew/* && -f "$dependency" ]]; then
+      bundle_runtime_library "$dependency"
+    fi
+  done < <(otool -L "$source" | tail -n +2 | awk '{ print $1 }')
+}
+for runtime_library in "${FFMPEG_SOURCES[@]}"; do
+  bundle_runtime_library "$runtime_library"
+done
 
 install_name_tool -id "@executable_path/../Frameworks/libgme.0.dylib" "$STAGING_FRAMEWORKS_DIR/libgme.0.dylib"
 for runtime_library in libopenmpt.0.dylib libmpg123.0.dylib libogg.0.dylib libvorbis.0.dylib libvorbisfile.3.dylib; do
@@ -115,6 +166,9 @@ done
 install_name_tool -change "/opt/homebrew/opt/game-music-emu/lib/libgme.0.dylib" "@executable_path/../Frameworks/libgme.0.dylib" "$STAGING_EXECUTABLE" || true
 install_name_tool -change "/opt/homebrew/lib/libgme.0.dylib" "@executable_path/../Frameworks/libgme.0.dylib" "$STAGING_EXECUTABLE" || true
 install_name_tool -change "/opt/homebrew/opt/libopenmpt/lib/libopenmpt.0.dylib" "@executable_path/../Frameworks/libopenmpt.0.dylib" "$STAGING_EXECUTABLE"
+install_name_tool -change "$OGG_SOURCE" "@executable_path/../Frameworks/libogg.0.dylib" "$STAGING_EXECUTABLE" || true
+install_name_tool -change "$VORBIS_SOURCE" "@executable_path/../Frameworks/libvorbis.0.dylib" "$STAGING_EXECUTABLE" || true
+install_name_tool -change "$VORBISFILE_SOURCE" "@executable_path/../Frameworks/libvorbisfile.3.dylib" "$STAGING_EXECUTABLE" || true
 install_name_tool -change "/opt/homebrew/opt/mpg123/lib/libmpg123.0.dylib" "@executable_path/../Frameworks/libmpg123.0.dylib" "$STAGING_FRAMEWORKS_DIR/libopenmpt.0.dylib"
 install_name_tool -change "/opt/homebrew/opt/libogg/lib/libogg.0.dylib" "@executable_path/../Frameworks/libogg.0.dylib" "$STAGING_FRAMEWORKS_DIR/libopenmpt.0.dylib"
 install_name_tool -change "/opt/homebrew/opt/libvorbis/lib/libvorbis.0.dylib" "@executable_path/../Frameworks/libvorbis.0.dylib" "$STAGING_FRAMEWORKS_DIR/libopenmpt.0.dylib"
@@ -122,6 +176,22 @@ install_name_tool -change "/opt/homebrew/opt/libvorbis/lib/libvorbisfile.3.dylib
 install_name_tool -change "/opt/homebrew/opt/libogg/lib/libogg.0.dylib" "@executable_path/../Frameworks/libogg.0.dylib" "$STAGING_FRAMEWORKS_DIR/libvorbis.0.dylib"
 install_name_tool -change "/opt/homebrew/Cellar/libvorbis/1.3.7/lib/libvorbis.0.dylib" "@executable_path/../Frameworks/libvorbis.0.dylib" "$STAGING_FRAMEWORKS_DIR/libvorbisfile.3.dylib"
 install_name_tool -change "/opt/homebrew/opt/libogg/lib/libogg.0.dylib" "@executable_path/../Frameworks/libogg.0.dylib" "$STAGING_FRAMEWORKS_DIR/libvorbisfile.3.dylib"
+
+for runtime_index in "${!bundled_runtime_basenames[@]}"; do
+  runtime_basename="${bundled_runtime_basenames[$runtime_index]}"
+  runtime_source="${bundled_runtime_sources[$runtime_index]}"
+  runtime_destination="$STAGING_FRAMEWORKS_DIR/$runtime_basename"
+  install_name_tool -id "@executable_path/../Frameworks/$runtime_basename" "$runtime_destination"
+  while IFS= read -r dependency; do
+    dependency_basename="$(basename "$dependency")"
+    if has_bundled_runtime_library "$dependency_basename"; then
+      install_name_tool -change "$dependency" "@executable_path/../Frameworks/$dependency_basename" "$runtime_destination"
+    fi
+  done < <(otool -L "$runtime_source" | tail -n +2 | awk '{ print $1 }')
+  install_name_tool -change "$runtime_source" "@executable_path/../Frameworks/$runtime_basename" "$STAGING_EXECUTABLE" || true
+  runtime_install_name="$(otool -D "$runtime_source" | tail -n 1)"
+  install_name_tool -change "$runtime_install_name" "@executable_path/../Frameworks/$runtime_basename" "$STAGING_EXECUTABLE" || true
+done
 
 # Finder/File Provider metadata on the bundle will make codesign fail with
 # "resource fork, Finder information, or similar detritus not allowed".

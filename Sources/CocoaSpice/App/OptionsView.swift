@@ -4,10 +4,11 @@ import SwiftUI
 struct OptionsView: View {
     @Bindable var model: PlayerViewModel
     @State private var longPlayTimeText = ""
-    @State private var selection: OptionsSection = .database
+    @State private var selection: OptionsSection = .library
 
     private enum OptionsSection: String, CaseIterable, Identifiable {
-        case database = "Database"
+        case library = "Library"
+        case data = "Data"
         case interface = "Interface"
         case playback = "Playback"
         case plugins = "Plugins"
@@ -18,7 +19,8 @@ struct OptionsView: View {
             switch self {
             case .playback: "waveform"
             case .interface: "paintbrush"
-            case .database: "externaldrive"
+            case .library: "externaldrive"
+            case .data: "cylinder.split.1x2"
             case .plugins: "puzzlepiece.extension"
             }
         }
@@ -57,7 +59,8 @@ struct OptionsView: View {
                         switch selection {
                         case .playback: playbackPage
                         case .interface: interfacePage
-                        case .database: databasePage
+                        case .library: libraryPage
+                        case .data: dataPage
                         case .plugins: pluginsPage
                         }
                     }
@@ -70,6 +73,7 @@ struct OptionsView: View {
         .background(OptionsWindowConfigurator())
         .onAppear {
             longPlayTimeText = Self.formatTime(model.manualPreFadeSeconds)
+            model.refreshArchiveCacheSummary()
         }
         .onDisappear {
             model.savePreferencesNow()
@@ -90,6 +94,7 @@ struct OptionsView: View {
         func updateNSView(_ nsView: NSView, context: Context) {
             guard let window = nsView.window else { return }
             window.minSize = NSSize(width: 320, height: 240)
+            window.level = .floating
             window.setFrameAutosaveName("CocoaSpice.Options")
         }
     }
@@ -133,7 +138,25 @@ struct OptionsView: View {
                     .foregroundStyle(.secondary)
             }
 
+            sectionCard(title: "End Fade") {
+                Toggle(isOn: Binding(
+                    get: { model.endFadeEnabled },
+                    set: { model.setEndFadeEnabled($0) }
+                )) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Enable 6-second fade out")
+                            .foregroundStyle(.white)
+                        Text("Applies to metadata-timed playback and Long Play. Turning it off lets tracks use their native ending.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .toggleStyle(.checkbox)
+            }
+
             libraryBehaviorCard
+
+            appVolumeCard
 
             equalizerCard
 
@@ -205,12 +228,28 @@ struct OptionsView: View {
         VStack(alignment: .leading, spacing: 16) {
             sectionCard(title: "Spectrum") {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Choose the colors used by the toolbar spectrum analyzer.")
+                Text("Uses a 4,096-point FFT at 10 analyses per second, plus a 45 FPS direct bar/peak display. 10/20/40 means 1/2/4 bands per octave from 20 Hz–20.48 kHz. 20/40 add detail and CPU work while playing; disable Spectrum to remove analyzer and display work.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
 
                     Toggle("Enable Spectrum", isOn: $model.spectrumEnabled)
                         .toggleStyle(.checkbox)
+                        .foregroundStyle(.white)
+
+                    Picker("Bands", selection: Binding(
+                        get: { model.spectrumBandCount },
+                        set: { model.setSpectrumBandCount($0) }
+                    )) {
+                        ForEach(SpectrumBandCount.supported, id: \.self) { bandCount in
+                            Text("\(bandCount)").tag(bandCount)
+                        }
+                    }
+                    .foregroundStyle(.white)
+
+                    Divider()
+
+                    Text("Spectrum Colors")
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(.white)
 
                     HStack(spacing: 16) {
@@ -294,6 +333,23 @@ struct OptionsView: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
 
+            sectionCard(title: "Playlist") {
+                Text("Controls the editable track table in the main window.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+
+                HStack {
+                    Text("Monospace Font")
+                    Spacer()
+                    Toggle("", isOn: Binding(
+                        get: { model.playlistMonospaceFont },
+                        set: { model.setPlaylistMonospaceFont($0) }
+                    ))
+                    .labelsHidden()
+                    .toggleStyle(.checkbox)
+                }
+            }
+
             sectionCard(title: "Windows") {
                 Text("Restore the default size and centered position for CocoaSpice windows.")
                     .font(.system(size: 11))
@@ -305,9 +361,22 @@ struct OptionsView: View {
         }
     }
 
-    private var databasePage: some View {
+    private var libraryPage: some View {
         VStack(alignment: .leading, spacing: 16) {
-            sectionCard(title: "Library Paths") {
+            sectionCard(title: "Library Paths", accessory: {
+                if let progress = model.libraryOperationProgress {
+                    Group {
+                        if progress.total == 0 {
+                            ProgressView()
+                        } else {
+                            ProgressView(value: progress.fraction)
+                        }
+                    }
+                    .progressViewStyle(.linear)
+                    .frame(width: 100)
+                    .accessibilityLabel("Library operation progress")
+                }
+            }) {
                 if model.libraryScanRoots.isEmpty {
                     Text("No scan roots configured.")
                         .font(.system(size: 12))
@@ -324,69 +393,103 @@ struct OptionsView: View {
                     }
                 }
 
-                HStack {
-                    Button("Add Folders…") {
+                HStack(spacing: 8) {
+                    libraryActionButton("Add Path") {
                         model.chooseLibraryScanRoots()
                     }
-                    Button("Scan All") {
-                        model.rescanEnabledLibraryRoots()
-                    }
-                    .disabled(model.libraryScanInProgress || model.libraryScanRoots.allSatisfy { !$0.isEnabled })
-                    Button("Stop Scan") {
-                        model.stopLibraryScan()
-                    }
-                    .disabled(!model.libraryScanInProgress)
-                    Button("Trim Missing") {
-                        model.trimMissingLibrary()
-                    }
                     .disabled(model.libraryScanInProgress)
-                    Button("Reset Database") {
-                        model.purgeLibraryDatabase()
-                    }
-                    .disabled(model.libraryScanInProgress)
-                    Button("Reset Paths") {
+                    libraryActionButton("Reset Paths") {
                         model.resetLibraryPaths()
                     }
                     .disabled(model.libraryScanInProgress || model.libraryScanRoots.isEmpty)
-                    Spacer()
+                    libraryActionButton("Scan All") {
+                        model.rescanEnabledLibraryRoots()
+                    }
+                    .disabled(model.libraryScanRoots.allSatisfy { !$0.isEnabled })
+                    libraryActionButton("Test Links") {
+                        model.trimMissingLibrary()
+                    }
+                    .disabled(model.libraryScanInProgress)
+                    if model.libraryScanInProgress {
+                        libraryActionButton(model.queuedLibraryScanCount > 0 ? "Stop + Clear Queue" : "Stop") {
+                            model.stopLibraryScan()
+                        }
+                    }
                 }
 
-                Toggle(isOn: Binding(
-                    get: { model.fastLibraryScan },
-                    set: { model.setFastLibraryScan($0) }
-                )) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Toggle("Deep Scan", isOn: $model.forceLibraryScan)
+                        .toggleStyle(.checkbox)
+                        .disabled(model.libraryScanInProgress)
+                    Text("Unzip, read metadata for all files.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+
+            }
+
+        }
+    }
+
+    private var dataPage: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            sectionCard(title: "Database") {
+                HStack(alignment: .center, spacing: 12) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Fast Scan")
-                        Text("Index filenames only. Archive members and tags load when an archive enters the playlist.")
+                        Text("Entries")
+                        Text("\(model.databaseEntryCount) indexed tracks • \(model.unlinkedDatabaseEntryCount) unlinked")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
-                }
-                .toggleStyle(.checkbox)
-
-                if let progress = model.trimMissingProgress {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text("Trim Missing • \(progress.current) of \(progress.total) sources checked")
-                            .font(.system(size: 12))
-                        ProgressView(value: progress.fraction)
-                            .progressViewStyle(.linear)
-                        if let path = model.trimMissingCurrentPath {
-                            Text(URL(fileURLWithPath: path).lastPathComponent)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
+                    Spacer()
+                    Button("Clear Database") {
+                        model.purgeLibraryDatabase()
                     }
-                    .padding(10)
-                    .background(Color.white.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                } else if let status = model.libraryScanStatus {
-                    Text(status)
-                        .font(.caption)
+                    .disabled(model.libraryScanInProgress || model.databaseEntryCount == 0)
+                }
+
+                Divider()
+
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Dead Links")
+                        Text(model.deadLinkSummaryText)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Clean Links") {
+                        model.deleteDeadLinks()
+                    }
+                    .disabled(model.isDeletingDeadLinks || model.libraryScanInProgress || model.deadLinkCount == 0)
+                }
+
+                Text("The database retains file data even when files move on disk to speed up scans.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+            }
+
+            sectionCard(title: "Cache") {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Archive Cache")
+                        Text(model.archiveCacheSummaryText)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Clear Cache") {
+                        model.clearArchiveCache()
+                    }
+                    .disabled(model.isClearingArchiveCache || model.libraryScanInProgress)
+                }
+
+                if model.libraryScanInProgress {
+                    Text("Stop the library scan before clearing its archive cache.")
+                        .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
             }
-
         }
     }
 
@@ -399,7 +502,7 @@ struct OptionsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Playlist Follows Cursor")
                         .foregroundStyle(.white)
-                    Text("Selecting a folder immediately replaces the current playlist with that folder.")
+                    Text("Game-list selection replaces the playlist; Files view queues only on double-click or Return.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
@@ -462,6 +565,33 @@ struct OptionsView: View {
         }
     }
 
+    private var appVolumeCard: some View {
+        sectionCard(title: "Volume") {
+            HStack(spacing: 8) {
+                Text("App Volume")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 72, alignment: .trailing)
+                Slider(
+                    value: Binding(
+                        get: { Double(model.appVolume) },
+                        set: { model.setAppVolume(Float($0)) }
+                    ),
+                    in: Double(AudioOutputVolume.range.lowerBound)...Double(AudioOutputVolume.range.upperBound),
+                    step: 0.01
+                )
+                Text("\(Int((model.appVolume * 100).rounded()))%")
+                    .font(.system(size: 11, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 34, alignment: .trailing)
+            }
+
+            Text("Applies to CocoaSpice playback only. Volume keys control macOS system volume.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+        }
+    }
+
     private func colorBinding(for keyPath: ReferenceWritableKeyPath<PlayerViewModel, NSColor>) -> Binding<Color> {
         Binding(
             get: { Color(nsColor: model[keyPath: keyPath]) },
@@ -471,10 +601,22 @@ struct OptionsView: View {
 
     @ViewBuilder
     private func sectionCard<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+        sectionCard(title: title, accessory: { EmptyView() }, content: content)
+    }
+
+    private func sectionCard<Content: View, Accessory: View>(
+        title: String,
+        @ViewBuilder accessory: () -> Accessory,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(title)
-                .font(.headline)
-                .foregroundStyle(.white)
+            HStack {
+                Text(title)
+                    .font(.headline)
+                    .foregroundStyle(.white)
+                Spacer(minLength: 12)
+                accessory()
+            }
             content()
         }
         .padding(16)
@@ -484,8 +626,7 @@ struct OptionsView: View {
 
     @ViewBuilder
     private func scanRootRow(_ root: LibraryScanRoot) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: 12) {
                 Toggle(
                     "",
                     isOn: Binding(
@@ -495,58 +636,79 @@ struct OptionsView: View {
                 )
                 .labelsHidden()
                 .toggleStyle(.checkbox)
+                .disabled(model.libraryScanInProgress)
 
-                Text(root.path)
+                scanRootStatusIcon(root)
+
+                Text(abbreviatedPath(for: root))
                     .foregroundStyle(.secondary)
                     .textSelection(.enabled)
                     .lineLimit(1)
+                    .help(root.path)
 
                 Spacer()
 
-                HStack(spacing: 8) {
-                    Button("Scan") { model.scanLibraryRoot(root.id) }
-                    Button("Log") { model.openLibraryScanLog(root.id) }
-                        .disabled(!model.hasLibraryScanLog(root.id))
-                    Button("Del") { model.removeLibraryScanRoot(root.id) }
+            HStack(spacing: 4) {
+                Button { model.scanLibraryRoot(root.id) } label: {
+                    Image(systemName: "magnifyingglass")
                 }
-            }
-
-            HStack(spacing: 10) {
-                Text(model.libraryScanRootDetailText(root))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                Spacer()
-                if let progress = model.libraryScanProgressFraction(for: root.id) {
-                    ProgressView(value: progress)
-                        .progressViewStyle(.linear)
-                        .frame(width: 200)
-                } else {
-                    Text(model.libraryScanRootStatusText(root))
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                .help("Scan Path")
+                .disabled(!root.isEnabled)
+                Button { model.openLibraryScanLog(root.id) } label: {
+                    Image(systemName: "doc.text")
                 }
-                if model.libraryScanRootIsEmpty(root) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.red)
-                        .accessibilityLabel("Scan completed with no playable files")
-                } else if model.libraryScanRootNeedsRescan(root) || model.libraryScanRootHasIssues(root) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.yellow)
-                        .accessibilityLabel("Scan completed with issues; see Log for details")
-                } else if model.libraryScanRootIsClean(root) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.green)
-                        .accessibilityLabel("Scan completed without issues")
+                .help("Open Scan Log")
+                .disabled(!model.hasLibraryScanLog(root.id))
+                Button(role: .destructive) { model.removeLibraryScanRoot(root.id) } label: {
+                    Image(systemName: "trash")
                 }
+                .help("Remove Path")
+                .disabled(model.libraryScanInProgress)
             }
         }
-        .padding(12)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
         .background(Color.white.opacity(0.06))
         .clipShape(RoundedRectangle(cornerRadius: 10))
+    }
+
+    private func libraryActionButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .frame(maxWidth: .infinity)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    @ViewBuilder
+    private func scanRootStatusIcon(_ root: LibraryScanRoot) -> some View {
+        if model.libraryScanRootIsEmpty(root) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.red)
+                .accessibilityLabel("Scan completed with no playable files")
+        } else if model.libraryScanRootNeedsRescan(root) || model.libraryScanRootHasIssues(root) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.yellow)
+                .accessibilityLabel("Scan completed with issues; see Log for details")
+        } else if model.libraryScanRootIsClean(root) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .accessibilityLabel("Scan completed without issues")
+        }
+    }
+
+    private func abbreviatedPath(for root: LibraryScanRoot) -> String {
+        let paths = model.libraryScanRoots.map { URL(fileURLWithPath: $0.path).pathComponents }
+        guard let first = paths.first else { return root.path }
+        let sharedCount = paths.dropFirst().reduce(first.count) { count, path in
+            zip(first.prefix(count), path.prefix(count)).prefix { $0 == $1 }.count
+        }
+        let components = URL(fileURLWithPath: root.path).pathComponents
+        let suffix = Array(components.dropFirst(min(sharedCount, components.count)))
+        // A single root has no useful shared prefix. Keep two meaningful
+        // folders rather than reducing it to one opaque basename.
+        let visible = suffix.isEmpty ? Array(components.suffix(2)) : suffix
+        return visible.joined(separator: "/")
     }
 
     private func applyLongPlayTimeText() {

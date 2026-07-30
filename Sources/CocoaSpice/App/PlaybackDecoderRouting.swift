@@ -53,6 +53,16 @@ protocol AudioFileInspector {
 
 enum PlaybackDecoderFactory {
     static func makeDecoder(track: TrackItem, sampleRate: Int) throws -> any AudioTrackDecoder {
+        if track.playablePathExtension.lowercased() == "wav",
+           let fileURL = try? ZipArchiveSupport.materializePlayableFile(for: track),
+           VGMStreamDecoder.isNintendoDSSWAV(fileURL) {
+            return try VGMStreamDecoder(track: track, sampleRate: sampleRate)
+        }
+        if track.playablePathExtension.lowercased() == "wav",
+           let fileURL = try? ZipArchiveSupport.materializePlayableFile(for: track),
+           NDSRawPCM22.isRecognized(fileURL) {
+            return try NDSRawPCM22Decoder(track: track, sampleRate: sampleRate)
+        }
         switch try backend(forPathExtension: track.playablePathExtension) {
         case .gme:
             return try SPCDecoder(track: track, sampleRate: sampleRate)
@@ -76,6 +86,14 @@ enum PlaybackDecoderFactory {
     }
 
     static func makeInspector(fileURL: URL) throws -> any AudioFileInspector {
+        if fileURL.pathExtension.lowercased() == "wav",
+           VGMStreamDecoder.isNintendoDSSWAV(fileURL) {
+            return try VGMStreamFileInspector(fileURL: fileURL)
+        }
+        if fileURL.pathExtension.lowercased() == "wav",
+           NDSRawPCM22.isRecognized(fileURL) {
+            return try NDSRawPCM22FileInspector(fileURL: fileURL)
+        }
         switch try backend(forPathExtension: fileURL.pathExtension.lowercased()) {
         case .gme:
             return try SPCFileInspector(fileURL: fileURL)
@@ -99,7 +117,7 @@ enum PlaybackDecoderFactory {
     }
 
     private static func backend(forPathExtension extensionName: String) throws -> PlaybackDecoderBackend {
-        guard let backend = GMEFormatSupport.playbackBackend(forPathExtension: extensionName) else {
+        guard let backend = PlaybackFormatRegistry.playbackBackend(forPathExtension: extensionName) else {
             throw SPCDecoderError.library("Unsupported audio file type: \(extensionName)")
         }
         return backend

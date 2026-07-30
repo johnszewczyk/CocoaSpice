@@ -3,16 +3,6 @@ import Foundation
 import Observation
 import UniformTypeIdentifiers
 
-struct LibraryScanProgress: Sendable {
-    let current: Int
-    let total: Int
-
-    var fraction: Double {
-        guard total > 0 else { return 0 }
-        return Double(current) / Double(total)
-    }
-}
-
 @MainActor
 @Observable
 final class PlayerViewModel {
@@ -44,6 +34,27 @@ final class PlayerViewModel {
             switch self {
             case .playNow: "Set as Playlist"
             case .enqueue: "Add to Playlist"
+            }
+        }
+    }
+
+    enum SidebarBrowserMode: String, CaseIterable, Identifiable {
+        case games
+        case files
+
+        var id: String { rawValue }
+
+        var title: String {
+            switch self {
+            case .games: "Games"
+            case .files: "Files"
+            }
+        }
+
+        var iconName: String {
+            switch self {
+            case .games: "square.grid.2x2"
+            case .files: "folder"
             }
         }
     }
@@ -99,17 +110,24 @@ final class PlayerViewModel {
         }
     }
 
-    var libraryScanRoots: [LibraryScanRoot] = []
+    private let libraryOperations = LibraryOperationsState()
+
+    var libraryScanRoots: [LibraryScanRoot] {
+        get { libraryOperations.scanRoots }
+        set { libraryOperations.scanRoots = newValue }
+    }
     var sidebarDoubleClickAction: SidebarDoubleClickAction = .playNow
     var rootURL: URL?
     var selectedFolderPath: String?
     var librarySelectedFolderPath: String?
     let databaseSidebar = DatabaseSidebarState()
+    let databaseFileSidebar = DatabaseFileSidebarState()
     private var sidebarSearchPersistenceWorkItem: DispatchWorkItem?
     var sidebarSearchText: String {
         get { databaseSidebar.searchText }
         set {
             databaseSidebar.searchText = newValue
+            databaseFileSidebar.searchText = newValue
             if sidebarSystemMode {
                 let hasQuery = !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 expandedDatabaseSystems = hasQuery
@@ -122,11 +140,26 @@ final class PlayerViewModel {
     var databaseSidebarFontSize: CGFloat = 12
     var databaseSidebarTextColor: DatabaseSidebarTextColor = .primary
     var databaseSidebarMonospaceFont = false
+    var playlistMonospaceFont = false
+    var sidebarBrowserMode: SidebarBrowserMode = .games
     var sidebarSystemMode = false
-    var fastLibraryScan = false
     private(set) var expandedDatabaseSystems: Set<String> = []
     var databaseGameItems: [DatabaseGameItem] { databaseSidebar.gameItems }
     var visibleDatabaseGameItems: [DatabaseGameItem] { databaseSidebar.visibleGameItems }
+    var databaseFileItems: [DatabaseFileItem] { databaseFileSidebar.fileItems }
+    var visibleDatabaseFileItems: [DatabaseFileItem] { databaseFileSidebar.visibleFileItems }
+    var selectedDatabaseFileID: String? {
+        get { databaseFileSidebar.selectedFileID }
+        set { databaseFileSidebar.selectedFileID = newValue }
+    }
+    var selectedDatabaseFileIDs: Set<String> {
+        get { databaseFileSidebar.selectedFileIDs }
+        set { databaseFileSidebar.selectedFileIDs = newValue }
+    }
+    var selectedDatabaseFileFolders: Set<DatabaseFileSidebarFolder> {
+        get { databaseFileSidebar.selectedFolders }
+        set { databaseFileSidebar.selectedFolders = newValue }
+    }
     var selectedDatabaseGameID: String? {
         get { databaseSidebar.selectedGameID }
         set { databaseSidebar.selectedGameID = newValue }
@@ -177,17 +210,27 @@ final class PlayerViewModel {
             if !spectrumEnabled { toolbarSpectrum.setAnimating(false) }
         }
     }
+    var spectrumBandCount = SpectrumBandCount.defaultValue {
+        didSet {
+            toolbarSpectrum.configure(bandCount: spectrumBandCount)
+            playbackStorage?.setSpectrumBandCount(spectrumBandCount)
+        }
+    }
     var equalizerEnabled = false {
         didSet { playbackStorage?.setEqualizer(enabled: equalizerEnabled, bandGains: equalizerBandGains) }
     }
     var equalizerBandGains = AudioEqualizer.bandFrequencies.map { _ in Float.zero }
+    var appVolume: Float = 1 {
+        didSet { playbackStorage?.setAppVolume(appVolume) }
+    }
     var randomPlaybackScope: RandomPlaybackScope = .off
     var repeatMode: RepeatMode = .off
     private var randomLibraryTracks: [TrackItem] = []
     var playlistFollowsCursor = false
     var longPlayEnabled = false
     var manualPreFadeSeconds: Int = 180
-    var fadeSeconds: Int = 6
+    var endFadeEnabled = true
+    var fadeSeconds: Int { endFadeEnabled ? 6 : 0 }
     var statusText: String = "Choose a music folder to begin."
     var isLoading = false
     var isPlaying = false
@@ -197,13 +240,69 @@ final class PlayerViewModel {
     var seekPreviewSeconds: Double = 0
     var playlistMetadataLoadToken = 0
     private(set) var playlistMetadataChangedTrackIDs: Set<TrackItem.ID> = []
-    var libraryScanStatus: String?
-    private(set) var cleanLibraryScanRootIDs: Set<Int64> = []
-    private(set) var trimmedLibraryScanRootIDs: Set<Int64> = []
-    private(set) var libraryScanInProgress = false
-    private(set) var libraryScanProgressByRootID: [Int64: LibraryScanProgress] = [:]
-    private(set) var trimMissingProgress: LibraryScanProgress?
-    private(set) var trimMissingCurrentPath: String?
+    var libraryScanStatus: String? {
+        get { libraryOperations.status }
+        set { libraryOperations.status = newValue }
+    }
+    private(set) var cleanLibraryScanRootIDs: Set<Int64> {
+        get { libraryOperations.cleanRootIDs }
+        set { libraryOperations.cleanRootIDs = newValue }
+    }
+    private(set) var trimmedLibraryScanRootIDs: Set<Int64> {
+        get { libraryOperations.trimmedRootIDs }
+        set { libraryOperations.trimmedRootIDs = newValue }
+    }
+    private(set) var libraryScanInProgress: Bool {
+        get { libraryOperations.scanInProgress }
+        set { libraryOperations.scanInProgress = newValue }
+    }
+    var forceLibraryScan: Bool {
+        get { libraryOperations.forceScan }
+        set { libraryOperations.forceScan = newValue }
+    }
+    var libraryScanProgressByRootID: [Int64: LibraryScanProgress] {
+        libraryOperations.scanProgressByRootID
+    }
+    private(set) var trimMissingProgress: LibraryScanProgress? {
+        get { libraryOperations.linkTestProgress }
+        set { libraryOperations.linkTestProgress = newValue }
+    }
+    private(set) var trimMissingCurrentPath: String? {
+        get { libraryOperations.linkTestCurrentPath }
+        set { libraryOperations.linkTestCurrentPath = newValue }
+    }
+    private(set) var archiveCacheSummaryText: String {
+        get { libraryOperations.archiveCacheSummaryText }
+        set { libraryOperations.archiveCacheSummaryText = newValue }
+    }
+    private(set) var isClearingArchiveCache: Bool {
+        get { libraryOperations.isClearingArchiveCache }
+        set { libraryOperations.isClearingArchiveCache = newValue }
+    }
+    private(set) var deadLinkSummaryText: String {
+        get { libraryOperations.deadLinkSummaryText }
+        set { libraryOperations.deadLinkSummaryText = newValue }
+    }
+    private(set) var deadLinkCount: Int {
+        get { libraryOperations.deadLinkCount }
+        set { libraryOperations.deadLinkCount = newValue }
+    }
+    private(set) var databaseEntryCount: Int {
+        get { libraryOperations.databaseEntryCount }
+        set { libraryOperations.databaseEntryCount = newValue }
+    }
+    private(set) var unlinkedDatabaseEntryCount: Int {
+        get { libraryOperations.unlinkedDatabaseEntryCount }
+        set { libraryOperations.unlinkedDatabaseEntryCount = newValue }
+    }
+    private(set) var isDeletingDeadLinks: Bool {
+        get { libraryOperations.isDeletingDeadLinks }
+        set { libraryOperations.isDeletingDeadLinks = newValue }
+    }
+    private(set) var isLoadingDatabaseSidebar: Bool {
+        get { libraryOperations.isLoadingDatabaseSidebar }
+        set { libraryOperations.isLoadingDatabaseSidebar = newValue }
+    }
 
     var enabledLibraryRootURLs: [URL] {
         libraryScanRoots
@@ -225,13 +324,17 @@ final class PlayerViewModel {
     private var playbackTimer: Timer?
     private var playlistLoadTask: Task<Void, Never>?
     private var playbackTask: Task<Void, Never>?
-    private var libraryScanTask: Task<Void, Never>?
     private var liveScanLogs: [Int64: LibraryScanLiveLogWindow] = [:]
-    private var libraryScanGeneration = 0
+    private let libraryScanRequestQueue = LibraryScanRequestQueue()
     private var folderSelectionTask: Task<Void, Never>?
     private var queueBuildTask: Task<Void, Never>?
     private var randomLibraryLoadTask: Task<Void, Never>?
     private var audioExportTask: Task<Void, Never>?
+    private var archiveCacheSummaryTask: Task<Void, Never>?
+    private var archiveCacheClearTask: Task<Void, Never>?
+    private let deadLinkSummaryTaskOwner = LatestTaskOwner()
+    private var deadLinkCleanupTask: Task<Void, Never>?
+    private let databaseSidebarLoadTaskOwner = LatestTaskOwner()
     private var playlistMetadataRefreshWorkItem: DispatchWorkItem?
     private var playlistLoadGeneration = 0
     private var playbackRequestGeneration = 0
@@ -259,7 +362,9 @@ final class PlayerViewModel {
             }
         }
         playback.setSpectrumEnabled(spectrumEnabled)
+        playback.setSpectrumBandCount(spectrumBandCount)
         playback.setEqualizer(enabled: equalizerEnabled, bandGains: equalizerBandGains)
+        playback.setAppVolume(appVolume)
         playback.setPlaybackStateHandler { [weak self] snapshot in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -294,6 +399,9 @@ final class PlayerViewModel {
 
     init() {
         AppSessionPersistence.migrateLegacyPreferences()
+        let restoredState = AppSessionPersistence.restoreStartupState(
+            supportedExtensions: PlaybackFormatRegistry.supportedExtensions
+        )
         do {
             libraryDatabase = try LibraryDatabase()
         } catch {
@@ -306,15 +414,20 @@ final class PlayerViewModel {
         toolbarSpectrum.gradientStartColor = spectrumGradientStartColor
         toolbarSpectrum.gradientEndColor = spectrumGradientEndColor
         toolbarSpectrum.peakColor = spectrumPeakColor
-        restorePlaybackPreferences()
+        restorePlaybackPreferences(restoredState.playbackPreferences)
         reloadLibraryScanRoots()
         reloadDatabaseGameItems()
-        restorePersistedPlaylist()
-        restorePlaylistColumnState()
-        sidebarSearchText = AppSessionPersistence.lastSidebarSearchText()
+        restorePersistedPlaylist(restoredState.sessionState)
+        restorePlaylistColumnState(restoredState.playlistColumnState)
+        sidebarSearchText = restoredState.sidebarSearchText
         startPlaybackTimer()
-        restoreInitialSidebarMode()
+        restoreInitialSidebarMode(
+            lastRootPath: restoredState.lastRootPath,
+            lastLibrarySelectedFolderPath: restoredState.lastLibrarySelectedFolderPath
+        )
         updateRemoteTransportState()
+        refreshArchiveCacheSummary()
+        refreshDeadLinkSummary()
     }
 
     func chooseLibraryScanRoots() {
@@ -331,21 +444,43 @@ final class PlayerViewModel {
             return
         }
 
-        let addedPaths = panel.urls.map(\.standardizedFileURL.path)
-        do {
-            for url in panel.urls.map(\.standardizedFileURL) {
-                try libraryDatabase.addRoot(path: url.path)
+        let addedURLs = panel.urls.map(\.standardizedFileURL)
+        let databaseURL = libraryDatabase.databaseURL
+        let generation = libraryOperations.beginTask()
+        libraryScanInProgress = true
+        libraryScanStatus = "Adding library paths…"
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await Task.yield()
+            do {
+                try await Task.detached(priority: .utility) {
+                    let database = try LibraryDatabase(databaseURL: databaseURL)
+                    for url in addedURLs {
+                        try database.addRoot(path: url.path)
+                    }
+                }.value
+            } catch {
+                guard self.libraryOperations.isCurrentTask(generation) else { return }
+                self.libraryScanInProgress = false
+                self.libraryScanStatus = "Could not save scan root: \(error.localizedDescription)"
+                self.reloadLibraryScanRoots()
+                self.libraryOperations.finishTask(generation: generation)
+                return
             }
-        } catch {
-            libraryScanStatus = "Could not save scan root: \(error.localizedDescription)"
-            reloadLibraryScanRoots()
-            return
+
+            guard self.libraryOperations.isCurrentTask(generation), !Task.isCancelled else { return }
+            self.reloadLibraryScanRoots()
+            self.reloadDatabaseGameItems()
+            self.syncActiveRootToLibraryScanRoots(preferredRoot: addedURLs.first)
+            let addedPaths = Set(addedURLs.map(\.path))
+            let addedRoots = self.libraryScanRoots.filter {
+                addedPaths.contains($0.standardizedURL.path) && $0.isEnabled
+            }
+            self.libraryScanInProgress = false
+            self.libraryOperations.finishTask(generation: generation)
+            self.runModernLibraryScan(for: addedRoots, mode: .incremental)
         }
-        reloadLibraryScanRoots()
-        reloadDatabaseGameItems()
-        syncActiveRootToLibraryScanRoots(preferredRoot: panel.urls.first?.standardizedFileURL)
-        let addedRoots = libraryScanRoots.filter { addedPaths.contains($0.standardizedURL.path) && $0.isEnabled }
-        runModernLibraryScan(for: addedRoots, mode: .incremental)
+        libraryOperations.installTask(task, generation: generation)
     }
 
     func loadLibraryRoot(_ root: LibraryScanRoot) {
@@ -394,7 +529,22 @@ final class PlayerViewModel {
             return
         }
         guard let root = libraryScanRoots.first(where: { $0.id == id }) else { return }
-        let logWindow = LibraryScanLiveLogWindow(root: root, pastIssues: LibraryScanLogStore.read(rootID: id))
+        let issues = LibraryScanLogStore.read(rootID: id)
+        let summary: String?
+        if let tally = try? libraryDatabase?.scanResultTally(rootID: id) {
+            let date = root.lastScanCompletedAt.map {
+                DateFormatter.localizedString(from: $0, dateStyle: .medium, timeStyle: .short)
+            } ?? "not completed"
+            let duration = root.lastScanStartedAt.flatMap { startedAt in
+                root.lastScanCompletedAt.map { completedAt in
+                    " • \(Int(completedAt.timeIntervalSince(startedAt).rounded()))s"
+                }
+            } ?? ""
+            summary = "Last scan \(date)\(duration) • \(tally.successful) successful / \(tally.total) total • \(issues.count) issue\(issues.count == 1 ? "" : "s")"
+        } else {
+            summary = nil
+        }
+        let logWindow = LibraryScanLiveLogWindow(root: root, pastIssues: issues, summary: summary)
         liveScanLogs[id] = logWindow
         logWindow.show()
     }
@@ -424,12 +574,12 @@ final class PlayerViewModel {
 
     func rescanLibraryRoot(_ id: Int64) {
         guard let root = libraryScanRoots.first(where: { $0.id == id }) else { return }
-        runModernLibraryScan(for: [root], mode: .newScan)
+        runModernLibraryScan(for: [root], mode: requestedLibraryScanMode)
     }
 
     func scanLibraryRoot(_ id: Int64) {
         guard let root = libraryScanRoots.first(where: { $0.id == id }) else { return }
-        runModernLibraryScan(for: [root], mode: .newScan)
+        runModernLibraryScan(for: [root], mode: requestedLibraryScanMode)
     }
 
     func trimMissingLibrary() {
@@ -439,23 +589,23 @@ final class PlayerViewModel {
         do {
             sources = try libraryDatabase.indexedSources()
         } catch {
-            libraryScanStatus = "Trim Missing failed to read the library: \(error.localizedDescription)"
+            libraryScanStatus = "Test Links failed to read the library: \(error.localizedDescription)"
             return
         }
-        libraryScanGeneration += 1
-        let generation = libraryScanGeneration
+        let generation = libraryOperations.beginTask()
         libraryScanInProgress = true
         trimMissingProgress = LibraryScanProgress(current: 0, total: sources.count)
         trimMissingCurrentPath = nil
-        libraryScanStatus = "Trim Missing • checking \(sources.count) sources…"
+        libraryScanStatus = "Test Links • checking \(sources.count) sources…"
 
-        libraryScanTask = Task { @MainActor [weak self] in
+        let task = Task { @MainActor [weak self] in
             guard let self else { return }
             defer {
-                if generation == self.libraryScanGeneration {
+                if self.libraryOperations.isCurrentTask(generation) {
                     self.libraryScanInProgress = false
                     self.trimMissingProgress = nil
                     self.trimMissingCurrentPath = nil
+                    self.libraryOperations.finishTask(generation: generation)
                 }
             }
             let integrityTask = Task.detached(priority: .utility) {
@@ -463,10 +613,10 @@ final class PlayerViewModel {
                     sources: sources,
                     progress: { current, total, path in
                         Task { @MainActor [weak self] in
-                            guard let self, generation == self.libraryScanGeneration else { return }
+                            guard let self, self.libraryOperations.isCurrentTask(generation) else { return }
                             self.trimMissingProgress = LibraryScanProgress(current: current, total: total)
                             self.trimMissingCurrentPath = path
-                            self.libraryScanStatus = "Trim Missing • \(current) of \(total) sources checked"
+                            self.libraryScanStatus = "Test Links • \(current) of \(total) sources checked"
                         }
                     }
                 )
@@ -476,22 +626,24 @@ final class PlayerViewModel {
             } onCancel: {
                 integrityTask.cancel()
             }
-            guard generation == self.libraryScanGeneration, !Task.isCancelled else { return }
+            guard self.libraryOperations.isCurrentTask(generation), !Task.isCancelled else { return }
             do {
-                try libraryDatabase.trimMissingPaths(result.missingSources)
+                try libraryDatabase.markSourcesDead(result.missingSources)
                 self.trimmedLibraryScanRootIDs.formUnion(result.missingSources.map(\.rootID))
                 self.persistTrimmedLibraryRootIDs()
                 self.reloadLibraryScanRoots()
                 self.reloadDatabaseGameItems()
-                self.libraryScanStatus = "Trim Missing • \(result.checkedCount) sources checked • \(result.missingSources.count) missing removed"
+                self.refreshDeadLinkSummary()
+                self.libraryScanStatus = "Test Links • \(result.checkedCount) sources checked • \(result.missingSources.count) missing marked dead"
             } catch {
                 self.libraryScanStatus = "Integrity check failed: \(error.localizedDescription)"
             }
         }
+        libraryOperations.installTask(task, generation: generation)
     }
 
     func rescanEnabledLibraryRoots() {
-        runModernLibraryScan(for: libraryScanRoots.filter(\.isEnabled), mode: .newScan)
+        runModernLibraryScan(for: libraryScanRoots.filter(\.isEnabled), mode: requestedLibraryScanMode)
     }
 
     func purgeLibraryDatabase() {
@@ -506,6 +658,7 @@ final class PlayerViewModel {
             reloadLibraryScanRoots()
             reloadDatabaseGameItems()
             resetSidebarContext(message: "Database purged")
+            refreshDeadLinkSummary()
             libraryScanStatus = "Database purged"
         } catch {
             libraryScanStatus = "Could not purge database: \(error.localizedDescription)"
@@ -524,12 +677,21 @@ final class PlayerViewModel {
 
     func stopLibraryScan() {
         guard libraryScanInProgress else { return }
-        libraryScanGeneration += 1
-        libraryScanTask?.cancel()
-        libraryScanTask = nil
+        libraryOperations.cancelActiveTask()
         libraryScanInProgress = false
-        libraryScanProgressByRootID = [:]
+        libraryScanRequestQueue.clear()
+        libraryOperations.resetScanProgress()
         libraryScanStatus = "Scan stopped"
+    }
+
+    private var requestedLibraryScanMode: ScanMode {
+        forceLibraryScan ? .newScan : .incremental
+    }
+
+    var queuedLibraryScanCount: Int { libraryScanRequestQueue.count }
+
+    var libraryOperationProgress: LibraryScanProgress? {
+        libraryOperations.operationProgress
     }
 
     private func runModernLibraryScan(for roots: [LibraryScanRoot], mode: ScanMode) {
@@ -537,13 +699,20 @@ final class PlayerViewModel {
             libraryScanStatus = "Library database unavailable."
             return
         }
-        libraryScanTask?.cancel()
-        libraryScanGeneration += 1
-        let generation = libraryScanGeneration
+        if libraryScanInProgress {
+            libraryScanRequestQueue.enqueue(roots: roots, mode: mode)
+            libraryScanStatus = "Scan queued • \(libraryScanRequestQueue.count) waiting"
+            return
+        }
+        let generation = libraryOperations.beginTask()
         libraryScanInProgress = true
-        resetLibraryScanProgress()
-        libraryScanTask = Task { @MainActor [weak self] in
+        libraryOperations.resetScanProgress()
+        libraryScanStatus = mode == .newScan ? "Preparing forced scan…" : "Preparing incremental scan…"
+        let task = Task { @MainActor [weak self] in
             guard let self else { return }
+            // Let Options render the active-state controls and progress bar
+            // before any database setup begins on the main actor.
+            await Task.yield()
             for root in roots {
                 await self.runModernLibraryScanRoot(
                     root,
@@ -552,9 +721,24 @@ final class PlayerViewModel {
                     generation: generation
                 )
             }
-            if generation == self.libraryScanGeneration {
+            if self.libraryOperations.isCurrentTask(generation) {
                 self.libraryScanInProgress = false
+                self.libraryOperations.finishTask(generation: generation)
+                self.startNextQueuedLibraryScan()
             }
+        }
+        libraryOperations.installTask(task, generation: generation)
+    }
+
+    private func startNextQueuedLibraryScan() {
+        guard !libraryScanInProgress else { return }
+        while let request = libraryScanRequestQueue.dequeue() {
+            let liveRoots = request.rootIDs.compactMap { rootID in
+                libraryScanRoots.first(where: { $0.id == rootID })
+            }
+            guard !liveRoots.isEmpty else { continue }
+            runModernLibraryScan(for: liveRoots, mode: request.mode)
+            return
         }
     }
 
@@ -564,43 +748,56 @@ final class PlayerViewModel {
         database: LibraryDatabase,
         generation: Int
     ) async {
-        guard generation == libraryScanGeneration, !Task.isCancelled else { return }
-        let coordinator = LibraryScanCoordinator(
-            database: database,
-            archiveScanDepth: fastLibraryScan ? .fast : .deep
-        )
+        guard libraryOperations.isCurrentTask(generation), !Task.isCancelled else { return }
         let liveLog = LibraryScanLiveLogWindow(root: root)
         liveScanLogs[root.id] = liveLog
-        setLibraryScanProgress(rootID: root.id, current: 0, total: 0)
+        libraryOperations.setScanProgress(rootID: root.id, current: 0, total: 0)
         defer {
             if liveScanLogs[root.id] === liveLog {
                 liveScanLogs[root.id] = nil
             }
-            libraryScanProgressByRootID[root.id] = nil
+            libraryOperations.clearScanProgress(rootID: root.id)
         }
-        libraryScanStatus = "Preparing \(mode.rawValue) scan: \(root.standardizedURL.lastPathComponent)…"
+        let modeTitle = mode == .newScan ? "forced" : "incremental"
+        libraryScanStatus = "Preparing \(modeTitle) scan: \(root.standardizedURL.lastPathComponent)…"
         do {
-            let summary = try await coordinator.run(root: root, mode: mode) { [weak self] status in
-                self?.libraryScanStatus = status
-            } progress: { [weak self] current, total in
-                self?.setLibraryScanProgress(rootID: root.id, current: current, total: total)
-            } activity: { [weak liveLog] current, total, detail in
-                liveLog?.update(current: current, total: total, detail: detail)
-            } issue: { [weak liveLog] line in
-                liveLog?.append(line)
-            }
-            guard generation == libraryScanGeneration else { return }
+            let databaseURL = database.databaseURL
+            let summary = try await Task.detached(priority: .utility) {
+                let scanDatabase = try LibraryDatabase(databaseURL: databaseURL)
+                let coordinator = LibraryScanCoordinator(database: scanDatabase)
+                return try await coordinator.run(root: root, mode: mode) { [weak self] status in
+                    Task { @MainActor in
+                        guard let self, self.libraryOperations.isCurrentTask(generation) else { return }
+                        self.libraryScanStatus = status
+                    }
+                } progress: { [weak self] current, total in
+                    Task { @MainActor in
+                        guard let self, self.libraryOperations.isCurrentTask(generation) else { return }
+                        self.libraryOperations.setScanProgress(rootID: root.id, current: current, total: total)
+                    }
+                } activity: { [weak liveLog] current, total, detail in
+                    Task { @MainActor in
+                        liveLog?.update(current: current, total: total, detail: detail)
+                    }
+                } issues: { [weak liveLog] lines in
+                    Task { @MainActor in
+                        liveLog?.append(lines)
+                    }
+                }
+            }.value
+            guard libraryOperations.isCurrentTask(generation) else { return }
             liveLog.finish(successful: summary.successful, failed: summary.failed, unsupported: summary.unsupported)
             libraryScanStatus = "\(summary.successful) / \(summary.successful + summary.failed + summary.unsupported)"
             trimmedLibraryScanRootIDs.remove(root.id)
             persistTrimmedLibraryRootIDs()
             reloadLibraryScanRoots()
             reloadDatabaseGameItems()
+            refreshDeadLinkSummary()
         } catch is CancellationError {
-            guard generation == libraryScanGeneration else { return }
+            guard libraryOperations.isCurrentTask(generation) else { return }
             libraryScanStatus = "Scan cancelled"
         } catch {
-            guard generation == libraryScanGeneration else { return }
+            guard libraryOperations.isCurrentTask(generation) else { return }
             libraryScanStatus = "Scan failed for \(root.standardizedURL.lastPathComponent): \(error.localizedDescription)"
             try? database.markScanFailed(rootID: root.id, error: error.localizedDescription)
             reloadLibraryScanRoots()
@@ -688,9 +885,11 @@ final class PlayerViewModel {
         playlistFollowsCursor = enabled
 
         if enabled {
-            let selectedItems = databaseGameItems.filter { selectedDatabaseGameIDs.contains($0.id) }
-            if !selectedItems.isEmpty {
-                activateDatabaseGames(selectedItems, replace: true)
+            if sidebarBrowserMode != .files {
+                let selectedItems = databaseGameItems.filter { selectedDatabaseGameIDs.contains($0.id) }
+                if !selectedItems.isEmpty {
+                    activateDatabaseGames(selectedItems, replace: true)
+                }
             }
         }
     }
@@ -719,6 +918,41 @@ final class PlayerViewModel {
         activateDatabaseGames([item], replace: replace)
     }
 
+    func selectDatabaseFiles(ids: [String], primaryID: String?) {
+        selectedDatabaseFileIDs = Set(ids)
+        selectedDatabaseFileID = primaryID
+        selectedDatabaseFileFolders = []
+        if let primaryID,
+           let item = databaseFileItems.first(where: { $0.id == primaryID }) {
+            statusText = "\(item.filename) • \(item.trackCount) tracks"
+        }
+    }
+
+    func activateDatabaseFile(_ item: DatabaseFileItem, replace: Bool) {
+        activateDatabaseFiles([item], replace: replace)
+    }
+
+    func showOnDisk(_ url: URL) {
+        NSWorkspace.shared.activateFileViewerSelecting([url.standardizedFileURL])
+        statusText = "Showing \(url.lastPathComponent) on disk"
+    }
+
+    func selectDatabaseFileSidebarItems(
+        fileIDs: [String],
+        primaryFileID: String?,
+        folders: [DatabaseFileSidebarFolder]
+    ) {
+        selectedDatabaseFileIDs = Set(fileIDs)
+        selectedDatabaseFileID = primaryFileID
+        selectedDatabaseFileFolders = Set(folders)
+        let selectedItems = databaseFileItems.filter { selectedDatabaseFileIDs.contains($0.id) }
+        if folders.count == 1, selectedItems.isEmpty, let folder = folders.first {
+            statusText = "\(URL(fileURLWithPath: folder.path).lastPathComponent) • folder"
+        } else if !selectedItems.isEmpty || !folders.isEmpty {
+            statusText = "\(selectedItems.count + folders.count) selected"
+        }
+    }
+
     func activateSelectedDatabaseGamesWithReturn() {
         let selectedItems = databaseGameItems.filter { selectedDatabaseGameIDs.contains($0.id) }
         guard !selectedItems.isEmpty else { return }
@@ -737,38 +971,98 @@ final class PlayerViewModel {
         }
     }
 
+    func activateSelectedDatabaseFilesWithReturn() {
+        let selectedItems = databaseFileItems.filter { selectedDatabaseFileIDs.contains($0.id) }
+        let selectedFolders = Array(selectedDatabaseFileFolders)
+        guard !selectedItems.isEmpty || !selectedFolders.isEmpty else { return }
+        activateDatabaseFileSidebarSelection(fileItems: selectedItems, folders: selectedFolders, replace: true)
+    }
+
+    func activateDatabaseFileFolder(_ folder: DatabaseFileSidebarFolder) {
+        activateDatabaseFileSidebarSelection(fileItems: [], folders: [folder], replace: true)
+    }
+
     private func activateDatabaseGames(_ items: [DatabaseGameItem], replace: Bool) {
         guard !items.isEmpty else { return }
         let selectedIDs = items.map(\.id)
         selectedDatabaseGameIDs = Set(selectedIDs)
         selectedDatabaseGameID = selectedIDs.last
+        let label = items.count == 1 ? items[0].displayName : "\(items.count) games"
+        queueDatabaseLibraryTracks(
+            request: .games(items),
+            label: label,
+            sourceURL: URL(fileURLWithPath: label, isDirectory: true),
+            replace: replace
+        )
+    }
+
+    private func activateDatabaseFiles(_ items: [DatabaseFileItem], replace: Bool) {
+        guard !items.isEmpty else { return }
+        let selectedIDs = items.map(\.id)
+        selectedDatabaseFileIDs = Set(selectedIDs)
+        selectedDatabaseFileID = selectedIDs.last
+        let label = items.count == 1 ? items[0].filename : "\(items.count) files"
+        queueDatabaseLibraryTracks(
+            request: .files(items),
+            label: label,
+            sourceURL: URL(fileURLWithPath: label, isDirectory: false),
+            replace: replace
+        )
+    }
+
+    func appendDatabaseFileSidebarDrag(_ payload: DatabaseFileSidebarDragPayload) {
+        let fileItems = databaseFileItems.filter { payload.fileIDs.contains($0.id) }
+        activateDatabaseFileSidebarSelection(fileItems: fileItems, folders: payload.folders, replace: false)
+    }
+
+    private func activateDatabaseFileSidebarSelection(
+        fileItems: [DatabaseFileItem],
+        folders: [DatabaseFileSidebarFolder],
+        replace: Bool
+    ) {
+        guard !fileItems.isEmpty || !folders.isEmpty else { return }
+        let itemCount = fileItems.count + folders.count
+        let label = itemCount == 1
+            ? (fileItems.first?.filename ?? URL(fileURLWithPath: folders[0].path).lastPathComponent)
+            : "\(itemCount) items"
+        queueDatabaseLibraryTracks(
+            request: .fileSidebar(fileItems: fileItems, folders: folders),
+            label: label,
+            sourceURL: URL(fileURLWithPath: label, isDirectory: false),
+            replace: replace
+        )
+    }
+
+    private func queueDatabaseLibraryTracks(
+        request: LibraryPlaylistLoadRequest,
+        label: String,
+        sourceURL: URL,
+        replace: Bool
+    ) {
         queueBuildTask?.cancel()
         queueBuildGeneration += 1
         let generation = queueBuildGeneration
-        let label = items.count == 1 ? items[0].displayName : "\(items.count) games"
         statusText = "Loading \(label)..."
         let databaseURL = libraryDatabaseURL
-        let gameItems = items
 
         queueBuildTask = Task { [weak self] in
             guard let self else { return }
-            let loaded = await PlaylistQueueLoader.loadLibraryTracksForGames(
+            let loaded = await PlaylistQueueLoader.loadLibraryTracks(
                 databaseURL: databaseURL,
-                gameItems: gameItems
+                request: request
             )
-            let tracks = loaded.tracks
             guard !Task.isCancelled, generation == self.queueBuildGeneration else { return }
             self.applyQueuedTracks(
-                tracks,
-                from: URL(fileURLWithPath: label, isDirectory: true),
+                loaded.tracks,
+                from: sourceURL,
                 replace: replace,
                 preservePlayback: replace,
                 seedMetadataCache: loaded.metadata,
                 widthHints: loaded.widthHints
             )
             self.statusText = replace
-                ? "Queued \(tracks.count) tracks from \(label)"
-                : "Enqueued \(tracks.count) tracks from \(label)"
+                ? "Queued \(loaded.tracks.count) tracks from \(label)"
+                : "Enqueued \(loaded.tracks.count) tracks from \(label)"
         }
     }
 
@@ -1039,12 +1333,15 @@ final class PlayerViewModel {
             longPlayEnabled: longPlayEnabled,
             playlistFollowsCursor: playlistFollowsCursor,
             manualPreFadeSeconds: manualPreFadeSeconds,
+            endFadeEnabled: endFadeEnabled,
             spectrumGradientStartColor: spectrumGradientStartColor,
             spectrumGradientEndColor: spectrumGradientEndColor,
             spectrumPeakColor: spectrumPeakColor,
             spectrumEnabled: spectrumEnabled,
+            spectrumBandCount: spectrumBandCount,
             equalizerEnabled: equalizerEnabled,
             equalizerBandGains: equalizerBandGains,
+            appVolume: appVolume,
             randomPlaybackScopeRawValue: randomPlaybackScope.rawValue,
             repeatModeRawValue: repeatMode.rawValue,
             sidebarDoubleClickActionRawValue: sidebarDoubleClickAction.rawValue,
@@ -1052,8 +1349,9 @@ final class PlayerViewModel {
             databaseSidebarFontSize: databaseSidebarFontSize,
             databaseSidebarTextColor: databaseSidebarTextColor.rawValue,
             databaseSidebarMonospaceFont: databaseSidebarMonospaceFont,
+            playlistMonospaceFont: playlistMonospaceFont,
             sidebarSystemMode: sidebarSystemMode,
-            fastLibraryScan: fastLibraryScan
+            sidebarBrowserModeRawValue: sidebarBrowserMode.rawValue
         )
     }
 
@@ -1068,9 +1366,32 @@ final class PlayerViewModel {
         playbackStorage?.setEqualizer(enabled: equalizerEnabled, bandGains: equalizerBandGains)
     }
 
+    func setAppVolume(_ volume: Float) {
+        appVolume = AudioOutputVolume.clamped(volume)
+        savePreferencesNow()
+    }
+
+    func setSpectrumBandCount(_ bandCount: Int) {
+        spectrumBandCount = SpectrumBandCount.clamped(bandCount)
+        savePreferencesNow()
+    }
+
     func resetEqualizer() {
         equalizerBandGains = AudioEqualizer.bandFrequencies.map { _ in Float.zero }
         playbackStorage?.setEqualizer(enabled: equalizerEnabled, bandGains: equalizerBandGains)
+    }
+
+    func toggleEqualizerEnabled() {
+        equalizerEnabled.toggle()
+        savePreferencesNow()
+    }
+
+    func setEndFadeEnabled(_ enabled: Bool) {
+        endFadeEnabled = enabled
+        savePreferencesNow()
+        if currentTrack != nil {
+            applyPlaybackTiming()
+        }
     }
 
     func setDatabaseSidebarTextColor(_ color: DatabaseSidebarTextColor) {
@@ -1083,6 +1404,11 @@ final class PlayerViewModel {
         savePreferencesNow()
     }
 
+    func setPlaylistMonospaceFont(_ enabled: Bool) {
+        playlistMonospaceFont = enabled
+        savePreferencesNow()
+    }
+
     func setSidebarSystemMode(_ enabled: Bool) {
         sidebarSystemMode = enabled
         expandedDatabaseSystems = enabled && !sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -1091,9 +1417,115 @@ final class PlayerViewModel {
         savePreferencesNow()
     }
 
-    func setFastLibraryScan(_ enabled: Bool) {
-        fastLibraryScan = enabled
+    func setSidebarBrowserMode(_ mode: SidebarBrowserMode) {
+        sidebarBrowserMode = mode
         savePreferencesNow()
+    }
+
+    func refreshArchiveCacheSummary() {
+        guard !isClearingArchiveCache else { return }
+        archiveCacheSummaryTask?.cancel()
+        archiveCacheSummaryTask = Task { [weak self] in
+            let summary = await Task.detached(priority: .utility) {
+                ZipArchiveSupport.cacheSummary()
+            }.value
+            guard !Task.isCancelled else { return }
+            self?.archiveCacheSummaryText = Self.archiveCacheSummaryText(for: summary)
+        }
+    }
+
+    func clearArchiveCache() {
+        guard !isClearingArchiveCache, !libraryScanInProgress else { return }
+        isClearingArchiveCache = true
+        archiveCacheSummaryTask?.cancel()
+        playlistLoadTask?.cancel()
+        let playback = playbackStorage
+
+        archiveCacheClearTask = Task { [weak self] in
+            if let playback {
+                await playback.stopPlayback()
+            }
+            do {
+                try await Task.detached(priority: .utility) {
+                    try ZipArchiveSupport.clearCache()
+                }.value
+                guard !Task.isCancelled else { return }
+                self?.isPlaying = false
+                self?.playbackReachedEnd = false
+                self?.statusText = "Archive cache cleared."
+            } catch {
+                self?.statusText = "Could not clear archive cache: \(error.localizedDescription)"
+            }
+            self?.isClearingArchiveCache = false
+            self?.refreshArchiveCacheSummary()
+        }
+    }
+
+    func refreshDeadLinkSummary() {
+        guard !isDeletingDeadLinks else { return }
+        let generation = deadLinkSummaryTaskOwner.begin()
+        let databaseURL = libraryDatabase?.databaseURL
+        let task = Task { @MainActor [weak self] in
+            let summary = await Task.detached(priority: .utility) {
+                databaseURL.flatMap { try? LibraryDatabaseMaintenance.summary(databaseURL: $0) }
+            }.value
+            guard let self,
+                  !Task.isCancelled,
+                  self.deadLinkSummaryTaskOwner.isCurrent(generation) else { return }
+            self.applyDeadLinkSummary(summary)
+            self.deadLinkSummaryTaskOwner.finish(generation: generation)
+        }
+        deadLinkSummaryTaskOwner.install(task, generation: generation)
+    }
+
+    func deleteDeadLinks() {
+        guard !isDeletingDeadLinks,
+              !libraryScanInProgress,
+              let databaseURL = libraryDatabase?.databaseURL else { return }
+        isDeletingDeadLinks = true
+        deadLinkSummaryTaskOwner.cancel()
+        deadLinkCleanupTask = Task { @MainActor [weak self] in
+            let result = await Task.detached(priority: .utility) {
+                Result { try LibraryDatabaseMaintenance.clearDeadLinks(databaseURL: databaseURL) }
+            }.value
+            guard let self, !Task.isCancelled else { return }
+            self.isDeletingDeadLinks = false
+            self.deadLinkCleanupTask = nil
+            switch result {
+            case .success(let clearedCount):
+                self.reloadLibraryScanRoots()
+                self.reloadDatabaseGameItems()
+                self.refreshDeadLinkSummary()
+                self.libraryScanStatus = clearedCount == 1
+                    ? "Database cleanup • 1 dead link cleared"
+                    : "Database cleanup • \(clearedCount) dead links cleared"
+            case .failure(let error):
+                self.libraryScanStatus = "Clear Dead Links failed: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func applyDeadLinkSummary(_ summary: LibraryDatabaseMaintenanceSummary?) {
+        guard let summary else {
+            deadLinkCount = 0
+            databaseEntryCount = 0
+            unlinkedDatabaseEntryCount = 0
+            deadLinkSummaryText = "Unavailable"
+            return
+        }
+        deadLinkCount = summary.deadLinkCount
+        databaseEntryCount = summary.indexedTrackCount
+        unlinkedDatabaseEntryCount = summary.unlinkedTrackCount
+        deadLinkSummaryText = summary.deadLinkSummaryText
+    }
+
+    func toggleDatabaseFileFolder(_ folderID: String) {
+        databaseFileSidebar.toggleFolder(folderID)
+    }
+
+    private static func archiveCacheSummaryText(for summary: ZipArchiveSupport.CacheSummary) -> String {
+        let fileLabel = summary.fileCount == 1 ? "file" : "files"
+        return "\(summary.displaySize) • \(summary.fileCount) cached \(fileLabel)"
     }
 
     func toggleDatabaseSystemExpansion(_ systemName: String) {
@@ -1705,7 +2137,7 @@ final class PlayerViewModel {
 
     var currentTrackSupportsLongPlay: Bool {
         guard let extensionName = currentTrack?.playablePathExtension else { return true }
-        return GMEFormatSupport.supportedExtensions.contains(extensionName.lowercased())
+        return PlaybackFormatRegistry.admits(pathExtension: extensionName)
     }
 
     var effectivePreFadeSeconds: Int {
@@ -1716,8 +2148,27 @@ final class PlayerViewModel {
         effectivePreFadeSeconds + fadeSeconds
     }
 
+    var currentTrackDurationReadout: String {
+        Self.formatTime(totalPlaybackSeconds)
+    }
+
     var elapsedReadout: String {
-        "\(Self.formatTime(Int(displayedElapsedSeconds.rounded()))) / \(Self.formatTime(totalPlaybackSeconds))"
+        Self.formatTime(Int(displayedElapsedSeconds.rounded()))
+    }
+
+    /// Sum the durations the playlist has actually discovered. A plus suffix
+    /// keeps a partial total honest while asynchronous metadata inspection is
+    /// still filling in unknown tracks.
+    var playlistTotalDurationReadout: String {
+        guard !playlist.isEmpty else { return "0:00" }
+        let knownDurations = playlist.compactMap { track -> Int? in
+            guard let milliseconds = metadataCache[track.id]?.playLengthMs,
+                  milliseconds > 0 else { return nil }
+            return milliseconds / 1_000
+        }
+        let total = knownDurations.reduce(0, +)
+        let isPartial = knownDurations.count != playlist.count
+        return "\(Self.formatTime(total))\(isPartial ? "+" : "")"
     }
 
     var statusPathReadout: String {
@@ -1976,23 +2427,17 @@ final class PlayerViewModel {
                 return true
             }
 
-            // Fast archive scans deliberately retain a playable archive leaf
-            // without materializing it. Hydrate that empty metadata only after
-            // the game has been placed in the playlist.
-            return track.isArchiveEntry && (
-                metadata.comment == FastScanPlaceholder.metadataComment
-                    || (
-                        metadata.game.isEmpty
-                            && metadata.song.isEmpty
-                            && metadata.system.isEmpty
-                            && metadata.author.isEmpty
-                            && metadata.comment.isEmpty
-                            && metadata.introLengthMs == 0
-                            && metadata.loopLengthMs == 0
-                            && metadata.playLengthMs == 0
-                            && metadata.fadeLengthMs == 0
-                    )
-            )
+            // Repair incomplete legacy archive rows after they enter a playlist.
+            return track.isArchiveEntry
+                && metadata.game.isEmpty
+                && metadata.song.isEmpty
+                && metadata.system.isEmpty
+                && metadata.author.isEmpty
+                && metadata.comment.isEmpty
+                && metadata.introLengthMs == 0
+                && metadata.loopLengthMs == 0
+                && metadata.playLengthMs == 0
+                && metadata.fadeLengthMs == 0
         }
         if missingTracks.isEmpty {
             if playlistColumnWidthHints == nil {
@@ -2127,17 +2572,42 @@ final class PlayerViewModel {
     }
 
     private func reloadDatabaseGameItems() {
-        databaseSidebar.replaceGameItems((try? libraryDatabase?.loadGameItems()) ?? [])
-        if sidebarSystemMode, !sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            expandedDatabaseSystems = Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
+        guard let databaseURL = libraryDatabase?.databaseURL else {
+            databaseSidebarLoadTaskOwner.cancel()
+            isLoadingDatabaseSidebar = false
+            databaseSidebar.clear()
+            databaseFileSidebar.clear()
+            return
         }
-        if randomPlaybackScope == .library {
-            randomLibraryTracks = []
-            randomLibraryLoadGeneration += 1
-            randomLibraryLoadTask?.cancel()
-            randomLibraryLoadTask = nil
-            loadRandomLibraryTracks()
+        let generation = databaseSidebarLoadTaskOwner.begin()
+        isLoadingDatabaseSidebar = true
+        // Loading and grouping the complete files sidebar can be expensive for
+        // a JoshW-sized library. It must never delay first-window creation or
+        // hold the main actor while a scan refreshes the browser.
+        let task = Task { [weak self] in
+            let content = await Task.detached(priority: .userInitiated) {
+                (try? LibraryDatabase.loadSidebarContent(databaseURL: databaseURL)) ?? .empty
+            }.value
+            guard !Task.isCancelled,
+                  let self,
+                  self.databaseSidebarLoadTaskOwner.isCurrent(generation) else { return }
+            self.isLoadingDatabaseSidebar = false
+            self.databaseSidebar.replaceGameItems(content.gameItems)
+            self.databaseFileSidebar.replaceFileItems(content.fileItems)
+            if self.sidebarSystemMode,
+               !self.sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                self.expandedDatabaseSystems = Set(self.visibleDatabaseGameItems.map { self.sidebarSystemName(for: $0) })
+            }
+            if self.randomPlaybackScope == .library {
+                self.randomLibraryTracks = []
+                self.randomLibraryLoadGeneration += 1
+                self.randomLibraryLoadTask?.cancel()
+                self.randomLibraryLoadTask = nil
+                self.loadRandomLibraryTracks()
+            }
+            self.databaseSidebarLoadTaskOwner.finish(generation: generation)
         }
+        databaseSidebarLoadTaskOwner.install(task, generation: generation)
     }
 
     private func persistLibraryScanRootOrder() {
@@ -2178,6 +2648,7 @@ final class PlayerViewModel {
         rootURL = nil
         selectedFolderPath = nil
         databaseSidebar.clear()
+        databaseFileSidebar.clear()
         browsedFolderTracks = []
         playlist = []
         syncManualPlaylistOrder()
@@ -2197,19 +2668,20 @@ final class PlayerViewModel {
         rootURL = nil
         selectedFolderPath = nil
         databaseSidebar.clearSelection()
+        databaseFileSidebar.clearSelection()
         browsedFolderTracks = []
         sidebarSearchText = ""
         playlistColumnWidthHints = nil
         statusText = message
     }
 
-    private func restorePlaybackPreferences() {
-        let preferences = AppSessionPersistence.restorePlaybackPreferences()
+    private func restorePlaybackPreferences(_ preferences: RestoredPlaybackPreferences) {
         longPlayEnabled = preferences.longPlayEnabled
         playlistFollowsCursor = preferences.playlistFollowsCursor
         if let storedManualPreFade = preferences.manualPreFadeSeconds {
             manualPreFadeSeconds = storedManualPreFade
         }
+        endFadeEnabled = preferences.endFadeEnabled
         if let storedStartColor = preferences.spectrumGradientStartColor.flatMap(AppSessionPersistence.deserializeColor) {
             spectrumGradientStartColor = storedStartColor
         }
@@ -2220,11 +2692,13 @@ final class PlayerViewModel {
             spectrumPeakColor = storedPeakColor
         }
         spectrumEnabled = preferences.spectrumEnabled
+        spectrumBandCount = preferences.spectrumBandCount
         equalizerEnabled = preferences.equalizerEnabled
         if let storedGains = preferences.equalizerBandGains,
            storedGains.count == AudioEqualizer.bandFrequencies.count {
             equalizerBandGains = storedGains.map { AudioEqualizer.clampedGain(Float($0)) }
         }
+        appVolume = AudioOutputVolume.clamped(Float(preferences.appVolume))
         randomPlaybackScope = RandomPlaybackScope(rawValue: preferences.randomPlaybackScopeRawValue ?? "off") ?? .off
         repeatMode = RepeatMode(rawValue: preferences.repeatModeRawValue ?? "off") ?? .off
         if randomPlaybackScope == .library { loadRandomLibraryTracks() }
@@ -2241,8 +2715,9 @@ final class PlayerViewModel {
             databaseSidebarTextColor = storedSidebarTextColor
         }
         databaseSidebarMonospaceFont = preferences.databaseSidebarMonospaceFont
+        playlistMonospaceFont = preferences.playlistMonospaceFont
         sidebarSystemMode = preferences.sidebarSystemMode
-        fastLibraryScan = preferences.fastLibraryScan
+        sidebarBrowserMode = SidebarBrowserMode(rawValue: preferences.sidebarBrowserModeRawValue ?? "games") ?? .games
         if sidebarSystemMode, !sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             expandedDatabaseSystems = Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
         }
@@ -2285,17 +2760,14 @@ final class PlayerViewModel {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
     }
 
-    private func restorePlaylistColumnState() {
-        let state = AppSessionPersistence.restorePlaylistColumnState()
+    private func restorePlaylistColumnState(_ state: RestoredPlaylistColumnState) {
         pendingPlaylistColumnOrder = state.order
         pendingPlaylistColumnVisibility = state.visibility
         pendingPlaylistColumnWidths = state.widths
     }
 
-    private func restorePersistedPlaylist() {
-        guard let session = AppSessionPersistence.restoreSessionState(
-            supportedExtensions: SPCFileScanner.supportedExtensions
-        ) else { return }
+    private func restorePersistedPlaylist(_ session: RestoredSessionState?) {
+        guard let session else { return }
         playlist = session.tracks
         if let selectedTrackID = session.selectedTrackID {
             self.selectedTrackID = session.tracks.first(where: { $0.id == selectedTrackID })?.id
@@ -2360,16 +2832,8 @@ final class PlayerViewModel {
         libraryScanProgressByRootID[rootID]?.fraction
     }
 
-    private func resetLibraryScanProgress() {
-        libraryScanProgressByRootID = [:]
-    }
-
-    private func setLibraryScanProgress(rootID: Int64, current: Int, total: Int) {
-        let safeTotal = max(total, 0)
-        libraryScanProgressByRootID[rootID] = LibraryScanProgress(
-            current: min(max(current, 0), safeTotal),
-            total: safeTotal
-        )
+    func libraryScanIsPreparing(rootID: Int64) -> Bool {
+        libraryScanProgressByRootID[rootID]?.total == 0
     }
 
     func savePlaylistM3U() {
@@ -2409,7 +2873,7 @@ final class PlayerViewModel {
         let tracks = PlaylistM3UCodec.decode(
             contents,
             baseDirectory: url.deletingLastPathComponent(),
-            supportedExtensions: SPCFileScanner.supportedExtensions
+            supportedExtensions: PlaybackFormatRegistry.supportedExtensions
         )
 
         guard !tracks.isEmpty else { return }
@@ -2435,13 +2899,16 @@ final class PlayerViewModel {
         updateRemoteTransportState()
     }
 
-    private func restoreInitialSidebarMode() {
-        librarySelectedFolderPath = AppSessionPersistence.lastLibrarySelectedFolderPath()
+    private func restoreInitialSidebarMode(
+        lastRootPath: String?,
+        lastLibrarySelectedFolderPath: String?
+    ) {
+        librarySelectedFolderPath = lastLibrarySelectedFolderPath
 
         let enabledRoots = libraryScanRoots.filter(\.isEnabled)
-        if let restoredRootPath = AppSessionPersistence.lastRootPath(),
-           let restoredRoot = enabledRoots.first(where: { $0.standardizedURL.path == restoredRootPath }) {
-            let restoredSelection = AppSessionPersistence.lastLibrarySelectedFolderPath()
+        if let lastRootPath,
+           let restoredRoot = enabledRoots.first(where: { $0.standardizedURL.path == lastRootPath }) {
+            let restoredSelection = lastLibrarySelectedFolderPath
             loadRoot(url: restoredRoot.standardizedURL)
             if let restoredSelection,
                restoredSelection.hasPrefix(restoredRoot.standardizedURL.path) {
@@ -2449,7 +2916,7 @@ final class PlayerViewModel {
                 librarySelectedFolderPath = restoredSelection
             }
         } else if let firstEnabledRoot = enabledRoots.first {
-            let restoredSelection = AppSessionPersistence.lastLibrarySelectedFolderPath()
+            let restoredSelection = lastLibrarySelectedFolderPath
             loadRoot(url: firstEnabledRoot.standardizedURL)
             if let restoredSelection,
                restoredSelection.hasPrefix(firstEnabledRoot.standardizedURL.path) {

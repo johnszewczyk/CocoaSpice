@@ -1,7 +1,7 @@
 import Foundation
 
 enum SPCFileScanner {
-    static let supportedExtensions = GMEFormatSupport.supportedExtensions
+    static let supportedExtensions = PlaybackFormatRegistry.supportedExtensions
 
     static func childFolders(in folderURL: URL) -> [SidebarFolder] {
         let urls = (try? FileManager.default.contentsOfDirectory(
@@ -24,7 +24,7 @@ enum SPCFileScanner {
         )) ?? []
 
         return urls
-            .filter { supportedExtensions.contains($0.pathExtension.lowercased()) }
+            .filter { PlaybackFormatRegistry.admits(fileURL: $0) }
             .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
             .map { TrackItem(url: $0) }
     }
@@ -59,7 +59,7 @@ enum SPCFileScanner {
             if values?.isDirectory == true {
                 folders.append(SidebarSearchItem(url: url, kind: .folder, primaryTextOverride: nil, secondaryTextOverride: nil))
             } else if values?.isRegularFile == true,
-                      supportedExtensions.contains(url.pathExtension.lowercased()) {
+                      PlaybackFormatRegistry.admits(fileURL: url) {
                 let track = TrackItem(url: url)
                 tracks.append(
                     SidebarSearchItem(

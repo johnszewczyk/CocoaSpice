@@ -23,11 +23,13 @@
 - Frame-accounting helpers derive position from the session origin and frames supplied to output; completion helpers require planned/native completion and an empty output buffer.
 - The native output boundary uses a preallocated C11 atomic stereo ring buffer and an `AVAudioSourceNode` endpoint.
 - The shared output graph routes `AVAudioSourceNode` through one ten-band `AVAudioUnitEQ` before the main mixer. Equalizer mutation stays on the playback queue and applies before the mixer spectrum tap, so every decoder shares the same post-decode processing path.
+- The optional toolbar spectrum uses a 4,410-frame mixer tap (10 Hz at 44.1 kHz) and a 4,096-point real FFT with 10.77 Hz nominal bin spacing. It integrates FFT power proportionally by each bin's overlap with a fractional-octave band, avoiding empty 40-band intervals between bin centers. 10/20/40 bars mean 1/2/4 bands per octave from 20 Hz through 20.48 kHz. While playing, a 45 FPS timer draws direct bar targets and peak caps; when disabled or stopped, the timer is invalidated, the mixer tap is removed, and no analyzer/display work runs.
+- The six-second end fade is a persisted Playback preference. Disabling it passes a zero-second fade into the timing plan so metadata-timed tracks use the decoder's native ending.
 - `NativePlaybackSession` owns decoder creation, generation invalidation, dedicated refill work, high-water priming, seek rebuilds, route-change recovery, and one completion callback per generation.
 - Session refill passes decoder channel buffers directly into the native ring buffer without constructing intermediate Swift arrays.
 - `PlaybackEngine` is the app-facing façade and delegates playback, pause/resume, seek, stop, status, spectrum tap, and completion to the native session.
 - Startup, seek, and route recovery prime 8,192 frames before resuming; the refill worker grows the buffer toward its high-water mark after output starts.
-- Track and seek restarts fully stop `AVAudioEngine` before clearing and refilling the ring buffer so the graph cannot preserve render-ahead state and consume the new stream before it becomes audible.
+- Track and seek restarts stop and reset `AVAudioEngine` before clearing and refilling the ring buffer so the graph cannot preserve render-ahead state and consume the new stream before it becomes audible. The ring-buffer reader rejects any in-flight pre-clear read, so a stale callback yields silence instead of republishing old PCM after the next track has been queued.
 
 ## Rules
 
@@ -37,6 +39,7 @@
 - Preserve playback state across audio-engine configuration changes; do not treat an output-device change as user pause or stop.
 - Keep realtime output contracts independent of decoder calls and UI state; the callback/output boundary consumes PCM and publishes counters while the session owns decoder work.
 - Keep ring-buffer clear and telemetry reset coordinated by the session while output consumption is stopped.
+- Every track, seek, and stop transition must stop and reset the output graph before clearing or refilling PCM; an in-flight read must never republish pre-clear audio into the next stream generation.
 
 ## Files
 

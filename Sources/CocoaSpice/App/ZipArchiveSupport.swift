@@ -33,6 +33,15 @@ enum ZipArchiveSupport {
         let scanSignature: String?
     }
 
+    struct CacheSummary: Sendable {
+        let fileCount: Int
+        let byteCount: Int64
+
+        var displaySize: String {
+            ByteCountFormatter.string(fromByteCount: byteCount, countStyle: .file)
+        }
+    }
+
     enum ArchiveError: LocalizedError {
         case unsupportedArchive(URL)
         case processFailed(executable: String, message: String)
@@ -57,6 +66,37 @@ enum ZipArchiveSupport {
                 && url.deletingPathExtension().pathExtension.lowercased() == "tar")
     }
 
+    static func cacheSummary() -> CacheSummary {
+        let rootURL = cacheRootURL()
+        let fileManager = FileManager.default
+        guard fileManager.fileExists(atPath: rootURL.path),
+              let enumerator = fileManager.enumerator(
+                at: rootURL,
+                includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+                options: [.skipsHiddenFiles]
+              ) else {
+            return CacheSummary(fileCount: 0, byteCount: 0)
+        }
+
+        var fileCount = 0
+        var byteCount: Int64 = 0
+        for case let fileURL as URL in enumerator {
+            guard let values = try? fileURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+                  values.isRegularFile == true else {
+                continue
+            }
+            fileCount += 1
+            byteCount += Int64(values.fileSize ?? 0)
+        }
+        return CacheSummary(fileCount: fileCount, byteCount: byteCount)
+    }
+
+    static func clearCache() throws {
+        let rootURL = cacheRootURL()
+        guard FileManager.default.fileExists(atPath: rootURL.path) else { return }
+        try FileManager.default.removeItem(at: rootURL)
+    }
+
     static func listPlayableEntries(
         in archiveURL: URL,
         supportedExtensions: Set<String>
@@ -65,6 +105,28 @@ enum ZipArchiveSupport {
             in: archiveURL,
             supportedExtensions: supportedExtensions
         ).entries
+    }
+
+    /// Archive playlists are manifests rather than playable tracks. Keep this
+    /// narrow listing separate from scanner discovery so `.m3u` members never
+    /// become database audio rows on their own.
+    static func listPlaylistEntries(in archiveURL: URL) throws -> [ArchiveEntry] {
+        let archiveURL = archiveURL.standardizedFileURL
+        guard canHandle(archiveURL) else {
+            throw ArchiveError.unsupportedArchive(archiveURL)
+        }
+
+        return try listEntries(in: archiveURL).entries
+            .map(normalizeEntryPath)
+            .compactMap { entryPath in
+                guard !entryPath.isEmpty,
+                      !entryPath.hasSuffix("/"),
+                      !entryPath.hasPrefix("__MACOSX/"),
+                      URL(fileURLWithPath: entryPath).pathExtension.lowercased() == "m3u" else {
+                    return nil
+                }
+                return ArchiveEntry(archiveURL: archiveURL, entryPath: entryPath)
+            }
     }
 
     static func listPlayableEntryListing(
@@ -122,7 +184,7 @@ enum ZipArchiveSupport {
             return url
         case .zipEntry(let archiveURL, let entryPath):
             let extensionName = URL(fileURLWithPath: entryPath).pathExtension.lowercased()
-            guard let module = GMEFormatSupport.module(forPathExtension: extensionName) else {
+            guard let module = PlaybackFormatRegistry.module(forPathExtension: extensionName) else {
                 throw ArchiveError.invalidEntryPath(entryPath)
             }
             switch module.archiveMaterialization {
@@ -132,6 +194,9 @@ enum ZipArchiveSupport {
                 let setURL = try materializeArchive(at: archiveURL)
                 if case .completeSetWithLazyUSFAliases = module.archiveMaterialization {
                     try prepareLazyUSFDependencies(in: setURL)
+                }
+                if extensionName == "txtp" {
+                    try prepareTXTPDependencies(in: setURL)
                 }
                 return archiveMemberURL(in: setURL, entryPath: entryPath)
             }
@@ -147,6 +212,14 @@ enum ZipArchiveSupport {
         // to completion into the managed cache instead, then resolve the
         // requested member from that complete set.
         if archiveKind(for: archiveURL) == .tarZstandard {
+            if containsTarOctalEscape(normalizedEntryPath) {
+                let rootURL = try materializeEntries(at: archiveURL, entryPaths: [normalizedEntryPath])
+                let memberURL = archiveMemberURL(in: rootURL, entryPath: normalizedEntryPath)
+                guard FileManager.default.fileExists(atPath: memberURL.path) else {
+                    throw ArchiveError.invalidEntryPath(entryPath)
+                }
+                return memberURL
+            }
             let rootURL = try materializeArchive(at: archiveURL)
             let memberURL = archiveMemberURL(in: rootURL, entryPath: normalizedEntryPath)
             guard FileManager.default.fileExists(atPath: memberURL.path) else {
@@ -237,7 +310,7 @@ enum ZipArchiveSupport {
         let normalizedPaths = try Array(Set(entryPaths.map { entryPath in
             let normalized = normalizeEntryPath(entryPath)
             guard !normalized.isEmpty,
-                  sanitizedEntryPathComponents(normalized).joined(separator: "/") == normalized else {
+                  isSafeEntryPath(normalized) else {
                 throw ArchiveError.invalidEntryPath(entryPath)
             }
             return normalized
@@ -335,7 +408,7 @@ enum ZipArchiveSupport {
         archiveURL: URL,
         entryPaths: [String]
     ) throws -> URL {
-        guard let policy = GMEFormatSupport.archiveMaterializationForInspection(
+        guard let policy = PlaybackFormatRegistry.archiveMaterializationForInspection(
             entryPaths: entryPaths
         ) else {
             throw ArchiveError.invalidEntryPath(entryPaths.first ?? "")
@@ -348,6 +421,11 @@ enum ZipArchiveSupport {
             let root = try materializeArchive(at: archiveURL)
             if policy == .completeSetWithLazyUSFAliases {
                 try prepareLazyUSFDependencies(in: root)
+            }
+            if entryPaths.contains(where: {
+                URL(fileURLWithPath: $0).pathExtension.lowercased() == "txtp"
+            }) {
+                try prepareTXTPDependencies(in: root)
             }
             return root
         }
@@ -372,6 +450,60 @@ enum ZipArchiveSupport {
         }
     }
 
+    /// Some JoshW Wwise sets are flat archives but their generated TXTP
+    /// manifests retain the original directory hierarchy. Build cache-only
+    /// hard-link aliases for uniquely named referenced siblings so vgmstream
+    /// sees the paths declared by the manifest without modifying the source.
+    static func prepareTXTPDependencies(in materializedArchiveURL: URL) throws {
+        let fileManager = FileManager.default
+        guard let enumerator = fileManager.enumerator(
+            at: materializedArchiveURL,
+            includingPropertiesForKeys: [.isRegularFileKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+
+        var filesByLeafName: [String: [URL]] = [:]
+        var txtpFiles: [URL] = []
+        for case let fileURL as URL in enumerator {
+            guard (try? fileURL.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
+                continue
+            }
+            if fileURL.pathExtension.lowercased() == "txtp" {
+                txtpFiles.append(fileURL)
+            } else {
+                filesByLeafName[fileURL.lastPathComponent, default: []].append(fileURL)
+            }
+        }
+
+        for txtpURL in txtpFiles {
+            guard let contents = try? String(contentsOf: txtpURL, encoding: .utf8) else { continue }
+            for rawLine in contents.split(whereSeparator: \.isNewline) {
+                let reference = rawLine
+                    .split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
+                    .first
+                    .map(String.init)?
+                    .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                guard !reference.isEmpty,
+                      !reference.hasPrefix("/"),
+                      !reference.contains(".."),
+                      let leafName = reference.split(separator: "/").last.map(String.init),
+                      let candidates = filesByLeafName[leafName],
+                      candidates.count == 1 else {
+                    continue
+                }
+
+                let aliasURL = txtpURL.deletingLastPathComponent()
+                    .appendingPathComponent(reference, isDirectory: false)
+                guard !fileManager.fileExists(atPath: aliasURL.path) else { continue }
+                try fileManager.createDirectory(
+                    at: aliasURL.deletingLastPathComponent(),
+                    withIntermediateDirectories: true
+                )
+                try fileManager.linkItem(at: candidates[0], to: aliasURL)
+            }
+        }
+    }
+
     private static func materializedEntryURL(archiveURL: URL, entryPath: String) throws -> URL {
         let safeComponents = sanitizedEntryPathComponents(entryPath)
         guard let leaf = safeComponents.last else {
@@ -390,7 +522,7 @@ enum ZipArchiveSupport {
         let normalizedPaths = try Array(Set(entryPaths.map { entryPath in
             let normalized = normalizeEntryPath(entryPath)
             guard !normalized.isEmpty,
-                  sanitizedEntryPathComponents(normalized).joined(separator: "/") == normalized else {
+                  isSafeEntryPath(normalized) else {
                 throw ArchiveError.invalidEntryPath(entryPath)
             }
             return normalized
@@ -517,9 +649,7 @@ enum ZipArchiveSupport {
         case .tarZstandard:
             let data = try runTarZstandardListing(archiveURL)
             return ArchiveListing(
-                entries: String(decoding: data, as: UTF8.self)
-                    .split(whereSeparator: \.isNewline)
-                    .map(String.init),
+                entries: tarListingEntryPaths(from: data),
                 scanSignature: nil
             )
         }
@@ -610,11 +740,101 @@ enum ZipArchiveSupport {
             arguments: ["-d", "-q", "-c", archiveURL.path],
             outputURL: rawTarURL
         )
-        _ = try runProcess(
-            executable: try executable(named: "tar"),
-            arguments: ["-xf", rawTarURL.path, "-C", destinationURL.path]
-                + tarMemberSelectionPatterns(entryPaths)
-        )
+        let literalPaths = entryPaths.filter { !containsTarOctalEscape($0) }
+        if !literalPaths.isEmpty {
+            _ = try runProcess(
+                executable: try executable(named: "tar"),
+                arguments: ["-xf", rawTarURL.path, "-C", destinationURL.path]
+                    + tarMemberSelectionPatterns(literalPaths)
+            )
+        }
+
+        // BSD tar renders non-UTF-8 pathname bytes in listings as `\\255`.
+        // Passing that display text back as an argv string asks for four
+        // printable characters, not the original byte. Its NUL-delimited
+        // files-from input preserves the recovered raw pathname exactly.
+        for entryPath in entryPaths where containsTarOctalEscape(entryPath) {
+            let selectionURL = destinationURL.deletingLastPathComponent()
+                .appendingPathComponent(".\(UUID().uuidString).members", isDirectory: false)
+            defer { try? FileManager.default.removeItem(at: selectionURL) }
+            var selectionData = tarMemberPathData(fromListingPath: entryPath)
+            selectionData.append(0)
+            try selectionData.write(to: selectionURL, options: .atomic)
+
+            let outputURL = archiveMemberURL(in: destinationURL, entryPath: entryPath)
+            try FileManager.default.createDirectory(
+                at: outputURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+            try runProcessWritingOutput(
+                executable: try executable(named: "tar"),
+                arguments: ["-xOf", rawTarURL.path, "--null", "-T", selectionURL.path],
+                outputURL: outputURL
+            )
+        }
+    }
+
+    private static func containsTarOctalEscape(_ path: String) -> Bool {
+        let bytes = Array(path.utf8)
+        guard bytes.count >= 4 else { return false }
+        for index in 0...(bytes.count - 4) where bytes[index] == 0x5C {
+            if bytes[(index + 1)...(index + 3)].allSatisfy({ (0x30...0x37).contains($0) }) {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Turns BSD tar's byte stream into a displayable *and reversible* path.
+    /// `String(decoding:as:)` silently replaces malformed UTF-8 with U+FFFD,
+    /// losing the original byte before extraction can select it. Keep valid
+    /// UTF-8 as-is and render only invalid bytes with BSD-tar-style octal.
+    private static func tarListingEntryPaths(from data: Data) -> [String] {
+        data.split(separator: 0x0A, omittingEmptySubsequences: true).map { line in
+            var output = ""
+            var index = line.startIndex
+            while index < line.endIndex {
+                var decoded: String?
+                for length in 1...4 where line.distance(from: index, to: line.endIndex) >= length {
+                    let end = line.index(index, offsetBy: length)
+                    if let string = String(bytes: line[index..<end], encoding: .utf8),
+                       string.utf8.count == length {
+                        decoded = string
+                        index = end
+                        break
+                    }
+                }
+                if let decoded {
+                    output.append(decoded)
+                } else {
+                    output += String(format: "\\%03o", line[index])
+                    index = line.index(after: index)
+                }
+            }
+            return output
+        }
+    }
+
+    private static func tarMemberPathData(fromListingPath path: String) -> Data {
+        let bytes = Array(path.utf8)
+        var decoded: [UInt8] = []
+        decoded.reserveCapacity(bytes.count)
+        var index = 0
+        while index < bytes.count {
+            if bytes[index] == 0x5C,
+               index + 3 < bytes.count,
+               bytes[(index + 1)...(index + 3)].allSatisfy({ (0x30...0x37).contains($0) }) {
+                let value = bytes[(index + 1)...(index + 3)].reduce(0) { partial, digit in
+                    partial * 8 + Int(digit - 0x30)
+                }
+                decoded.append(UInt8(value))
+                index += 4
+            } else {
+                decoded.append(bytes[index])
+                index += 1
+            }
+        }
+        return Data(decoded)
     }
 
     /// BSD tar treats selected member arguments as patterns. Quote its pattern
@@ -716,11 +936,23 @@ enum ZipArchiveSupport {
         try outputHandle.close()
 
         // `tar -tf -` can close the pipe after it has parsed the TAR end
-        // markers. zstd then reports SIGPIPE even though the listing is
-        // complete. Tar is the authoritative consumer here.
+        // markers. Depending on the zstd build, that arrives as SIGPIPE or
+        // its normal exit-70 "Write error ... Broken pipe" report. Tar is
+        // the authoritative consumer here: accept only that precise upstream
+        // closure after tar has completed successfully.
+        let decompressorErrorText = String(
+            decoding: decompressorErrors.value,
+            as: UTF8.self
+        )
+        let decompressorReportedBrokenPipe = isExpectedTarListingBrokenPipe(
+            exitStatus: decompressor.terminationStatus,
+            terminationReason: decompressor.terminationReason,
+            stderr: decompressorErrorText
+        )
         let decompressorSucceeded = decompressor.terminationStatus == 0
             || (decompressor.terminationReason == .uncaughtSignal
                 && decompressor.terminationStatus == SIGPIPE)
+            || decompressorReportedBrokenPipe
         guard decompressorSucceeded, lister.terminationStatus == 0 else {
             let messages = [decompressorErrors.value, listerErrors.value]
                 .map { String(decoding: $0, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -731,6 +963,17 @@ enum ZipArchiveSupport {
             )
         }
         return try Data(contentsOf: outputURL)
+    }
+
+    static func isExpectedTarListingBrokenPipe(
+        exitStatus: Int32,
+        terminationReason: Process.TerminationReason,
+        stderr: String
+    ) -> Bool {
+        terminationReason == .exit
+            && exitStatus == 70
+            && stderr.localizedCaseInsensitiveContains("write error")
+            && stderr.localizedCaseInsensitiveContains("broken pipe")
     }
 
     private static func archiveFilePaths(in rootURL: URL) throws -> [String] {
@@ -759,10 +1002,18 @@ enum ZipArchiveSupport {
             .filter { !$0.isEmpty && $0 != "." && $0 != ".." }
     }
 
+    private static func isSafeEntryPath(_ entryPath: String) -> Bool {
+        !normalizeEntryPath(entryPath)
+            .split(separator: "/")
+            .contains("..")
+    }
+
     private static func normalizeEntryPath(_ entryPath: String) -> String {
         entryPath
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "\\", with: "/")
+            // BSD tar represents an otherwise non-UTF-8 member byte as an
+            // octal escape (for example `\\255`). That backslash is part of
+            // its reversible listing syntax, not a Windows path separator.
+            .replacingOccurrences(of: "\\", with: containsTarOctalEscape(entryPath) ? "\\" : "/")
             .split(separator: "/")
             .map(String.init)
             .filter { !$0.isEmpty }

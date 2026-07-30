@@ -175,11 +175,21 @@ uint64_t cs_audio_ring_buffer_read_stereo(
         right[offset] = buffer->right[slot];
     }
 
-    atomic_store_explicit(
-        &buffer->read_index,
-        read_index + frames_to_read,
-        memory_order_release
-    );
+    // Clearing advances read_index to the current writer position. Do not let
+    // an output callback that began before that transition publish its stale
+    // read position afterwards: doing so would expose old PCM ahead of the
+    // newly queued track. A failed compare-and-swap means clear won; report no
+    // frames so the source node fills this callback with silence.
+    uint64_t expected_read_index = read_index;
+    if (!atomic_compare_exchange_strong_explicit(
+            &buffer->read_index,
+            &expected_read_index,
+            read_index + frames_to_read,
+            memory_order_release,
+            memory_order_relaxed
+        )) {
+        return 0;
+    }
     atomic_fetch_add_explicit(&buffer->frames_read, frames_to_read, memory_order_relaxed);
     return frames_to_read;
 }

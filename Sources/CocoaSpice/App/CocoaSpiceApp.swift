@@ -6,6 +6,30 @@ extension Notification.Name {
 }
 
 @MainActor
+private enum CocoaSpiceWindowActivation {
+    private static var observer: NSObjectProtocol?
+
+    static func install() {
+        guard observer == nil else { return }
+        observer = NotificationCenter.default.addObserver(
+            forName: NSWindow.didBecomeKeyNotification,
+            object: nil,
+            queue: .main
+        ) { notification in
+            guard let notifiedWindow = notification.object as? NSWindow else { return }
+            Task { @MainActor [weak notifiedWindow] in
+                guard let window = notifiedWindow,
+                      window.title == "CocoaSpice" else { return }
+                NSApp.activate(ignoringOtherApps: true)
+                for appWindow in NSApp.windows where appWindow.isVisible {
+                    appWindow.orderFrontRegardless()
+                }
+            }
+        }
+    }
+}
+
+@MainActor
 private enum CocoaSpiceWindowDefaults {
     static func resetAll() {
         let defaults: [(String, NSSize)] = [
@@ -38,6 +62,7 @@ struct CocoaSpiceApp: App {
         DispatchQueue.main.async {
             NSApplication.shared.activate(ignoringOtherApps: true)
         }
+        CocoaSpiceWindowActivation.install()
     }
 
     var body: some Scene {

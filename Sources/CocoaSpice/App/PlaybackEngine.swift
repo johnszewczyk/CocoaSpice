@@ -1,4 +1,5 @@
 @preconcurrency import AVFoundation
+import Accelerate
 import Foundation
 import CGME
 
@@ -9,12 +10,13 @@ final class PlaybackEngine: @unchecked Sendable {
     private let queue = DispatchQueue(label: "CocoaSpice.playback", qos: .userInitiated)
     private let nativeSession: NativePlaybackSession
     private let requestLock = NSLock()
-    private let spectrumAnalyzer: SpectrumBandAnalyzer
+    private var spectrumAnalyzer: SpectrumBandAnalyzer
     private var currentPlaybackDuration: TimeInterval = 0
     private var spectrumLevelHandler: (@Sendable ([Float]) -> Void)?
     private var spectrumEnabled = true
     private var equalizerEnabled = false
     private var equalizerBandGains = AudioEqualizer.bandFrequencies.map { _ in Float.zero }
+    private var appVolume: Float = 1
     private var playbackStateHandler: (@Sendable (PlaybackStatusSnapshot) -> Void)?
     private var latestPlaybackRequest = 0
 
@@ -23,7 +25,7 @@ final class PlaybackEngine: @unchecked Sendable {
     private(set) var currentPlaybackPlan = PlaybackPlan(preFadeSeconds: 150, fadeSeconds: 6, totalSeconds: 156, usesNativeEnding: false, isLongPlay: false)
 
     init() {
-        spectrumAnalyzer = SpectrumBandAnalyzer(sampleRate: Float(sampleRate))
+        spectrumAnalyzer = SpectrumBandAnalyzer(sampleRate: Float(sampleRate), bandCount: SpectrumBandCount.defaultValue)
         nativeSession = try! NativePlaybackSession(
             sampleRate: sampleRate,
             channels: channels,
@@ -56,11 +58,27 @@ final class PlaybackEngine: @unchecked Sendable {
         }
     }
 
+    func setSpectrumBandCount(_ bandCount: Int) {
+        queue.async {
+            let clamped = SpectrumBandCount.clamped(bandCount)
+            guard self.spectrumAnalyzer.bandCount != clamped else { return }
+            self.spectrumAnalyzer = SpectrumBandAnalyzer(sampleRate: Float(self.sampleRate), bandCount: clamped)
+            self.spectrumLevelHandler?(Array(repeating: 0, count: clamped))
+        }
+    }
+
     func setEqualizer(enabled: Bool, bandGains: [Float]) {
         queue.async {
             self.equalizerEnabled = enabled
             self.equalizerBandGains = bandGains
             self.nativeSession.setEqualizer(enabled: enabled, bandGains: bandGains)
+        }
+    }
+
+    func setAppVolume(_ volume: Float) {
+        queue.async {
+            self.appVolume = AudioOutputVolume.clamped(volume)
+            self.nativeSession.setAppVolume(self.appVolume)
         }
     }
 
@@ -197,7 +215,7 @@ final class PlaybackEngine: @unchecked Sendable {
         currentTrack = nil
         currentPlaybackDuration = 0
         spectrumAnalyzer.reset()
-        spectrumLevelHandler?(Array(repeating: 0, count: SpectrumBandAnalyzer.bandCount))
+        spectrumLevelHandler?(Array(repeating: 0, count: spectrumAnalyzer.bandCount))
         publishPlaybackState()
     }
 
@@ -219,7 +237,7 @@ final class PlaybackEngine: @unchecked Sendable {
         guard nativeSession.isCurrentGeneration(generation) else { return }
         isPlaying = false
         spectrumAnalyzer.reset()
-        spectrumLevelHandler?(Array(repeating: 0, count: SpectrumBandAnalyzer.bandCount))
+        spectrumLevelHandler?(Array(repeating: 0, count: spectrumAnalyzer.bandCount))
         publishPlaybackState()
     }
 
@@ -245,37 +263,53 @@ final class PlaybackEngine: @unchecked Sendable {
 }
 
 private final class SpectrumBandAnalyzer: @unchecked Sendable {
-    static let bandCount = 8
-    private static let minimumBandFrequency: Float = 80
-    private static let maximumBandFrequency: Float = 4_000
+    // Ten octave intervals from 20 Hz through 20.48 kHz. The selectable 10,
+    // 20, and 40 displays therefore mean 1, 2, and 4 bands per octave; each
+    // higher-detail setting splits every prior band at its log midpoint.
+    private static let minimumBandFrequency: Float = 20
+    private static let maximumBandFrequency: Float = 20_480
+    private static let displayFloorDB: Float = -78
+    private static let displayCeilingDB: Float = -6
 
     private let sampleRate: Float
+    let bandCount: Int
     // Log-spaced centers over a chiptune-oriented range.
     // This preserves an orderly analyzer layout while biasing the visible activity
     // toward the region that tends to matter most for retro game music.
     // Equal spacing in log frequency gives each band the same relative width,
     // matching how real EQ bands are distributed across octaves.
-    private let bandFrequencies: [Float]
     private let bandEdges: [(lower: Float, upper: Float)]
-    private let analysisFrameCount = 256
-    private let minimumUpdateInterval: TimeInterval = 1.0 / 12.0
-    private var analysisBuffer = Array(repeating: Float.zero, count: 256)
+    // 4,096 samples give 10.77 Hz bins at 44.1 kHz. Unlike a center probe,
+    // bin powers are integrated across each fractional-octave band.
+    private let analysisFrameCount = 4_096
+    private let fftLog2n: vDSP_Length = 12
+    private let minimumUpdateInterval: TimeInterval = 1.0 / 10.0
+    private var analysisBuffer = Array(repeating: Float.zero, count: 4_096)
+    private var fftReal = Array(repeating: Float.zero, count: 2_048)
+    private var fftImaginary = Array(repeating: Float.zero, count: 2_048)
+    private let fftSetup: FFTSetup
     private var lastPublishUptime: TimeInterval = 0
 
-    init(sampleRate: Float) {
+    init(sampleRate: Float, bandCount: Int) {
         self.sampleRate = sampleRate
+        self.bandCount = SpectrumBandCount.clamped(bandCount)
+        guard let fftSetup = vDSP_create_fftsetup(fftLog2n, FFTRadix(kFFTRadix2)) else {
+            fatalError("Could not create spectrum FFT setup")
+        }
+        self.fftSetup = fftSetup
         let bandRatio = pow(
             Self.maximumBandFrequency / Self.minimumBandFrequency,
-            1 / Float(Self.bandCount)
+            1 / Float(self.bandCount)
         )
-        bandEdges = (0..<Self.bandCount).map { index in
+        bandEdges = (0..<self.bandCount).map { index in
             let lower = Self.minimumBandFrequency * pow(bandRatio, Float(index))
             let upper = Self.minimumBandFrequency * pow(bandRatio, Float(index + 1))
             return (lower: lower, upper: upper)
         }
-        bandFrequencies = bandEdges.map { edge in
-            sqrt(edge.lower * edge.upper)
-        }
+    }
+
+    deinit {
+        vDSP_destroy_fftsetup(fftSetup)
     }
 
     func reset() {
@@ -295,57 +329,62 @@ private final class SpectrumBandAnalyzer: @unchecked Sendable {
         guard channelCount > 0, frameCount > 0 else { return nil }
 
         let inverseChannelCount = 1.0 / Float(channelCount)
-        var rmsAccumulator: Float = 0
         for frame in 0..<frameCount {
             var monoSample: Float = 0
             for channel in 0..<channelCount {
                 monoSample += channelData[channel][frame]
             }
             monoSample *= inverseChannelCount
-            analysisBuffer[frame] = monoSample
-            rmsAccumulator += monoSample * monoSample
+            // A Hann window suppresses spectral leakage: a strong tone no
+            // longer paints every adjacent display band at nearly the same
+            // height just because it cuts across the sample boundary.
+            let window = frameCount > 1
+                ? 0.5 - (0.5 * cos((2 * Float.pi * Float(frame)) / Float(frameCount - 1)))
+                : 1
+            analysisBuffer[frame] = monoSample * window
         }
 
-        if frameCount < analysisFrameCount {
-            for frame in frameCount..<analysisFrameCount {
-                analysisBuffer[frame] = 0
+        let binFrequency = sampleRate / Float(frameCount)
+        let powerScale = 1.0 / Float(frameCount * frameCount)
+        var levels = Array(repeating: Float.zero, count: bandCount)
+        analysisBuffer.withUnsafeBufferPointer { input in
+            fftReal.withUnsafeMutableBufferPointer { real in
+                fftImaginary.withUnsafeMutableBufferPointer { imaginary in
+                    guard let inputBase = input.baseAddress,
+                          let realBase = real.baseAddress,
+                          let imaginaryBase = imaginary.baseAddress else { return }
+                    var split = DSPSplitComplex(realp: realBase, imagp: imaginaryBase)
+                    inputBase.withMemoryRebound(to: DSPComplex.self, capacity: frameCount / 2) {
+                        vDSP_ctoz($0, 2, &split, 1, vDSP_Length(frameCount / 2))
+                    }
+                    vDSP_fft_zrip(fftSetup, &split, 1, fftLog2n, FFTDirection(FFT_FORWARD))
+
+                    for index in bandEdges.indices {
+                        let edge = bandEdges[index]
+                        // An FFT bin represents a frequency cell centered on
+                        // its nominal frequency, not a single mathematical
+                        // point.  Assign its power by overlap with the display
+                        // band.  Whole-bin assignment left narrow 40-band
+                        // intervals between adjacent low-frequency bins empty.
+                        let firstBin = max(1, Int(floor(edge.lower / binFrequency)))
+                        let lastBin = min(frameCount / 2 - 1, Int(ceil(edge.upper / binFrequency)))
+                        guard firstBin <= lastBin else { continue }
+                        var power: Float = 0
+                        for bin in firstBin...lastBin {
+                            let binLower = (Float(bin) - 0.5) * binFrequency
+                            let binUpper = (Float(bin) + 0.5) * binFrequency
+                            let overlap = max(0, min(edge.upper, binUpper) - max(edge.lower, binLower))
+                            guard overlap > 0 else { continue }
+                            let binPower = (real[bin] * real[bin]) + (imaginary[bin] * imaginary[bin])
+                            power += binPower * (overlap / binFrequency)
+                        }
+                        let db = 10 * log10f(max(power * powerScale, Float.leastNonzeroMagnitude))
+                        levels[index] = min(1, max(0, (db - Self.displayFloorDB) / (Self.displayCeilingDB - Self.displayFloorDB)))
+                    }
+                }
             }
         }
-
-        let rms = sqrt(rmsAccumulator / Float(max(1, frameCount)))
-        let floor = max(0.0001, rms)
-
-        var levels = Array(repeating: Float.zero, count: Self.bandCount)
-        for index in bandFrequencies.indices {
-            let frequency = min(bandFrequencies[index], sampleRate * 0.45)
-            let magnitude = goertzelMagnitude(targetFrequency: frequency, sampleCount: analysisFrameCount)
-            let bandPower = magnitude * magnitude
-            let relative = sqrt(bandPower) / floor
-            levels[index] = min(1, log10f(1 + (relative * 6)) / log10f(7))
-        }
-
         return levels
-    }
-
-    private func goertzelMagnitude(targetFrequency: Float, sampleCount: Int) -> Float {
-        let omega = (2 * Float.pi * targetFrequency) / sampleRate
-        let cosine = cos(omega)
-        let sine = sin(omega)
-        let coefficient = 2 * cosine
-
-        var q0: Float = 0
-        var q1: Float = 0
-        var q2: Float = 0
-        for index in 0..<sampleCount {
-            q0 = coefficient * q1 - q2 + analysisBuffer[index]
-            q2 = q1
-            q1 = q0
-        }
-
-        let real = q1 - (q2 * cosine)
-        let imaginary = q2 * sine
-        let magnitudeSquared = max(0, (real * real) + (imaginary * imaginary))
-        return sqrt(magnitudeSquared) / Float(sampleCount)
     }
 }
 

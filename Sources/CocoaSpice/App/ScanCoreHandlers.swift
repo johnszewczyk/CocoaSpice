@@ -1,5 +1,48 @@
 import Foundation
 
+enum KDTSequenceDetector {
+    static func isSilentHillSequenceBank(_ fileURL: URL) -> Bool {
+        guard fileURL.pathExtension.lowercased() == "hd" else { return false }
+        let sequenceURL = fileURL.deletingPathExtension().appendingPathExtension("td")
+        guard let data = try? Data(contentsOf: sequenceURL, options: [.mappedIfSafe]), data.count >= 4 else {
+            return false
+        }
+        return data.prefix(4) == Data("SdDt".utf8)
+    }
+}
+
+enum WwiseBankDetector {
+    /// Wwise `BKHD` banks describe events and routing; audio is in their WEM
+    /// streams and generated TXTP manifests. They are not standalone tracks.
+    static func isEventBank(_ fileURL: URL) -> Bool {
+        guard fileURL.pathExtension.lowercased() == "bnk",
+              let header = try? Data(contentsOf: fileURL, options: [.mappedIfSafe]).prefix(4) else {
+            return false
+        }
+        return header == Data("BKHD".utf8)
+    }
+}
+
+enum CorruptAudioPayloadDetector {
+    static func reason(for fileURL: URL) -> String? {
+        let extensionName = fileURL.pathExtension.lowercased()
+        guard extensionName == "s98" || extensionName == "gsf" || extensionName == "minigsf",
+              let header = try? Data(contentsOf: fileURL, options: [.mappedIfSafe]).prefix(4) else {
+            return nil
+        }
+
+        switch extensionName {
+        case "s98" where header.prefix(3) != Data("S98".utf8):
+            return "Corrupt S98 payload: expected the S98 file signature."
+        case "gsf" where header.prefix(3) != Data("PSF".utf8),
+             "minigsf" where header.prefix(3) != Data("PSF".utf8):
+            return "Corrupt GSF payload: expected the PSF file signature."
+        default:
+            return nil
+        }
+    }
+}
+
 /// Metadata-only bridge to the installed decoder cores. This creates an
 /// inspector, never a playback session, and keeps the scanner's plugin route
 /// independent from the playback transport layer.
@@ -16,6 +59,12 @@ struct DecoderCoreScanHandler: ScanFormatHandler {
     }
 
     func inspect(fileURL: URL, route: ScanRoute) async throws -> ScanInspection {
+        if KDTSequenceDetector.isSilentHillSequenceBank(fileURL) {
+            throw SPCDecoderError.library("KDT1/SdDt sequence bank; playable rendering requires the original Konami sequence driver.")
+        }
+        if let corruption = CorruptAudioPayloadDetector.reason(for: fileURL) {
+            throw SPCDecoderError.library(corruption)
+        }
         let tracks = try await inspectionGate.withPermit {
             try await Task.detached(priority: .utility) {
                 let inspector = try PlaybackDecoderFactory.makeInspector(fileURL: fileURL)
@@ -40,9 +89,10 @@ struct SPCMetadataScanHandler: ScanFormatHandler {
     let fallback: DecoderCoreScanHandler
 
     func inspect(fileURL: URL, route: ScanRoute) async throws -> ScanInspection {
-        if let metadata = try await Task.detached(priority: .utility, operation: {
+        let shortcutMetadata = try? await Task.detached(priority: .utility, operation: {
             try SPCMetadataReader.read(fileURL: fileURL)
-        }).value {
+        }).value
+        if let metadata = shortcutMetadata {
             return ScanInspection(
                 route: route,
                 tracks: [ScanTrackMetadata(trackIndex: 0, trackCount: 1, metadata: metadata)]
@@ -93,12 +143,12 @@ struct PSFMetadataScanHandler: ScanFormatHandler {
 
 enum ScanCoreHandlers {
     static let registry = ScanPluginRegistry(
-        descriptors: GMEFormatSupport.scanPluginDescriptors
+        descriptors: PlaybackFormatRegistry.scanPluginDescriptors
     )
 
     static let handlers: ScanPluginHandlerRegistry = {
         var schedulers: [PlaybackDecoderBackend: ScanResourceScheduler] = [:]
-        let handlers: [any ScanFormatHandler] = GMEFormatSupport.modules.map { module in
+        let handlers: [any ScanFormatHandler] = PlaybackFormatRegistry.modules.map { module in
             let scheduler: ScanResourceScheduler
             if let existing = schedulers[module.backend] {
                 scheduler = existing

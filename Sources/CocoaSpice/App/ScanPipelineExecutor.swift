@@ -54,33 +54,38 @@ struct ScanPipelineExecutor: Sendable {
     let pluginRegistry: ScanPluginRegistry
     let handlerRegistry: ScanPluginHandlerRegistry
     let archiveProvider: any ScanArchiveProvider
-    let scheduler: ScanResourceScheduler
-    let archiveScanDepth: ArchiveScanDepth
+    let inspectionScheduler: ScanResourceScheduler
 
     init(
         pluginRegistry: ScanPluginRegistry = ScanCoreHandlers.registry,
         handlerRegistry: ScanPluginHandlerRegistry = ScanCoreHandlers.handlers,
         archiveProvider: (any ScanArchiveProvider)? = nil,
-        archiveScanDepth: ArchiveScanDepth = .deep,
-        scheduler: ScanResourceScheduler = ScanResourceScheduler(
-            permits: max(1, ProcessInfo.processInfo.activeProcessorCount)
-        )
+        scheduler: ScanResourceScheduler? = nil
     ) {
         self.pluginRegistry = pluginRegistry
         self.handlerRegistry = handlerRegistry
-        self.scheduler = scheduler
-        self.archiveScanDepth = archiveScanDepth
+        // Archive tools and metadata decoders have different bottlenecks.
+        // They deliberately receive independent lanes: a slow extractor no
+        // longer occupies an inspection permit, while callers/tests that pass
+        // one scheduler retain their explicit shared-budget behavior.
+        let archiveScheduler = scheduler ?? ScanResourceScheduler(
+            permits: max(1, ProcessInfo.processInfo.activeProcessorCount)
+        )
+        self.inspectionScheduler = scheduler ?? ScanResourceScheduler(
+            permits: max(1, ProcessInfo.processInfo.activeProcessorCount)
+        )
         self.archiveProvider = archiveProvider ?? ZipScanArchiveProvider(
             registry: pluginRegistry,
-            scheduler: scheduler
+            scheduler: archiveScheduler
         )
     }
 
     func process(
         plan: ScanPlan,
         progress: @escaping @Sendable (Int, Int, String) -> Void = { _, _, _ in },
+        activity: @escaping @Sendable (Int, Int, String) -> Void = { _, _, _ in },
         issue: @escaping @Sendable (ScanFailure) -> Void = { _ in },
-        persist: @escaping @MainActor @Sendable ([ScanPipelineResult]) throws -> Void
+        persist: @escaping @Sendable ([ScanPipelineResult]) async throws -> Void
     ) async throws -> ScanResultAccumulator {
         let accumulator = ScanResultAccumulator(discovered: plan.count)
         let cursor = ScanPlanCursor(count: plan.candidates.count)
@@ -96,21 +101,28 @@ struct ScanPipelineExecutor: Sendable {
                     while let index = cursor.take() {
                         try Task.checkCancellation()
                         let candidate = plan.candidates[index]
-                        let results = await self.process(candidate)
-                        let acceptedResults = await MainActor.run { () -> [ScanPipelineResult] in
+                        let results = await self.process(candidate) { detail in
+                            activity(completionCounter.current(), plan.count, detail)
+                        }
+                        // A huge archive can produce thousands of leaves.
+                        // Persist bounded batches instead of asking SQLite to
+                        // retain one giant transaction/result array at once.
+                        for resultBatch in results.batched(maximumCount: 128) {
+                            let batch = Array(resultBatch)
+                            let acceptedResults: [ScanPipelineResult]
                             do {
-                                try persist(results)
-                                return results
+                                try await persist(batch)
+                                acceptedResults = batch
                             } catch {
                                 // A disk/database failure belongs to this item. It must not
                                 // cancel unrelated validation work.
-                                return results.map { $0.persistenceFailure(message: error.localizedDescription) }
+                                acceptedResults = batch.map { $0.persistenceFailure(message: error.localizedDescription) }
                             }
-                        }
-                        for acceptedResult in acceptedResults {
-                            try await accumulator.accept(acceptedResult)
-                            if case .failure(let failure) = acceptedResult {
-                                issue(failure)
+                            for acceptedResult in acceptedResults {
+                                try await accumulator.accept(acceptedResult)
+                                if case .failure(let failure) = acceptedResult {
+                                    issue(failure)
+                                }
                             }
                         }
                         let identityDescription = candidate.identity.archiveEntry.map {
@@ -126,16 +138,13 @@ struct ScanPipelineExecutor: Sendable {
         return accumulator
     }
 
-    func process(_ candidate: ScanCandidate) async -> [ScanPipelineResult] {
+    func process(
+        _ candidate: ScanCandidate,
+        activity: @escaping @Sendable (String) -> Void = { _ in }
+    ) async -> [ScanPipelineResult] {
         do {
             if ZipArchiveSupport.canHandle(candidate.sourceURL), candidate.identity.archiveEntry == nil {
-                if archiveScanDepth == .fast {
-                    return [fastArchiveContainerResult(candidate)]
-                }
-                return await processArchive(candidate)
-            }
-            if archiveScanDepth == .fast {
-                return [fastFilenameResult(candidate)]
+                return await processArchive(candidate, activity: activity)
             }
             if let archiveEntry = candidate.identity.archiveEntry {
                 let materializedURL = try await materialize(candidate, archiveEntry: archiveEntry)
@@ -149,8 +158,12 @@ struct ScanPipelineExecutor: Sendable {
         }
     }
 
-    private func processArchive(_ candidate: ScanCandidate) async -> [ScanPipelineResult] {
+    private func processArchive(
+        _ candidate: ScanCandidate,
+        activity: @escaping @Sendable (String) -> Void
+    ) async -> [ScanPipelineResult] {
         do {
+            activity("Listing (candidate.sourceURL.lastPathComponent)…")
             let archiveListing = try await ScanOperationTimeout.run(
                 kind: .archiveListing,
                 description: "listing \(candidate.sourceURL.lastPathComponent)"
@@ -189,7 +202,7 @@ struct ScanPipelineExecutor: Sendable {
                     route: member.route
                 )
             }
-            guard let materializationPolicy = GMEFormatSupport.scanArchiveMaterializationForInspection(
+            guard let materializationPolicy = PlaybackFormatRegistry.scanArchiveMaterializationForInspection(
                 entryPaths: members.map(\.entryPath)
             ) else {
                 throw ZipArchiveSupport.ArchiveError.invalidEntryPath(
@@ -198,6 +211,7 @@ struct ScanPipelineExecutor: Sendable {
             }
             let materializedRoot: URL
             do {
+                activity("Extracting (members.count) playable member\(members.count == 1 ? "" : "s") from (candidate.sourceURL.lastPathComponent)…")
                 switch materializationPolicy {
                 case .selectedEntry:
                     materializedRoot = try await ScanOperationTimeout.run(
@@ -237,22 +251,39 @@ struct ScanPipelineExecutor: Sendable {
                     }
                 }
             }
+            if members.contains(where: { $0.route?.formatExtension == "txtp" }) {
+                do {
+                    try ZipArchiveSupport.prepareTXTPDependencies(in: materializedRoot)
+                } catch {
+                    await archiveProvider.discardScanMaterialization(at: materializedRoot)
+                    return memberCandidates.map {
+                        failure($0, stage: .archiveExtraction, message: error.localizedDescription)
+                    }
+                }
+            }
 
             let memberCursor = ScanPlanCursor(count: members.count)
             let memberWorkerCount = min(
                 ZipArchiveSupport.archiveProcessConcurrency,
                 members.count
             )
+            let memberCompletionCounter = ScanCompletionCounter()
+            activity("Inspecting 0 / (members.count) members in (candidate.sourceURL.lastPathComponent)…")
             var orderedResults = Array<ScanPipelineResult?>(repeating: nil, count: members.count)
             await withTaskGroup(of: (Int, ScanPipelineResult).self) { group in
                 for _ in 0..<memberWorkerCount {
                     guard let index = memberCursor.take() else { break }
                     group.addTask {
-                        (index, await self.processMaterializedArchiveMember(
+                        let result = await self.processMaterializedArchiveMember(
                             member: members[index],
                             candidate: memberCandidates[index],
                             materializedRoot: materializedRoot
-                        ))
+                        )
+                        let completed = memberCompletionCounter.increment()
+                        if completed == 1 || completed == members.count || completed.isMultiple(of: 25) {
+                            activity("Inspecting (completed) / (members.count) members in (candidate.sourceURL.lastPathComponent)…")
+                        }
+                        return (index, result)
                     }
                 }
 
@@ -260,19 +291,30 @@ struct ScanPipelineExecutor: Sendable {
                     orderedResults[index] = result
                     guard let nextIndex = memberCursor.take() else { continue }
                     group.addTask {
-                        (nextIndex, await self.processMaterializedArchiveMember(
+                        let result = await self.processMaterializedArchiveMember(
                             member: members[nextIndex],
                             candidate: memberCandidates[nextIndex],
                             materializedRoot: materializedRoot
-                        ))
+                        )
+                        let completed = memberCompletionCounter.increment()
+                        if completed == members.count || completed.isMultiple(of: 25) {
+                            activity("Inspecting (completed) / (members.count) members in (candidate.sourceURL.lastPathComponent)…")
+                        }
+                        return (nextIndex, result)
                     }
                 }
             }
             results.append(contentsOf: orderedResults.compactMap { $0 })
             await archiveProvider.discardScanMaterialization(at: materializedRoot)
+            // Known non-playable resources are a completed archive outcome,
+            // not a reason to repeatedly rematerialize the whole container.
             if results.allSatisfy({ result in
-                if case .success = result { return true }
-                return false
+                switch result {
+                case .success, .unsupported:
+                    return true
+                case .archiveCompleted, .failure:
+                    return false
+                }
             }) {
                 results.append(.archiveCompleted(await ArchiveScanSignature.enrich(completedCandidate)))
             }
@@ -282,80 +324,10 @@ struct ScanPipelineExecutor: Sendable {
         }
     }
 
-    private func fastFilenameResult(_ candidate: ScanCandidate) -> ScanPipelineResult {
-        guard let route = candidate.route ?? pluginRegistry.route(
-            for: URL(fileURLWithPath: candidate.identity.archiveEntry ?? candidate.sourceURL.path).pathExtension,
-            archiveMember: candidate.isArchiveMember
-        ) else {
-            return .unsupported(candidate)
-        }
-        let archiveEntry = candidate.identity.archiveEntry
-        let sourceName = candidate.sourceURL.deletingPathExtension().lastPathComponent
-        let songName = archiveEntry.map {
-            URL(fileURLWithPath: $0).deletingPathExtension().lastPathComponent
-        } ?? sourceName
-        return .success(
-            candidate,
-            ScanInspection(
-                route: route,
-                tracks: [
-                    ScanTrackMetadata(
-                        trackIndex: 0,
-                        trackCount: 1,
-                        metadata: TrackMetadata(
-                            game: sourceName,
-                            song: songName,
-                            system: "",
-                            author: "",
-                            comment: FastScanPlaceholder.metadataComment,
-                            introLengthMs: 0,
-                            loopLengthMs: 0,
-                            playLengthMs: 0,
-                            fadeLengthMs: 0
-                        )
-                    )
-                ]
-            )
-        )
-    }
-
-    private func fastArchiveContainerResult(_ candidate: ScanCandidate) -> ScanPipelineResult {
-        let sourceName = candidate.sourceURL.deletingPathExtension().lastPathComponent
-        let route = ScanRoute(
-            pluginID: "archive-container",
-            formatExtension: candidate.sourceURL.pathExtension.lowercased(),
-            supportsArchiveMembers: true,
-            supportsMultiTrack: false
-        )
-        return .success(
-            candidate,
-            ScanInspection(
-                route: route,
-                tracks: [
-                    ScanTrackMetadata(
-                        trackIndex: 0,
-                        trackCount: 1,
-                        metadata: TrackMetadata(
-                            game: sourceName,
-                            song: sourceName,
-                            system: "",
-                            author: "",
-                            comment: FastScanPlaceholder.metadataComment,
-                            introLengthMs: 0,
-                            loopLengthMs: 0,
-                            playLengthMs: 0,
-                            fadeLengthMs: 0
-                        )
-                    )
-                ]
-            )
-        )
-    }
-
     private func materialize(_ candidate: ScanCandidate, archiveEntry: String) async throws -> URL {
         let extensionName = candidate.route?.formatExtension
             ?? URL(fileURLWithPath: archiveEntry).pathExtension
-        guard let module = GMEFormatSupport.module(forPathExtension: extensionName) else {
+        guard let module = PlaybackFormatRegistry.module(forPathExtension: extensionName) else {
             throw ZipArchiveSupport.ArchiveError.invalidEntryPath(archiveEntry)
         }
 
@@ -370,6 +342,9 @@ struct ScanPipelineExecutor: Sendable {
             }
             if case .completeSetWithLazyUSFAliases = module.archiveMaterialization {
                 try ZipArchiveSupport.prepareLazyUSFDependencies(in: root)
+            }
+            if extensionName.lowercased() == "txtp" {
+                try ZipArchiveSupport.prepareTXTPDependencies(in: root)
             }
             return ZipArchiveSupport.archiveMemberURL(in: root, entryPath: archiveEntry)
         }
@@ -388,7 +363,13 @@ struct ScanPipelineExecutor: Sendable {
         guard let handler = handlerRegistry.handler(for: route) else {
             return failure(candidate, stage: .routing, message: "No handler registered for \(route.pluginID)")
         }
-        let inspection = try await scheduler.withPermit {
+        if KDTSequenceDetector.isSilentHillSequenceBank(fileURL ?? candidate.sourceURL) {
+            return .unsupported(candidate)
+        }
+        if WwiseBankDetector.isEventBank(fileURL ?? candidate.sourceURL) {
+            return .unsupported(candidate)
+        }
+        let inspection = try await inspectionScheduler.withPermit {
             try await ScanOperationTimeout.run(kind: .metadataInspection, description: "inspecting \(candidate.identityDescription)") {
                 try await handler.inspect(fileURL: fileURL ?? candidate.sourceURL, route: route)
             }
@@ -458,6 +439,12 @@ private final class ScanCompletionCounter: @unchecked Sendable {
         value += 1
         return value
     }
+
+    func current() -> Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
 }
 
 private extension ScanCandidate {
@@ -466,5 +453,15 @@ private extension ScanCandidate {
             return "\(identity.path)#\(archiveEntry)"
         }
         return identity.path
+    }
+}
+
+private extension Array {
+    func batched(maximumCount: Int) -> [ArraySlice<Element>] {
+        guard !isEmpty else { return [] }
+        let size = Swift.max(1, maximumCount)
+        return stride(from: startIndex, to: endIndex, by: size).map {
+            self[$0..<Swift.min($0 + size, endIndex)]
+        }
     }
 }

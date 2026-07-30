@@ -21,8 +21,14 @@
 - Database double-click follows the configured sidebar double-click behavior.
 - Database `Return` activates the current selection.
 - Database multi-row `Return` replaces the playlist with the combined selection.
+- Games, file rows, and file-tree folder selections enter `PlaylistQueueLoader` as one typed `LibraryPlaylistLoadRequest`; the view model owns one queue-build lifecycle and applies the loaded playlist identically for replace or enqueue.
 - Game activation loads playable leaves from the scanned database rather than rescanning the filesystem.
+- `tracks.browser_game` and `tracks.browser_system` are persisted alongside scan results and indexed as the activation lookup key. Do not rebuild the game bucket from `track_metadata` in a selection query; that turns every sidebar activation into a whole-library scan.
+- `DatabaseFileItem` groups scanned track rows by `root_id + source path`; `tracks_file_tree_index` supports the database-only Files tree. Archive members never become filesystem tree leaves: their archive source is the leaf and activation loads its indexed members through the matching root.
 - File-path activation resolves the scanned playable leaves for that file path, so NSF containers contribute subtracks rather than the raw container file.
+- File-tree file selection stores source-file IDs. A normal folder-row selection toggles expansion and does not alter the playlist or file selection.
+- A file-tree folder double-click resolves tracks by the indexed folder path and all descendant folder paths. File activation replaces the playlist only on double-click or Return.
+- File-tree drags use the app-owned `databaseFileSidebarDragType` payload. The playlist consumes selected file rows through the library database and appends them; it must not treat the drag as a filesystem import or rescan archive members.
 - Database-backed queue loading now lives in a dedicated queue-loader helper rather than inline throughout the main view model.
 - Sidebar context-menu invocation does not mutate selection or trigger playlist-follow activation by itself.
 

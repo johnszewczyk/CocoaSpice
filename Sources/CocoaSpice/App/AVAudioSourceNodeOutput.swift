@@ -121,6 +121,12 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
         equalizerNode.bypass = !enabled
     }
 
+    func setAppVolume(_ volume: Float) {
+        // This is CocoaSpice's stock output volume (0–100%). It never calls
+        // system-volume APIs, so hardware volume keys continue to control macOS.
+        engine.mainMixerNode.outputVolume = AudioOutputVolume.clamped(volume)
+    }
+
     func setConfigurationChangeHandler(_ handler: @escaping @Sendable () -> Void) {
         configurationChangeObserver = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange,
@@ -204,6 +210,7 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
         // audible, which makes a new track appear to start late. A full stop
         // resets the graph's render boundary at every track/seek restart.
         engine.stop()
+        engine.reset()
         ringBuffer.clear()
         outputState = .stopped
         transportState = .stopped
@@ -211,6 +218,7 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
 
     func stop() {
         engine.stop()
+        engine.reset()
         ringBuffer.clear()
         outputState = .stopped
         transportState = .stopped
@@ -231,6 +239,14 @@ enum AudioEqualizer {
 
     static func clampedGain(_ gain: Float) -> Float {
         min(max(gain, gainRange.lowerBound), gainRange.upperBound)
+    }
+}
+
+enum AudioOutputVolume {
+    static let range: ClosedRange<Float> = 0...1
+
+    static func clamped(_ value: Float) -> Float {
+        min(max(value, range.lowerBound), range.upperBound)
     }
 }
 

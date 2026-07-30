@@ -8,6 +8,8 @@ CocoaSpice embeds third-party decoder and emulator code. This repository does no
 | libopenmpt | FastTracker XM module decoding | [libopenmpt](https://lib.openmpt.org/libopenmpt/) | BSD-3-Clause; Homebrew package notice |
 | libvgm | VGM and Sega playback | [libvgm](https://github.com/ValleyBell/libvgm) | Mixed upstream component licenses; preserve source headers and bundled notices |
 | vgmstream | Streamed game-audio playback | [vgmstream](https://github.com/vgmstream/vgmstream) | ISC; `vendor/vgmstream/COPYING` |
+| FFmpeg | ATRAC3 and related streamed-audio decoding used by vgmstream | [FFmpeg](https://ffmpeg.org/) | Preserve the Homebrew package license notices and the linked build's configured license terms. |
+| libvorbis / libogg | Ogg Vorbis decoding used by vgmstream | [Xiph.org](https://xiph.org/) | BSD-style; preserve Homebrew package notices. |
 | mGBA / Highly Complete | GBA GSF playback | [mGBA](https://github.com/mgba-emu/mgba) | MPL-2.0; `vendor/mgba/LICENSE` |
 | lazyusf2 | Nintendo 64 USF and miniUSF | [lazyusf2](https://gitlab.com/kode54/lazyusf2) | GPL-2.0-or-later; vendored source headers and `vendor/lazyusf2/rsp_hle/LICENSES` |
 | 2sf2wav | Nintendo DS 2SF and mini2SF | [2sf2wav](https://bitbucket.org/ahigerd/2sf2wav) | GPL-2.0-or-later; bundled DeSmuME-derived source headers |

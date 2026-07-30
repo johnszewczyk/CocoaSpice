@@ -9,12 +9,12 @@
 ## Current State
 
 - Sidebar search uses the single database search field.
-- Sidebar placeholder text is `Search Database`.
+- Sidebar placeholder text is `Search Database` in Games and `Search Files` in Files.
 - Search uses a short debounce interval for responsive native filtering.
-- Search currently filters the already-loaded dense database game list in memory.
-- Search results stay inside the same dense sidebar list instead of switching to the older folder or music-note result view.
+- Search filters the already-loaded database games or scanned file records in memory.
+- Search results stay inside the same dense sidebar list or folder tree instead of switching to an older result view.
 - Search should not interrupt playback.
-- Search is not yet leaf-granular even though the scanned database can contain multi-track playable leaves.
+- Files search matches stored filename and path, preserving the folder hierarchy that reaches matching source files.
 
 ## Rules
 

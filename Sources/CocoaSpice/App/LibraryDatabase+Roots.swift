@@ -88,7 +88,14 @@ extension LibraryDatabase {
             """
             UPDATE library_roots
             SET last_scan_completed_at = ?,
-                last_scan_track_count = (SELECT COUNT(*) FROM tracks WHERE root_id = ?),
+                last_scan_track_count = (
+                    SELECT COUNT(*) FROM tracks t
+                    WHERE t.root_id = ?
+                      AND NOT EXISTS (
+                          SELECT 1 FROM dead_sources d
+                          WHERE d.root_id = t.root_id AND d.path = t.path
+                      )
+                ),
                 last_scan_error = NULL
             WHERE id = ?;
             """,

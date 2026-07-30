@@ -22,6 +22,7 @@ Human-facing behavior:
 - Main shell: [main-shell.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-human/main-shell.md)
 - Playlist: [playlist.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-human/playlist.md)
 - Playback: [playback.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-human/playback.md)
+- Supported formats: [supported-formats.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-human/supported-formats.md)
 - Database browser: [database-browser.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-human/database-browser.md)
 - Options: [options.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-human/options.md)
 - Audio export: [audio-export.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-human/audio-export.md)

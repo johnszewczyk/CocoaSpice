@@ -39,15 +39,6 @@ struct ScanInspection: Sendable {
     let tracks: [ScanTrackMetadata]
 }
 
-enum ArchiveScanDepth: Sendable, Equatable {
-    case fast
-    case deep
-}
-
-enum FastScanPlaceholder {
-    static let metadataComment = "__cocoaspice_fast_scan__"
-}
-
 enum ScanFailureStage: String, Sendable {
     case discovery
     case archiveListing

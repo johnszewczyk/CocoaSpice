@@ -1,8 +1,8 @@
 import Foundation
 import SQLite3
 
-final class LibraryDatabase {
-    static let schemaVersion = 8
+final class LibraryDatabase: @unchecked Sendable {
+    static let schemaVersion = 12
     let db: OpaquePointer?
     private let dbURL: URL
 
@@ -214,11 +214,34 @@ final class LibraryDatabase {
         try execute("DELETE FROM tracks WHERE root_id = ?;", bindings: [.int(rootID)])
     }
 
+    func clearLiveScanInventory(rootID: Int64) throws {
+        try execute("""
+        DELETE FROM scan_items
+        WHERE root_id = ?
+          AND NOT EXISTS (
+              SELECT 1 FROM dead_sources d
+              WHERE d.root_id = scan_items.root_id AND d.path = scan_items.path
+          );
+        """, bindings: [.int(rootID)])
+    }
+
+    func clearLiveTracks(rootID: Int64) throws {
+        try execute("""
+        DELETE FROM tracks
+        WHERE root_id = ?
+          AND NOT EXISTS (
+              SELECT 1 FROM dead_sources d
+              WHERE d.root_id = tracks.root_id AND d.path = tracks.path
+          );
+        """, bindings: [.int(rootID)])
+    }
+
     func purgeIndexedLibrary() throws {
         try execute("BEGIN IMMEDIATE;")
         do {
             try execute("DELETE FROM tracks;")
             try execute("DELETE FROM scan_items;")
+            try execute("DELETE FROM dead_sources;")
             try execute("DELETE FROM library_roots WHERE is_attached = 0;")
             try execute("""
             UPDATE library_roots
@@ -238,6 +261,10 @@ final class LibraryDatabase {
         let sql = """
         SELECT DISTINCT root_id, path
         FROM tracks
+        WHERE NOT EXISTS (
+            SELECT 1 FROM dead_sources d
+            WHERE d.root_id = tracks.root_id AND d.path = tracks.path
+        )
         ORDER BY path ASC;
         """
         var statement: OpaquePointer?
@@ -255,20 +282,32 @@ final class LibraryDatabase {
         return sources
     }
 
-    func trimMissingPaths(_ sources: [LibraryIndexedSource]) throws {
+    func markSourcesDead(_ sources: [LibraryIndexedSource]) throws {
         guard !sources.isEmpty else { return }
         try execute("BEGIN TRANSACTION;")
         do {
             let rootIDs = Set(sources.map(\.rootID))
             for source in sources {
-                try execute("DELETE FROM tracks WHERE root_id = ? AND path = ?;", bindings: [.int(source.rootID), .text(source.path)])
-                try execute("DELETE FROM scan_items WHERE root_id = ? AND path = ?;", bindings: [.int(source.rootID), .text(source.path)])
+                try execute(
+                    """
+                    INSERT INTO dead_sources (root_id, path, marked_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(root_id, path) DO UPDATE SET marked_at = excluded.marked_at;
+                    """,
+                    bindings: [.int(source.rootID), .text(source.path), .double(Date().timeIntervalSince1970)]
+                )
             }
             for rootID in rootIDs {
                 try execute(
                     """
-                    UPDATE library_roots
-                    SET last_scan_track_count = (SELECT COUNT(*) FROM tracks WHERE root_id = ?)
+                    UPDATE library_roots SET last_scan_track_count = (
+                        SELECT COUNT(*) FROM tracks t
+                        WHERE t.root_id = ?
+                          AND NOT EXISTS (
+                              SELECT 1 FROM dead_sources d
+                              WHERE d.root_id = t.root_id AND d.path = t.path
+                          )
+                    )
                     WHERE id = ?;
                     """,
                     bindings: [.int(rootID), .int(rootID)]
@@ -281,15 +320,80 @@ final class LibraryDatabase {
         }
     }
 
+    func restoreSources(_ sources: [LibraryIndexedSource]) throws {
+        guard !sources.isEmpty else { return }
+        try execute("BEGIN TRANSACTION;")
+        do {
+            for source in Set(sources) {
+                try execute(
+                    "DELETE FROM dead_sources WHERE root_id = ? AND path = ?;",
+                    bindings: [.int(source.rootID), .text(source.path)]
+                )
+            }
+            try execute("COMMIT;")
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
+    }
+
+    func deadSourceCount() throws -> Int {
+        try scalarInt("SELECT COUNT(*) FROM dead_sources;")
+    }
+
+    func trackCount() throws -> Int {
+        try scalarInt("SELECT COUNT(*) FROM tracks;")
+    }
+
+    func deadTrackCount() throws -> Int {
+        try scalarInt("""
+        SELECT COUNT(*) FROM tracks
+        WHERE EXISTS (
+            SELECT 1 FROM dead_sources d
+            WHERE d.root_id = tracks.root_id AND d.path = tracks.path
+        );
+        """)
+    }
+
+    func deleteDeadSources() throws -> Int {
+        let count = try deadSourceCount()
+        guard count > 0 else { return 0 }
+        try execute("BEGIN IMMEDIATE;")
+        do {
+            try execute("""
+            DELETE FROM tracks
+            WHERE EXISTS (
+                SELECT 1 FROM dead_sources d
+                WHERE d.root_id = tracks.root_id AND d.path = tracks.path
+            );
+            """)
+            try execute("""
+            DELETE FROM scan_items
+            WHERE EXISTS (
+                SELECT 1 FROM dead_sources d
+                WHERE d.root_id = scan_items.root_id AND d.path = scan_items.path
+            );
+            """)
+            try execute("DELETE FROM dead_sources;")
+            try execute("""
+            UPDATE library_roots
+            SET last_scan_track_count = (SELECT COUNT(*) FROM tracks WHERE tracks.root_id = library_roots.id);
+            """)
+            try execute("COMMIT;")
+            return count
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
+    }
+
     func persistScanTrackResults(
-        _ results: [ScanPipelineResult],
-        preservingExistingTracks: Bool = false
+        _ results: [ScanPipelineResult]
     ) throws {
         try execute("BEGIN TRANSACTION;")
         do {
             try persistScanTrackResultsInCurrentTransaction(
-                results,
-                preservingExistingTracks: preservingExistingTracks
+                results
             )
             try execute("COMMIT;")
         } catch {
@@ -299,8 +403,7 @@ final class LibraryDatabase {
     }
 
     func persistScanResults(
-        _ results: [ScanPipelineResult],
-        preservingExistingTracks: Bool = false
+        _ results: [ScanPipelineResult]
     ) throws {
         guard !results.isEmpty else { return }
         try execute("BEGIN TRANSACTION;")
@@ -309,8 +412,7 @@ final class LibraryDatabase {
                 try persistScanResult(result)
             }
             try persistScanTrackResultsInCurrentTransaction(
-                results,
-                preservingExistingTracks: preservingExistingTracks
+                results
             )
             try execute("COMMIT;")
         } catch {
@@ -320,8 +422,7 @@ final class LibraryDatabase {
     }
 
     private func persistScanTrackResultsInCurrentTransaction(
-        _ results: [ScanPipelineResult],
-        preservingExistingTracks: Bool
+        _ results: [ScanPipelineResult]
     ) throws {
         let successes = results.compactMap { result -> (ScanCandidate, ScanInspection)? in
             guard case .success(let candidate, let inspection) = result else { return nil }
@@ -330,10 +431,6 @@ final class LibraryDatabase {
         guard !successes.isEmpty else { return }
 
         for (candidate, inspection) in successes {
-            if preservingExistingTracks,
-               try containsDeepMetadata(for: candidate) {
-                continue
-            }
             if let archiveEntry = candidate.identity.archiveEntry {
                 try execute(
                     "DELETE FROM tracks WHERE root_id = ? AND path = ? AND archive_entry = ?;",
@@ -348,22 +445,31 @@ final class LibraryDatabase {
 
             for track in inspection.tracks {
                 let path = candidate.identity.path
+                let folderPath = URL(fileURLWithPath: path).deletingLastPathComponent().path
                 let filename = candidate.identity.archiveEntry.map {
                     URL(fileURLWithPath: $0).lastPathComponent
                 } ?? URL(fileURLWithPath: path).lastPathComponent
                 let extensionName = inspection.route.formatExtension
                 let archivePath = candidate.identity.archiveEntry == nil ? nil : path
+                let metadata = track.metadata
+                let browserGame = metadata?.game.trimmingCharacters(in: .whitespacesAndNewlines)
+                let browserSystem = metadata?.system.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let resolvedBrowserGame = browserGame.flatMap { $0.isEmpty ? nil : $0 }
+                    ?? archivePath
+                    ?? folderPath
                 try execute(
                     """
-                    INSERT INTO tracks (root_id, folder_path, path, filename, extension, track_index, track_count, file_size, modified_at, discovered_at, archive_path, archive_entry)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                    INSERT INTO tracks (root_id, folder_path, path, filename, extension, browser_game, browser_system, track_index, track_count, file_size, modified_at, discovered_at, archive_path, archive_entry)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                     """,
                     bindings: [
                         .int(candidate.identity.rootID),
-                        .text(URL(fileURLWithPath: path).deletingLastPathComponent().path),
+                        .text(folderPath),
                         .text(path),
                         .text(filename),
                         .text(extensionName),
+                        .text(resolvedBrowserGame),
+                        .text(browserSystem),
                         .int(Int64(track.trackIndex)),
                         .int(Int64(track.trackCount)),
                         .int(candidate.fingerprint.fileSize),
@@ -373,7 +479,7 @@ final class LibraryDatabase {
                         candidate.identity.archiveEntry.map(SQLiteValue.text) ?? .null
                     ]
                 )
-                guard let metadata = track.metadata else { continue }
+                guard let metadata else { continue }
                 let trackID = try lastInsertedRowID()
                 try execute(
                     """
@@ -398,44 +504,6 @@ final class LibraryDatabase {
         }
     }
 
-    private func containsDeepMetadata(for candidate: ScanCandidate) throws -> Bool {
-        let sql: String
-        if candidate.identity.archiveEntry != nil {
-            sql = """
-            SELECT 1
-            FROM tracks t
-            INNER JOIN track_metadata m ON m.track_id = t.id
-            WHERE t.root_id = ? AND t.path = ? AND t.archive_entry = ?
-              AND m.comment <> ?
-            LIMIT 1;
-            """
-        } else {
-            sql = """
-            SELECT 1
-            FROM tracks t
-            INNER JOIN track_metadata m ON m.track_id = t.id
-            WHERE t.root_id = ? AND t.path = ? AND t.archive_entry IS NULL
-              AND m.comment <> ?
-            LIMIT 1;
-            """
-        }
-
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw databaseError()
-        }
-        defer { sqlite3_finalize(statement) }
-        sqliteBind(.int(candidate.identity.rootID), to: statement, at: 1)
-        sqliteBind(.text(candidate.identity.path), to: statement, at: 2)
-        if let archiveEntry = candidate.identity.archiveEntry {
-            sqliteBind(.text(archiveEntry), to: statement, at: 3)
-            sqliteBind(.text(FastScanPlaceholder.metadataComment), to: statement, at: 4)
-        } else {
-            sqliteBind(.text(FastScanPlaceholder.metadataComment), to: statement, at: 3)
-        }
-        return sqlite3_step(statement) == SQLITE_ROW
-    }
-
     func markScanFailed(rootID: Int64, error: String) throws {
         try execute(
             "UPDATE library_roots SET last_scan_completed_at = ?, last_scan_error = ? WHERE id = ?;",
@@ -451,27 +519,43 @@ final class LibraryDatabase {
         try Self.loadGameItems(databaseURL: dbURL)
     }
 
-    static func loadGameItems(databaseURL: URL) throws -> [DatabaseGameItem] {
-        var handle: OpaquePointer?
-        if sqlite3_open_v2(databaseURL.path, &handle, SQLITE_OPEN_READONLY, nil) != SQLITE_OK {
-            let message = Self.databaseError(handle: handle).localizedDescription
-            sqlite3_close(handle)
-            throw NSError(domain: "LibraryDatabase", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
-        }
-        defer { sqlite3_close(handle) }
+    func loadFileItems() throws -> [DatabaseFileItem] {
+        try Self.loadFileItems(databaseURL: dbURL)
+    }
 
+    static func loadGameItems(databaseURL: URL) throws -> [DatabaseGameItem] {
+        let handle = try openReadOnlyConnection(databaseURL: databaseURL)
+        defer { sqlite3_close(handle) }
+        return try loadGameItems(handle: handle)
+    }
+
+    static func loadFileItems(databaseURL: URL) throws -> [DatabaseFileItem] {
+        let handle = try openReadOnlyConnection(databaseURL: databaseURL)
+        defer { sqlite3_close(handle) }
+        return try loadFileItems(handle: handle)
+    }
+
+    /// Loads both sidebar modes through one read-only handle so they represent
+    /// the same SQLite snapshot and avoid duplicate connection setup.
+    static func loadSidebarContent(databaseURL: URL) throws -> DatabaseSidebarContent {
+        let handle = try openReadOnlyConnection(databaseURL: databaseURL)
+        defer { sqlite3_close(handle) }
+        return DatabaseSidebarContent(
+            gameItems: try loadGameItems(handle: handle),
+            fileItems: try loadFileItems(handle: handle)
+        )
+    }
+
+    private static func loadGameItems(handle: OpaquePointer) throws -> [DatabaseGameItem] {
         let sql = """
         SELECT
-            CASE
-                WHEN trim(COALESCE(m.game, '')) <> '' THEN trim(m.game)
-                ELSE COALESCE(t.archive_path, t.folder_path)
-            END AS game_name,
-            trim(COALESCE(m.system, '')) AS system_name,
+            t.browser_game AS game_name,
+            t.browser_system AS system_name,
             COUNT(*)
         FROM tracks t
         INNER JOIN library_roots r ON r.id = t.root_id
-        LEFT JOIN track_metadata m ON m.track_id = t.id
         WHERE r.is_enabled = 1
+          AND NOT EXISTS (SELECT 1 FROM dead_sources d WHERE d.root_id = t.root_id AND d.path = t.path)
         GROUP BY game_name, system_name
         ORDER BY lower(game_name) ASC, game_name ASC, lower(system_name) ASC, system_name ASC;
         """
@@ -496,12 +580,66 @@ final class LibraryDatabase {
         return DatabaseSidebarPresentation.disambiguateGameItems(items)
     }
 
+    private static func loadFileItems(handle: OpaquePointer) throws -> [DatabaseFileItem] {
+        let sql = """
+        SELECT
+            t.root_id,
+            r.path,
+            t.folder_path,
+            t.path,
+            MAX(t.archive_path IS NOT NULL),
+            COUNT(*)
+        FROM tracks t
+        INNER JOIN library_roots r ON r.id = t.root_id
+        WHERE r.is_enabled = 1
+          AND NOT EXISTS (SELECT 1 FROM dead_sources d WHERE d.root_id = t.root_id AND d.path = t.path)
+        GROUP BY t.root_id, r.path, t.folder_path, t.path
+        ORDER BY lower(r.path) ASC, lower(t.folder_path) ASC, lower(t.path) ASC;
+        """
+
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw databaseError(handle: handle)
+        }
+        defer { sqlite3_finalize(statement) }
+
+        var items: [DatabaseFileItem] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            items.append(DatabaseFileItem(
+                rootID: sqlite3_column_int64(statement, 0),
+                rootPath: sqliteString(statement, index: 1),
+                folderPath: sqliteString(statement, index: 2),
+                path: sqliteString(statement, index: 3),
+                isArchive: sqlite3_column_int(statement, 4) != 0,
+                trackCount: Int(sqlite3_column_int(statement, 5))
+            ))
+        }
+        return items
+    }
+
+    private static func openReadOnlyConnection(databaseURL: URL) throws -> OpaquePointer {
+        var handle: OpaquePointer?
+        if sqlite3_open_v2(databaseURL.path, &handle, SQLITE_OPEN_READONLY, nil) != SQLITE_OK {
+            let message = Self.databaseError(handle: handle).localizedDescription
+            sqlite3_close(handle)
+            throw NSError(domain: "LibraryDatabase", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+        }
+        guard let handle else {
+            throw NSError(domain: "LibraryDatabase", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not open the database."])
+        }
+        return handle
+    }
+
     func tracksForGame(_ gameItem: DatabaseGameItem) throws -> [TrackItem] {
         try Self.tracksForGame(databaseURL: dbURL, gameItem: gameItem)
     }
 
     func tracksAndMetadataForGames(_ gameItems: [DatabaseGameItem]) throws -> (tracks: [TrackItem], metadata: [String: TrackMetadata], widthHints: PlaylistColumnWidthHints) {
         try Self.tracksAndMetadataForGames(databaseURL: dbURL, gameItems: gameItems)
+    }
+
+    func tracksAndMetadataForFiles(_ fileItems: [DatabaseFileItem]) throws -> (tracks: [TrackItem], metadata: [String: TrackMetadata], widthHints: PlaylistColumnWidthHints) {
+        try Self.tracksAndMetadataForFiles(databaseURL: dbURL, fileItems: fileItems)
     }
 
     func tracksAndMetadataForFolder(rootPath: String, folderPath: String) throws -> (tracks: [TrackItem], metadata: [String: TrackMetadata], widthHints: PlaylistColumnWidthHints) {
@@ -525,14 +663,11 @@ final class LibraryDatabase {
         SELECT t.path, t.archive_path, t.archive_entry, t.track_index, t.track_count
         FROM tracks t
         INNER JOIN library_roots r ON r.id = t.root_id
-        LEFT JOIN track_metadata m ON m.track_id = t.id
         WHERE r.is_enabled = 1
-          AND CASE
-                WHEN trim(COALESCE(m.game, '')) <> '' THEN trim(m.game)
-                ELSE COALESCE(t.archive_path, t.folder_path)
-              END = ?
-          AND trim(COALESCE(m.system, '')) = ?
-        ORDER BY lower(COALESCE(m.title, '')) ASC, t.folder_path ASC, t.filename ASC, t.track_index ASC;
+          AND NOT EXISTS (SELECT 1 FROM dead_sources d WHERE d.root_id = t.root_id AND d.path = t.path)
+          AND t.browser_game = ?
+          AND t.browser_system = ?
+        ORDER BY t.folder_path ASC, t.filename ASC, t.track_index ASC;
         """
 
         var statement: OpaquePointer?
@@ -568,15 +703,7 @@ final class LibraryDatabase {
         defer { sqlite3_close(handle) }
 
         let bucketPredicate = Array(
-            repeating: """
-            (
-                CASE
-                    WHEN trim(COALESCE(m.game, '')) <> '' THEN trim(m.game)
-                    ELSE COALESCE(t.archive_path, t.folder_path)
-                END = ?
-                AND trim(COALESCE(m.system, '')) = ?
-            )
-            """,
+            repeating: "(t.browser_game = ? AND t.browser_system = ?)",
             count: normalizedItems.count
         ).joined(separator: " OR ")
         let sql = """
@@ -599,8 +726,9 @@ final class LibraryDatabase {
         INNER JOIN library_roots r ON r.id = t.root_id
         LEFT JOIN track_metadata m ON m.track_id = t.id
         WHERE r.is_enabled = 1
+          AND NOT EXISTS (SELECT 1 FROM dead_sources d WHERE d.root_id = t.root_id AND d.path = t.path)
           AND (\(bucketPredicate))
-        ORDER BY lower(COALESCE(m.game, '')) ASC, lower(COALESCE(m.title, '')) ASC, t.folder_path ASC, t.filename ASC, t.track_index ASC;
+        ORDER BY t.browser_game ASC, lower(COALESCE(m.title, '')) ASC, t.folder_path ASC, t.filename ASC, t.track_index ASC;
         """
 
         var statement: OpaquePointer?
@@ -669,7 +797,12 @@ final class LibraryDatabase {
         return (tracks, metadata, widthHints)
     }
 
-    static func tracksAndMetadataForFolder(databaseURL: URL, rootPath: String, folderPath: String) throws -> (tracks: [TrackItem], metadata: [String: TrackMetadata], widthHints: PlaylistColumnWidthHints) {
+    static func tracksAndMetadataForFiles(databaseURL: URL, fileItems: [DatabaseFileItem]) throws -> (tracks: [TrackItem], metadata: [String: TrackMetadata], widthHints: PlaylistColumnWidthHints) {
+        let normalizedItems = Array(NSOrderedSet(array: fileItems)) as? [DatabaseFileItem] ?? []
+        guard !normalizedItems.isEmpty else {
+            return ([], [:], PlaylistColumnWidthHints(indexText: "1", fileText: "", titleText: "", gameText: "", authorText: "", systemText: "", lengthText: "—"))
+        }
+
         var handle: OpaquePointer?
         if sqlite3_open_v2(databaseURL.path, &handle, SQLITE_OPEN_READONLY, nil) != SQLITE_OK {
             let message = Self.databaseError(handle: handle).localizedDescription
@@ -678,8 +811,10 @@ final class LibraryDatabase {
         }
         defer { sqlite3_close(handle) }
 
-        let normalizedRootPath = URL(fileURLWithPath: rootPath, isDirectory: true).standardizedFileURL.path
-        let normalizedFolderPath = URL(fileURLWithPath: folderPath, isDirectory: true).standardizedFileURL.path
+        let sourcePredicate = Array(
+            repeating: "(t.root_id = ? AND t.path = ?)",
+            count: normalizedItems.count
+        ).joined(separator: " OR ")
         let sql = """
         SELECT
             t.path,
@@ -700,15 +835,59 @@ final class LibraryDatabase {
         INNER JOIN library_roots r ON r.id = t.root_id
         LEFT JOIN track_metadata m ON m.track_id = t.id
         WHERE r.is_enabled = 1
+          AND NOT EXISTS (SELECT 1 FROM dead_sources d WHERE d.root_id = t.root_id AND d.path = t.path)
+          AND (\(sourcePredicate))
+        ORDER BY t.folder_path ASC, t.filename ASC, t.track_index ASC;
+        """
+
+        let bindings = normalizedItems.flatMap { [SQLiteValue.int($0.rootID), SQLiteValue.text($0.path)] }
+        return try readTracksAndMetadata(handle: handle, sql: sql, bindings: bindings)
+    }
+
+    static func tracksAndMetadataForFolder(databaseURL: URL, rootPath: String, folderPath: String) throws -> (tracks: [TrackItem], metadata: [String: TrackMetadata], widthHints: PlaylistColumnWidthHints) {
+        var handle: OpaquePointer?
+        if sqlite3_open_v2(databaseURL.path, &handle, SQLITE_OPEN_READONLY, nil) != SQLITE_OK {
+            let message = Self.databaseError(handle: handle).localizedDescription
+            sqlite3_close(handle)
+            throw NSError(domain: "LibraryDatabase", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+        }
+        defer { sqlite3_close(handle) }
+
+        let normalizedRootPath = URL(fileURLWithPath: rootPath, isDirectory: true).standardizedFileURL.path
+        let normalizedFolderPath = URL(fileURLWithPath: folderPath, isDirectory: true).standardizedFileURL.path
+        let folderPrefix = normalizedFolderPath.hasSuffix("/")
+            ? normalizedFolderPath
+            : normalizedFolderPath + "/"
+        let sql = """
+        SELECT
+            t.path,
+            t.archive_path,
+            t.archive_entry,
+            t.track_index,
+            t.track_count,
+            COALESCE(m.title, ''),
+            COALESCE(m.game, ''),
+            COALESCE(m.author, ''),
+            COALESCE(m.system, ''),
+            COALESCE(m.comment, ''),
+            COALESCE(m.intro_length_ms, 0),
+            COALESCE(m.loop_length_ms, 0),
+            COALESCE(m.play_length_ms, 0),
+            COALESCE(m.fade_length_ms, 0)
+        FROM tracks t
+        INNER JOIN library_roots r ON r.id = t.root_id
+        LEFT JOIN track_metadata m ON m.track_id = t.id
+        WHERE r.is_enabled = 1
+          AND NOT EXISTS (SELECT 1 FROM dead_sources d WHERE d.root_id = t.root_id AND d.path = t.path)
           AND r.path = ?
-          AND t.folder_path = ?
+          AND (t.folder_path = ? OR t.folder_path LIKE ?)
         ORDER BY t.filename ASC, t.track_index ASC;
         """
 
         return try readTracksAndMetadata(
             handle: handle,
             sql: sql,
-            bindings: [.text(normalizedRootPath), .text(normalizedFolderPath)]
+            bindings: [.text(normalizedRootPath), .text(normalizedFolderPath), .text(folderPrefix + "%")]
         )
     }
 
@@ -749,6 +928,7 @@ final class LibraryDatabase {
         INNER JOIN library_roots r ON r.id = t.root_id
         LEFT JOIN track_metadata m ON m.track_id = t.id
         WHERE r.is_enabled = 1
+          AND NOT EXISTS (SELECT 1 FROM dead_sources d WHERE d.root_id = t.root_id AND d.path = t.path)
           AND t.path IN (\(placeholders))
         ORDER BY t.filename ASC, t.track_index ASC;
         """
@@ -782,6 +962,7 @@ final class LibraryDatabase {
         FROM tracks t
         INNER JOIN library_roots r ON r.id = t.root_id
         WHERE r.is_enabled = 1
+          AND NOT EXISTS (SELECT 1 FROM dead_sources d WHERE d.root_id = t.root_id AND d.path = t.path)
           AND \(folderConditions)
         ORDER BY t.folder_path ASC
         LIMIT ?;
@@ -824,6 +1005,7 @@ final class LibraryDatabase {
         FROM tracks t
         INNER JOIN library_roots r ON r.id = t.root_id
         WHERE r.is_enabled = 1
+          AND NOT EXISTS (SELECT 1 FROM dead_sources d WHERE d.root_id = t.root_id AND d.path = t.path)
           AND r.path = ?
           AND (t.folder_path = ? OR t.folder_path LIKE ?)
         ORDER BY t.folder_path ASC;
@@ -873,6 +1055,7 @@ final class LibraryDatabase {
         FROM tracks t
         INNER JOIN library_roots r ON r.id = t.root_id
         WHERE r.is_enabled = 1
+          AND NOT EXISTS (SELECT 1 FROM dead_sources d WHERE d.root_id = t.root_id AND d.path = t.path)
           AND r.path = ?
           AND t.folder_path = ?
         ORDER BY t.filename ASC;
@@ -931,6 +1114,7 @@ final class LibraryDatabase {
         FROM tracks t
         INNER JOIN library_roots r ON r.id = t.root_id
         WHERE r.is_enabled = 1
+          AND NOT EXISTS (SELECT 1 FROM dead_sources d WHERE d.root_id = t.root_id AND d.path = t.path)
           AND \(folderConditions)
         ORDER BY t.folder_path ASC
         LIMIT ?;
@@ -950,6 +1134,7 @@ final class LibraryDatabase {
         INNER JOIN library_roots r ON r.id = t.root_id
         LEFT JOIN track_metadata m ON m.track_id = t.id
         WHERE r.is_enabled = 1
+          AND NOT EXISTS (SELECT 1 FROM dead_sources d WHERE d.root_id = t.root_id AND d.path = t.path)
           AND \(fileConditions)
         ORDER BY t.folder_path ASC, t.filename ASC, t.track_index ASC
         LIMIT ?;
@@ -1032,6 +1217,16 @@ final class LibraryDatabase {
         guard sqlite3_step(statement) == SQLITE_DONE else {
             throw databaseError()
         }
+    }
+
+    private func scalarInt(_ sql: String) throws -> Int {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw databaseError()
+        }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else { throw databaseError() }
+        return Int(sqlite3_column_int64(statement, 0))
     }
 
     private func lastInsertedRowID() throws -> Int64 {

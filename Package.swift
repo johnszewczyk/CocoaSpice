@@ -136,7 +136,19 @@ let package = Package(
                 .unsafeFlags(["-I\(vgmstreamVendorDirectory)"])
             ],
             linkerSettings: [
-                .unsafeFlags(["\(vgmstreamBuildDirectory)/src/libvgmstream.a"]),
+                .unsafeFlags([
+                    "\(vgmstreamBuildDirectory)/src/libvgmstream.a",
+                    "-L/opt/homebrew/opt/ffmpeg/lib",
+                    "-L/opt/homebrew/opt/libvorbis/lib",
+                    "-L/opt/homebrew/opt/libogg/lib"
+                ]),
+                .linkedLibrary("avcodec"),
+                .linkedLibrary("avformat"),
+                .linkedLibrary("avutil"),
+                .linkedLibrary("swresample"),
+                .linkedLibrary("vorbisfile"),
+                .linkedLibrary("vorbis"),
+                .linkedLibrary("ogg"),
                 .linkedLibrary("z")
             ]
         ),

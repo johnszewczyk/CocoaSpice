@@ -42,7 +42,9 @@ final class NativePlaybackSession: @unchecked Sendable {
         refillQueue.sync {
             if enabled {
                 let handler = spectrumHandler
-                output.setSpectrumTap(bufferSize: 512) { buffer, time in
+                // A 4,410-frame tap supplies a 4,096-point FFT window at
+                // roughly 10 Hz; the display model draws its targets at 45 FPS.
+                output.setSpectrumTap(bufferSize: 4_410) { buffer, time in
                     handler?(buffer, time)
                 }
             } else {
@@ -54,6 +56,12 @@ final class NativePlaybackSession: @unchecked Sendable {
     func setEqualizer(enabled: Bool, bandGains: [Float]) {
         refillQueue.sync {
             output.setEqualizer(enabled: enabled, bandGains: bandGains)
+        }
+    }
+
+    func setAppVolume(_ volume: Float) {
+        refillQueue.sync {
+            output.setAppVolume(volume)
         }
     }
 

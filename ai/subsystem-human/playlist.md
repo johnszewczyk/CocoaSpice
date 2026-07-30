@@ -12,6 +12,7 @@
 - Columns: double-click a divider to auto-size to current content.
 - Columns: the header menu can auto-size one column or all visible columns.
 - Columns: Path shows the complete filesystem source path. Archive tracks retain their member provenance as `archive-path#member-path`.
+- Font: an Interface preference can render all playlist text columns in a monospaced font.
 
 ## Selection
 

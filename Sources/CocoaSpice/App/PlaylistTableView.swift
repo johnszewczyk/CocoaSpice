@@ -26,7 +26,7 @@ struct PlaylistTableView: NSViewRepresentable {
         tableView.delegate = context.coordinator
         tableView.dataSource = context.coordinator
         tableView.columnAutoresizingStyle = .noColumnAutoresizing
-        tableView.registerForDraggedTypes([playlistRowDragType, .fileURL])
+        tableView.registerForDraggedTypes([playlistRowDragType, databaseFileSidebarDragType, .fileURL])
         tableView.rowActivationHandler = { [weak coordinator = context.coordinator] row in
             coordinator?.activateRow(row)
         }
@@ -176,6 +176,7 @@ struct PlaylistTableView: NSViewRepresentable {
         private var lastIsPlaying = false
         private var lastSortColumn: PlayerViewModel.PlaylistSortColumn?
         private var lastSortDirection: PlayerViewModel.PlaylistSortDirection = .ascending
+        private var lastMonospaceFont: Bool?
         private var lastAutoSizeSignature: AutoSizeSignature?
         private var pendingAutoSizeSignature: AutoSizeSignature?
         private var autoSizeTask: Task<Void, Never>?
@@ -228,8 +229,9 @@ struct PlaylistTableView: NSViewRepresentable {
             let rowsChanged = visibleTrackIDs != lastVisibleTrackIDs
             let playbackStateChanged = currentTrackID != lastCurrentTrackID || isPlaying != lastIsPlaying
             let sortChanged = sortColumn != lastSortColumn || sortDirection != lastSortDirection
+            let fontChanged = model.playlistMonospaceFont != lastMonospaceFont
 
-            if rowsChanged || sortChanged {
+            if rowsChanged || sortChanged || fontChanged {
                 tableView.reloadData()
             } else {
                 if metadataTokenChanged {
@@ -268,6 +270,7 @@ struct PlaylistTableView: NSViewRepresentable {
             lastIsPlaying = isPlaying
             lastSortColumn = sortColumn
             lastSortDirection = sortDirection
+            lastMonospaceFont = model.playlistMonospaceFont
         }
 
         nonisolated func numberOfRows(in tableView: NSTableView) -> Int {
@@ -301,6 +304,9 @@ struct PlaylistTableView: NSViewRepresentable {
         }
 
         func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int, proposedDropOperation dropOperation: NSTableView.DropOperation) -> NSDragOperation {
+            if info.draggingPasteboard.availableType(from: [databaseFileSidebarDragType]) != nil {
+                return .copy
+            }
             let canDrag = model.canDragReorderTracks
             let hasDragType = info.draggingPasteboard.availableType(from: [playlistRowDragType]) != nil
             if canDrag,
@@ -314,6 +320,11 @@ struct PlaylistTableView: NSViewRepresentable {
         }
 
         func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
+            if let data = info.draggingPasteboard.data(forType: databaseFileSidebarDragType),
+               let payload = try? JSONDecoder().decode(DatabaseFileSidebarDragPayload.self, from: data) {
+                model.appendDatabaseFileSidebarDrag(payload)
+                return true
+            }
             let canDrag = model.canDragReorderTracks
             let hasPayload = info.draggingPasteboard.string(forType: playlistRowDragType) != nil
             if canDrag,
@@ -526,7 +537,11 @@ struct PlaylistTableView: NSViewRepresentable {
             }()
 
             cell.textField?.stringValue = text
-            cell.textField?.font = monospace ? NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular) : NSFont.systemFont(ofSize: NSFont.systemFontSize)
+            cell.textField?.font = model.playlistMonospaceFont
+                ? NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+                : (monospace
+                    ? NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+                    : NSFont.systemFont(ofSize: NSFont.systemFontSize))
             cell.textField?.textColor = isCurrentTrack ? NSColor.labelColor : NSColor.secondaryLabelColor
             return cell
         }
@@ -966,9 +981,11 @@ struct PlaylistTableView: NSViewRepresentable {
         }
 
         private func widestWidth(for column: Column) -> CGFloat {
-            let font = column == .index || column == .length
-                ? NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
-                : NSFont.systemFont(ofSize: NSFont.systemFontSize)
+            let font = model.playlistMonospaceFont
+                ? NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+                : (column == .index || column == .length
+                    ? NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+                    : NSFont.systemFont(ofSize: NSFont.systemFontSize))
 
             let sample = model.visiblePlaylist.prefix(autoSizeSampleLimit)
             let sampledWidth = sample.reduce(CGFloat.zero) { currentMax, track in

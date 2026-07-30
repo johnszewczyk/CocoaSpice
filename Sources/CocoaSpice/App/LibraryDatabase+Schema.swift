@@ -20,6 +20,66 @@ extension LibraryDatabase {
         if version >= 5, version < 8 {
             try execute("ALTER TABLE scan_items ADD COLUMN content_signature TEXT;")
         }
+        if version >= 6, version < 9 {
+            try execute("ALTER TABLE tracks ADD COLUMN browser_game TEXT NOT NULL DEFAULT '';")
+            try execute("ALTER TABLE tracks ADD COLUMN browser_system TEXT NOT NULL DEFAULT '';")
+        }
+        if version >= 4, version < 9 {
+            try execute("""
+            UPDATE tracks
+            SET
+                browser_game = COALESCE(
+                    NULLIF(TRIM((SELECT game FROM track_metadata WHERE track_id = tracks.id)), ''),
+                    COALESCE(archive_path, folder_path)
+                ),
+                browser_system = COALESCE(
+                    TRIM((SELECT system FROM track_metadata WHERE track_id = tracks.id)),
+                    ''
+                );
+            """)
+        }
+        if version < 9 {
+            try execute("CREATE INDEX IF NOT EXISTS tracks_browser_bucket_index ON tracks(browser_game, browser_system, root_id);")
+        }
+        if version < 10 {
+            try execute("CREATE INDEX IF NOT EXISTS tracks_file_tree_index ON tracks(root_id, folder_path, path);")
+        }
+        if version < 11 {
+            // Legacy filename-only placeholders are not complete library rows.
+            // Remove their inventory too, so the next incremental scan replaces
+            // them with normal archive/member metadata.
+            try execute("""
+            DELETE FROM scan_items
+            WHERE EXISTS (
+                SELECT 1
+                FROM tracks t
+                INNER JOIN track_metadata m ON m.track_id = t.id
+                WHERE t.root_id = scan_items.root_id
+                  AND t.path = scan_items.path
+                  AND m.comment = '__cocoaspice_fast_scan__'
+            );
+            """)
+            try execute("""
+            DELETE FROM tracks
+            WHERE id IN (
+                SELECT track_id
+                FROM track_metadata
+                WHERE comment = '__cocoaspice_fast_scan__'
+            );
+            """)
+        }
+        if version < 12 {
+            try execute("""
+            CREATE TABLE IF NOT EXISTS dead_sources (
+                root_id INTEGER NOT NULL,
+                path TEXT NOT NULL,
+                marked_at REAL NOT NULL,
+                PRIMARY KEY(root_id, path),
+                FOREIGN KEY(root_id) REFERENCES library_roots(id) ON DELETE CASCADE
+            );
+            """)
+            try execute("CREATE INDEX IF NOT EXISTS dead_sources_path_index ON dead_sources(path);")
+        }
         guard version < Self.schemaVersion else { return }
         try setUserVersion(Self.schemaVersion)
     }
@@ -33,6 +93,8 @@ extension LibraryDatabase {
             path TEXT NOT NULL,
             filename TEXT NOT NULL,
             extension TEXT NOT NULL,
+            browser_game TEXT NOT NULL DEFAULT '',
+            browser_system TEXT NOT NULL DEFAULT '',
             track_index INTEGER NOT NULL DEFAULT 0,
             track_count INTEGER NOT NULL DEFAULT 1,
             file_size INTEGER NOT NULL,

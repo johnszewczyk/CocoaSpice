@@ -16,11 +16,12 @@
 - Persisted playlist restore includes queued paths, selected track path, and current track path.
 - The current database sidebar persists its last selected library folder path independently from queued playlist state.
 - Sidebar double-click behavior, `Playlist Follows Cursor`, and Sidebar System Mode persist in `UserDefaults`.
+- Sidebar and playlist monospace-font preferences persist in the shared playback preference bundle.
 - Audio-export destination history persists as the last used output folder.
 - Playlist sort state persists independently from broader playback preferences.
 - Playlist column order, visibility, and widths restore through the shared persistence helper rather than direct view-level `UserDefaults` reads.
 - Library scan roots are loaded from SQLite rather than `UserDefaults`.
-- Launch restores playback preferences, library scan roots, persisted playlist state, then sidebar mode and root context.
+- `RestoredAppStartupState` gathers playback preferences, playlist state, column state, sidebar search, and root context in one typed read. Launch applies that snapshot after library roots load, preserving playback preferences, persisted playlist state, then sidebar mode and root context.
 - Launch activates CocoaSpice so its first window is brought to the front.
 - Options close writes the current preference bundle explicitly.
 - Session playlist and sidebar selection context are saved on app termination or main-window close rather than being rewritten on ordinary selection movement.

@@ -5,13 +5,15 @@ final class VGMStreamDecoder: AudioTrackDecoder {
     let sampleRate: Int
     let appliesFadeInternally = false
     private var handle: UnsafeMutableRawPointer?
+    private var compatibilityAliasURL: URL?
     private let channels: Int
     private let systemName: String
 
     init(track: TrackItem, sampleRate: Int) throws {
         let fileURL = try ZipArchiveSupport.materializePlayableFile(for: track)
+        let playableURL = try Self.compatibleURL(for: fileURL)
         let subsong = track.trackIndex == 0 ? 0 : track.trackIndex + 1
-        let opened = fileURL.path.withCString { path in
+        let opened = playableURL.path.withCString { path in
             cocoaspice_vgmstream_open(path, Int32(subsong), Int32(sampleRate))
         }
         guard let opened else {
@@ -21,9 +23,29 @@ final class VGMStreamDecoder: AudioTrackDecoder {
         channels = max(1, Int(cocoaspice_vgmstream_channels(opened)))
         self.sampleRate = max(1, Int(cocoaspice_vgmstream_sample_rate(opened)))
         systemName = Self.systemName(forPathExtension: fileURL.pathExtension)
+        compatibilityAliasURL = playableURL == fileURL ? nil : playableURL
     }
 
-    deinit { if let handle { cocoaspice_vgmstream_close(handle) } }
+    deinit {
+        if let handle { cocoaspice_vgmstream_close(handle) }
+        if let compatibilityAliasURL { try? FileManager.default.removeItem(at: compatibilityAliasURL) }
+    }
+
+    static func isNintendoDSSWAV(_ fileURL: URL) -> Bool {
+        guard let data = try? Data(contentsOf: fileURL, options: [.mappedIfSafe]), data.count >= 4 else { return false }
+        return data.prefix(4) == Data("SWAV".utf8)
+    }
+
+    fileprivate static func compatibleURL(for fileURL: URL) throws -> URL {
+        if isNintendoDSSWAV(fileURL), fileURL.pathExtension.lowercased() == "wav" {
+            let aliasURL = fileURL.deletingPathExtension().appendingPathExtension("adpcm")
+            if !FileManager.default.fileExists(atPath: aliasURL.path) {
+                try FileManager.default.linkItem(at: fileURL, to: aliasURL)
+            }
+            return aliasURL
+        }
+        return fileURL
+    }
     var playedFrames: Int {
         guard let handle else { return 0 }
         return max(0, Int(cocoaspice_vgmstream_played_frames(handle)))
@@ -70,8 +92,13 @@ final class VGMStreamDecoder: AudioTrackDecoder {
 
     fileprivate static func systemName(forPathExtension extensionName: String) -> String {
         switch extensionName.lowercased() {
+        case "wav": "Nintendo DS"
         case "xa": "PlayStation"
         case "aifc", "genh", "stream": "3DO"
+        case "aa3", "at3": "PlayStation 3 / PSP"
+        case "bnk": "Game Audio"
+        case "msf": "PlayStation 3"
+        case "ogg", "rws": "Game Audio"
         default: "PlayStation 2"
         }
     }
@@ -81,8 +108,9 @@ final class VGMStreamFileInspector: AudioFileInspector {
     let trackCount: Int
     private let fileURL: URL
     init(fileURL: URL) throws {
-        self.fileURL = fileURL
-        let opened = fileURL.path.withCString { path in cocoaspice_vgmstream_open(path, 0, 44_100) }
+        let playableURL = try VGMStreamDecoder.compatibleURL(for: fileURL)
+        self.fileURL = playableURL
+        let opened = playableURL.path.withCString { path in cocoaspice_vgmstream_open(path, 0, 44_100) }
         guard let opened else { throw SPCDecoderError.initializationFailed }
         trackCount = max(1, Int(cocoaspice_vgmstream_subsong_count(opened)))
         cocoaspice_vgmstream_close(opened)

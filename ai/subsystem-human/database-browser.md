@@ -4,28 +4,36 @@
 
 - Database: scanned game-music library in the left pane.
 - Rows: dense list of scanned games by default.
+- Files: the standalone icon immediately left of the transport controls switches to a folder tree built only from scanned database records. It uses the same dense native row style as Games, with `▾`/`▸` disclosure glyphs and nested text indentation. Its own toolbar grouping distinguishes browser navigation from playback. It shows enabled library roots, scanned subfolders, and source files without live filesystem browsing.
+- Files: selecting a source file queues its stored tracks; archive files remain one source-file leaf and queue their indexed members.
 - Console View: Options can group games under expandable console headings.
 - Rows: show track counts and scan-root status.
-- Fast Scan playlist activation expands archived GBS files into their individual subtracks.
 - Incremental scans retain successful unchanged ZIP, 7z, and TAR+Zstandard archive results instead of re-inspecting their playable members.
 
 ## Search
 
-- Search: filters the loaded database list.
+- Search: accepts typing immediately, then filters the loaded database list after a short 100 ms pause.
 - Search: uses the same sidebar list rather than a separate results surface.
 - Search: matches game titles; console headings organize the results but are not an additional search field.
+- Files search: matches the stored filename and path while preserving the folder hierarchy needed to reach matching source files.
 - Search: preserves the active database selection when the query changes.
 - Search: clearing the query folds all Console View headings, returning the sidebar to its compact state.
 
 ## Selection
 
-- Selection: supports native multi-selection.
+- Selection: supports native multi-selection and drag-range selection in both Games and Files views.
+- Files: selecting a folder only expands or collapses it; selection alone never changes the playlist.
+- Files: dragging selected file rows to the Playlist appends their stored tracks without rescanning their sources.
+- Files: clicking a single archive source immediately loads its stored archive-member tracks into the playlist.
+- Files: right-click offers Show on Disk for source files and folders.
 - Context menu: opens without changing the selected row.
 
 ## Activation
 
 - Rows: double-click follows the configured activation behavior.
 - Rows: Return loads the selected game or games into the playlist.
+- Files: double-clicking a folder replaces the playlist with all indexed descendant files. Double-clicking selected file rows or pressing Return replaces the playlist with those files.
+- Repeated activation of scanned games or files loads their stored playlist rows directly without rescanning or archive extraction.
 
 ## Files
 

@@ -19,8 +19,8 @@
 - `Highly Complete` now owns `gsf` and `minigsf`.
 - The vendored `2sf2wav` core owns `2sf` and `mini2sf` through `C2SF`. Its bridge is serialized because the underlying DS core uses shared global state.
 - The vendored Play! `PsfCore` owns both PlayStation `psf`/`minipsf` and PlayStation 2 `psf2`/`minipsf2` through one `CPlayPSF` bridge. Separate registry modules share that backend so admission and platform identity remain explicit without duplicating VM code.
-- `vgmstream` owns PlayStation XA streams, 3DO AIFC, GENH, and STREAM files, and its registered PlayStation 2 stream families. XA inspection enumerates embedded subsongs before playlist rows are finalized.
-- The vgmstream compatibility patch admits Silent Hill 2's self-contained `.iecs` HD+BD bodies and its zero-padded stereo `.svag` streams. Rebuild the static library through `scripts/build-vgmstream.sh` whenever this patch or the vendored source changes.
+- `vgmstream` owns PlayStation XA streams, PlayStation 3 MSF, shared PlayStation 3/PSP ATRAC3, PSP RWS, Ogg Vorbis, 3DO AIFC, GENH, and STREAM files, and its registered PlayStation 2 stream families. XA inspection enumerates embedded subsongs before playlist rows are finalized.
+- The vendored vgmstream revision admits Silent Hill 2's self-contained `.iecs` HD+BD bodies and its zero-padded stereo `.svag` streams. Rebuild the static library through `scripts/build-vgmstream.sh` whenever the build configuration or vendored source changes.
 - File inspection and playback share the same backend-routing table, so scan results, playlist import, and playback no longer disagree about VGM-family ownership.
 - Each static decoder module registers its plugin identifier, display name, extensions, subtrack-enumeration requirement, and archive materialization policy once. Scanner descriptors, playlist admission, and dependency-aware archive materialization derive from that registration.
 - `libvgm` is wrapped behind a small C bridge target so the Swift app can stay mostly ignorant of C++ details.

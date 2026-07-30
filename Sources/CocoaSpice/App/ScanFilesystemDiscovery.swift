@@ -21,26 +21,31 @@ enum ScanFilesystemDiscovery {
         registry: ScanPluginRegistry,
         candidates: inout [ScanCandidate]
     ) {
-        guard let children = try? FileManager.default.contentsOfDirectory(
+        guard let enumerator = FileManager.default.enumerator(
             at: folderURL,
             includingPropertiesForKeys: [.isDirectoryKey, .isRegularFileKey, .fileSizeKey, .contentModificationDateKey],
             options: [.skipsHiddenFiles]
         ) else { return }
 
-        for child in children.sorted(by: { $0.path < $1.path }) {
-            let values = try? child.resourceValues(forKeys: [.isDirectoryKey, .isRegularFileKey])
-            if values?.isDirectory == true {
-                walk(rootID: rootID, folderURL: child, registry: registry, candidates: &candidates)
-                continue
-            }
+        // `enumerator(at:includingPropertiesForKeys:)` prefetches these
+        // attributes in one traversal. The old recursive implementation
+        // sorted every directory and fetched each file's metadata twice.
+        // We retain deterministic output with the single final sort in
+        // `discover`, without the repeated filesystem round trips.
+        for case let child as URL in enumerator {
+            let values = try? child.resourceValues(forKeys: [
+                .isDirectoryKey,
+                .isRegularFileKey,
+                .fileSizeKey,
+                .contentModificationDateKey
+            ])
             guard values?.isRegularFile == true else { continue }
             let isArchive = ZipArchiveSupport.canHandle(child)
             let extensionName = child.pathExtension.lowercased()
             guard isArchive || registry.route(for: extensionName) != nil else { continue }
-            let resourceValues = try? child.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
             let fingerprint = ScanFingerprint(
-                fileSize: Int64(resourceValues?.fileSize ?? 0),
-                modifiedAt: resourceValues?.contentModificationDate ?? .distantPast
+                fileSize: Int64(values?.fileSize ?? 0),
+                modifiedAt: values?.contentModificationDate ?? .distantPast
             )
             candidates.append(
                 ScanCandidate(

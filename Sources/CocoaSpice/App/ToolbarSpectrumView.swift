@@ -6,48 +6,57 @@ import SwiftUI
 @MainActor
 @Observable
 final class ToolbarSpectrumModel {
-    static let bandCount = 8
-    private let capHoldDuration: TimeInterval = 0.100
+    private(set) var bandCount = SpectrumBandCount.defaultValue
+    private let capHoldDuration: TimeInterval = 0.1
     private let capDropDecayRate: Double = 3.2
-    private let fallSmoothingTimeConstant: TimeInterval = 0.050
 
-    var targetLevels = Array(repeating: 0.0, count: bandCount)
-    var levels = Array(repeating: 0.0, count: bandCount)
-    var capLevels = Array(repeating: 0.0, count: bandCount)
+    var targetLevels = Array(repeating: 0.0, count: SpectrumBandCount.defaultValue)
+    var levels = Array(repeating: 0.0, count: SpectrumBandCount.defaultValue)
+    var capLevels = Array(repeating: 0.0, count: SpectrumBandCount.defaultValue)
     var gradientStartColor = NSColor.secondaryLabelColor
     var gradientEndColor = NSColor.white
     var peakColor = NSColor.white
-    private var capHoldRemaining = Array(repeating: 0.0, count: bandCount)
+    private var capHoldRemaining = Array(repeating: 0.0, count: SpectrumBandCount.defaultValue)
     private var lastAnimationUptime: TimeInterval?
     private var displayTimer: Timer?
     var isVisible = true
 
     func update(with newLevels: [Float]) {
-        guard !newLevels.isEmpty else {
+        guard newLevels.count == bandCount else {
             reset()
             return
         }
 
-        for index in targetLevels.indices {
-            let newValue = index < newLevels.count ? Double(newLevels[index]) : 0
-            targetLevels[index] = min(max(newValue, 0), 1)
+        for index in levels.indices {
+            targetLevels[index] = min(max(Double(newLevels[index]), 0), 1)
         }
+    }
+
+    func configure(bandCount: Int) {
+        let clamped = SpectrumBandCount.clamped(bandCount)
+        guard self.bandCount != clamped else { return }
+        self.bandCount = clamped
+        targetLevels = Array(repeating: 0, count: clamped)
+        levels = Array(repeating: 0, count: clamped)
+        capLevels = Array(repeating: 0, count: clamped)
+        capHoldRemaining = Array(repeating: 0, count: clamped)
     }
 
     private func startDisplayTimer() {
         guard displayTimer == nil else { return }
-        displayTimer?.invalidate()
         lastAnimationUptime = ProcessInfo.processInfo.systemUptime
-        displayTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
-            Task { @MainActor [weak self] in
+        let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 45.0, repeats: true) { [weak self] _ in
+            // The timer is registered only on the main run loop below.
+            MainActor.assumeIsolated {
                 self?.stepAnimation()
             }
         }
-        if let displayTimer {
-            RunLoop.main.add(displayTimer, forMode: .common)
-        }
+        RunLoop.main.add(timer, forMode: .common)
+        displayTimer = timer
     }
 
+    // Audio probes only set frequency targets. This timer exists
+    // solely to animate a small number of bar heights between those targets.
     func setAnimating(_ isAnimating: Bool) {
         if isAnimating {
             startDisplayTimer()
@@ -60,31 +69,22 @@ final class ToolbarSpectrumModel {
 
     private func stepAnimation() {
         let now = ProcessInfo.processInfo.systemUptime
-        let elapsed = lastAnimationUptime.map { max(1.0 / 120.0, now - $0) } ?? (1.0 / 60.0)
+        let elapsed = lastAnimationUptime.map { max(1.0 / 60.0, now - $0) } ?? (1.0 / 30.0)
         lastAnimationUptime = now
 
         for index in levels.indices {
-            let targetLevel = targetLevels[index]
-            let nextLevel: Double
-            if targetLevel >= levels[index] {
-                nextLevel = targetLevel
-            } else {
-                let decay = exp(-elapsed / fallSmoothingTimeConstant)
-                nextLevel = targetLevel + ((levels[index] - targetLevel) * decay)
-            }
-            levels[index] = nextLevel
-
-            if nextLevel >= capLevels[index] {
-                capLevels[index] = nextLevel
+            let target = targetLevels[index]
+            // Direct target display while evaluating the FFT meter. Peak caps
+            // still fall independently, but bar height has no smoothing.
+            let next = target
+            levels[index] = next
+            if next >= capLevels[index] {
+                capLevels[index] = next
                 capHoldRemaining[index] = capHoldDuration
-                continue
-            }
-
-            if capHoldRemaining[index] > 0 {
+            } else if capHoldRemaining[index] > 0 {
                 capHoldRemaining[index] = max(0, capHoldRemaining[index] - elapsed)
             } else {
-                let decayedLevel = capLevels[index] * exp(-capDropDecayRate * elapsed)
-                capLevels[index] = max(nextLevel, decayedLevel)
+                capLevels[index] = max(next, capLevels[index] * exp(-capDropDecayRate * elapsed))
             }
         }
     }
@@ -92,8 +92,7 @@ final class ToolbarSpectrumModel {
     func reset() {
         guard targetLevels.contains(where: { $0 != 0 })
                 || levels.contains(where: { $0 != 0 })
-                || capLevels.contains(where: { $0 != 0 })
-                || capHoldRemaining.contains(where: { $0 != 0 }) else {
+                || capLevels.contains(where: { $0 != 0 }) else {
             return
         }
         for index in levels.indices {
@@ -102,7 +101,15 @@ final class ToolbarSpectrumModel {
             capLevels[index] = 0
             capHoldRemaining[index] = 0
         }
-        lastAnimationUptime = ProcessInfo.processInfo.systemUptime
+    }
+}
+
+enum SpectrumBandCount {
+    static let supported = [10, 20, 40]
+    static let defaultValue = 10
+
+    static func clamped(_ value: Int) -> Int {
+        supported.min(by: { abs($0 - value) < abs($1 - value) }) ?? defaultValue
     }
 }
 
