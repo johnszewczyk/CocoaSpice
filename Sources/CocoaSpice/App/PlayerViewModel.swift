@@ -736,11 +736,11 @@ final class PlayerViewModel {
             persistTrimmedLibraryRootIDs()
             reloadLibraryScanRoots()
             reloadDatabaseGameItems()
-            resetSidebarContext(message: "Database purged")
+            resetSidebarContext(message: "Database reset")
             refreshDeadLinkSummary()
-            libraryScanStatus = "Database purged"
+            libraryScanStatus = "Database reset"
         } catch {
-            libraryScanStatus = "Could not purge database: \(error.localizedDescription)"
+            libraryScanStatus = "Could not reset database: \(error.localizedDescription)"
         }
     }
 

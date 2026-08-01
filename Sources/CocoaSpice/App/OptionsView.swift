@@ -5,6 +5,8 @@ struct OptionsView: View {
     @Bindable var model: PlayerViewModel
     @State private var longPlayTimeText = ""
     @State private var selection: OptionsSection = .library
+    @State private var confirmsResetPaths = false
+    @State private var confirmsResetDatabase = false
 
     private enum OptionsSection: String, CaseIterable, Identifiable {
         case audio = "Audio"
@@ -85,6 +87,22 @@ struct OptionsView: View {
             if longPlayTimeText != formatted {
                 longPlayTimeText = formatted
             }
+        }
+        .alert("Reset All Library Paths?", isPresented: $confirmsResetPaths) {
+            Button("Cancel", role: .cancel) {}
+            Button("Reset Paths", role: .destructive) {
+                model.resetLibraryPaths()
+            }
+        } message: {
+            Text("This removes every configured scan path from the active library. Indexed data stays in the database and can be reused if a path is added again.")
+        }
+        .alert("Reset Database?", isPresented: $confirmsResetDatabase) {
+            Button("Cancel", role: .cancel) {}
+            Button("Reset Database", role: .destructive) {
+                model.purgeLibraryDatabase()
+            }
+        } message: {
+            Text("This permanently removes all indexed tracks, metadata, scan inventory, and scan logs. Your configured library paths remain and can be scanned again.")
         }
     }
 
@@ -504,7 +522,7 @@ struct OptionsView: View {
                     }
                     .disabled(model.libraryScanInProgress)
                     libraryActionButton("Reset Paths") {
-                        model.resetLibraryPaths()
+                        confirmsResetPaths = true
                     }
                     .disabled(model.libraryScanInProgress || model.libraryScanRoots.isEmpty)
                     libraryActionButton("Scan All") {
@@ -551,8 +569,8 @@ struct OptionsView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Clear Database") {
-                        model.purgeLibraryDatabase()
+                    Button("Reset Database") {
+                        confirmsResetDatabase = true
                     }
                     .disabled(model.libraryScanInProgress || model.databaseEntryCount == 0)
                 }
