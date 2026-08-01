@@ -1609,6 +1609,10 @@ final class PlayerViewModel {
         databaseFileSidebar.toggleFolder(folderID)
     }
 
+    func expandDatabaseFileFolder(_ folderID: String) {
+        databaseFileSidebar.expandFolder(folderID)
+    }
+
     private static func archiveCacheSummaryText(for summary: ZipArchiveSupport.CacheSummary) -> String {
         let fileLabel = summary.fileCount == 1 ? "file" : "files"
         return "\(summary.displaySize) • \(summary.fileCount) cached \(fileLabel)"

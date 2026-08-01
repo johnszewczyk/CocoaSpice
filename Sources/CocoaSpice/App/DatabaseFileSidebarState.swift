@@ -49,6 +49,10 @@ final class DatabaseFileSidebarState {
         }
     }
 
+    func expandFolder(_ folderID: String) {
+        expandedFolderIDs.insert(folderID)
+    }
+
     private func refreshVisibleItems() {
         visibleFileItems = DatabaseFileSidebarTree.filter(fileItems, query: searchText)
         contentRevision &+= 1

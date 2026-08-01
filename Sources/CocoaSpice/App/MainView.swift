@@ -888,6 +888,12 @@ private struct DatabaseFileListView: NSViewRepresentable {
                 primaryFileID: items.last?.id,
                 folders: folders
             )
+            // Files mode uses selection as its normal disclosure gesture. A
+            // subsequent plain click is intercepted by `handleFolderClick`
+            // and collapses the already-selected folder instead.
+            if items.isEmpty, folders.count == 1, let folder = folders.first {
+                model.expandDatabaseFileFolder(folder.id)
+            }
             if folders.isEmpty, items.count == 1, let archive = items.first, archive.isArchive {
                 model.activateDatabaseFile(archive, replace: true)
             }
