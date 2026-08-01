@@ -3,7 +3,7 @@
 ## Product
 
 - `CocoaSpice` is a native macOS audio frontend for game-music formats.
-- Current decoder families include `libgme`, `libopenmpt` for tracker modules, `libvgm`, `Highly Complete` for GBA PSF-family playback, `lazyusf2` for Nintendo 64 USF-family playback, the Nintendo DS 2SF backend, `vgmstream` for native streamed game audio, and Play! for PlayStation PSF/miniPSF plus PlayStation 2 PSF2/miniPSF2.
+- Current decoder families include `libgme`, `libopenmpt` for tracker modules, `libvgm`, `Highly Complete` for GBA PSF-family playback, `Highly Theoretical` for Sega Saturn SSF-family playback, `lazyusf2` for Nintendo 64 USF-family playback, the Nintendo DS 2SF backend, `vgmstream` for native streamed game audio, and Play! for PlayStation PSF/miniPSF plus PlayStation 2 PSF2/miniPSF2.
 - The current product split is a scanned `Database` browser on the left and an editable `Playlist` on the right.
 
 ## Major Components

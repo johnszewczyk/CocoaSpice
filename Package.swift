@@ -16,6 +16,8 @@ let vgmstreamBuildDirectory = "\(rootPath)/.build/vgmstream"
 let vgmstreamVendorDirectory = "\(rootPath)/vendor/vgmstream/src"
 let playPSFBuildDirectory = "\(rootPath)/.build/play-psf"
 let playPSFVendorDirectory = "\(rootPath)/vendor/play/tools/PsfPlayer/Source"
+let highlyTheoreticalBuildDirectory = "\(rootPath)/.build/highly-theoretical"
+let highlyTheoreticalVendorDirectory = "\(rootPath)/vendor/highly_theoretical/Core"
 
 let package = Package(
     name: "CocoaSpice",
@@ -129,6 +131,25 @@ let package = Package(
             publicHeadersPath: "include"
         ),
         .target(
+            name: "CHighlyTheoretical",
+            path: "Sources/CHighlyTheoretical",
+            publicHeadersPath: "include",
+            cSettings: [
+                .unsafeFlags([
+                    "-I\(highlyTheoreticalVendorDirectory)",
+                    "-I\(rootPath)/vendor/psflib"
+                ])
+            ],
+            linkerSettings: [
+                .unsafeFlags([
+                    "\(highlyTheoreticalBuildDirectory)/libhighly_theoretical.a",
+                    "\(lazyUSFBuildDirectory)/libpsflib.a"
+                ]),
+                .linkedLibrary("z"),
+                .linkedLibrary("m")
+            ]
+        ),
+        .target(
             name: "CVGMStream",
             path: "Sources/CVGMStream",
             publicHeadersPath: "include",
@@ -176,7 +197,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "CocoaSpice",
-            dependencies: ["CGME", "COpenMPT", "CLibVGM", "CHighlyComplete", "CLazyUSF", "C2SF", "CPlaybackAudio", "CVGMStream", "CPlayPSF"],
+            dependencies: ["CGME", "COpenMPT", "CLibVGM", "CHighlyComplete", "CHighlyTheoretical", "CLazyUSF", "C2SF", "CPlaybackAudio", "CVGMStream", "CPlayPSF"],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("AudioToolbox"),

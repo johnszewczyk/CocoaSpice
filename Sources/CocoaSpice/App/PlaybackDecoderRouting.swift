@@ -2,6 +2,7 @@ import Foundation
 import COpenMPT
 import CLibVGM
 import CHighlyComplete
+import CHighlyTheoretical
 import CLazyUSF
 import C2SF
 import CVGMStream
@@ -74,6 +75,8 @@ enum PlaybackDecoderFactory {
             return try LibVGMDecoder(track: track, sampleRate: sampleRate)
         case .highlyComplete:
             return try HighlyCompleteDecoder(track: track, sampleRate: sampleRate)
+        case .highlyTheoretical:
+            return try HighlyTheoreticalDecoder(track: track, sampleRate: sampleRate)
         case .lazyUSF:
             return try LazyUSFDecoder(track: track, sampleRate: sampleRate)
         case .twoSF:
@@ -105,6 +108,8 @@ enum PlaybackDecoderFactory {
             return try LibVGMFileInspector(fileURL: fileURL)
         case .highlyComplete:
             return try HighlyCompleteFileInspector(fileURL: fileURL)
+        case .highlyTheoretical:
+            return try HighlyTheoreticalFileInspector(fileURL: fileURL)
         case .lazyUSF:
             return try LazyUSFFileInspector(fileURL: fileURL)
         case .twoSF:

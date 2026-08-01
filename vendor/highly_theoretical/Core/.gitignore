@@ -1,0 +1,7 @@
+m68k/m68kmake.exe
+m68k/m68kmake.obj
+Starscream/star.exe
+Starscream/s68000.obj
+*.user
+Debug
+Release

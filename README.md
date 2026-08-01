@@ -28,6 +28,7 @@ All listed playable formats are admitted by the scanner, drag and drop, playlist
 | Tracker music | `.xm` | [libopenmpt](https://lib.openmpt.org/libopenmpt/) |
 | Sega music logs | `.gym`, `.s98`, `.vgm`, `.vgz` | [libvgm](https://github.com/ValleyBell/libvgm) |
 | Game Boy Advance PSF | `.gsf`, `.minigsf` | [mGBA / Highly Complete](https://github.com/mgba-emu/mgba) |
+| Sega Saturn SSF | `.ssf`, `.minissf` | [Highly Theoretical](https://gitlab.com/kode54/highly_theoretical) |
 | Nintendo 64 | `.usf`, `.miniusf` | [lazyusf2](https://gitlab.com/kode54/lazyusf2) |
 | Nintendo DS PSF | `.2sf`, `.mini2sf` | [2sf2wav](https://bitbucket.org/ahigerd/2sf2wav) |
 | PlayStation PSF | `.psf`, `.minipsf` | [Play!](https://github.com/jpd002/Play-) PSF core |
@@ -38,7 +39,7 @@ All listed playable formats are admitted by the scanner, drag and drop, playlist
 ### Format-aware details
 
 - Nintendo DS SWAV payloads misnamed as `.wav` are recognized from their header. Known NDS `_22.wav` assets without a WAV header are decoded as signed 8-bit, 22 kHz mono PCM instead of failing as malformed WAV.
-- `.txtp` manifests and PSF/USF/2SF mini files preserve the necessary archive dependency set during playback.
+- `.txtp` manifests and PSF/SSF/USF/2SF mini files preserve the necessary archive dependency set during playback.
 - Multi-track files and embedded subsongs become separate playlist tracks.
 - `.fsb` banks and `.txtp` manifests use vgmstream. PSF library files are dependencies, not standalone tracks.
 - Doom `.mus`, APE, raw AAC, and ALAC are currently not playback formats.
@@ -67,6 +68,7 @@ CocoaSpice is possible because of these projects and the work of their maintaine
 | FFmpeg | ATRAC3 and related vgmstream decode support | [Project site](https://ffmpeg.org/) |
 | libogg / libvorbis | Ogg Vorbis support used by vgmstream | [Xiph.org](https://xiph.org/) |
 | mGBA / Highly Complete | GSF and miniGSF | [GitHub](https://github.com/mgba-emu/mgba) |
+| Highly Theoretical | Sega Saturn SSF and miniSSF | [GitLab](https://gitlab.com/kode54/highly_theoretical) |
 | lazyusf2 | USF and miniUSF | [GitLab](https://gitlab.com/kode54/lazyusf2) |
 | 2sf2wav | 2SF and mini2SF | [Bitbucket](https://bitbucket.org/ahigerd/2sf2wav) |
 | Play! | PSF and PSF2 playback core | [GitHub](https://github.com/jpd002/Play-) |

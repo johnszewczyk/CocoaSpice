@@ -55,6 +55,9 @@ fi
 if [[ ! -x "$ROOT_DIR/scripts/build-play-psf.sh" ]]; then
   chmod +x "$ROOT_DIR/scripts/build-play-psf.sh"
 fi
+if [[ ! -x "$ROOT_DIR/scripts/build-highly-theoretical.sh" ]]; then
+  chmod +x "$ROOT_DIR/scripts/build-highly-theoretical.sh"
+fi
 if [[ ! -x "$ROOT_DIR/scripts/build-vgmstream.sh" ]]; then
   chmod +x "$ROOT_DIR/scripts/build-vgmstream.sh"
 fi
@@ -83,6 +86,9 @@ if [[ ! -f "$BUILD_DIR/2sf/lib2sf.a" ]]; then
 fi
 if [[ ! -f "$BUILD_DIR/play-psf/libcocoaspice_play_psf.a" ]]; then
   "$ROOT_DIR/scripts/build-play-psf.sh"
+fi
+if [[ ! -f "$BUILD_DIR/highly-theoretical/libhighly_theoretical.a" ]]; then
+  "$ROOT_DIR/scripts/build-highly-theoretical.sh"
 fi
 "$ROOT_DIR/scripts/build-vgmstream.sh"
 

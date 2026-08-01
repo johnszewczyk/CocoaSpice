@@ -17,6 +17,7 @@
 - Backend modules expose app-owned PCM, metadata, seeking, and timing hooks; the player model must not call decoder-specific C APIs directly.
 - `libvgm` now owns `vgm`, `vgz`, `gym`, and `s98`.
 - `Highly Complete` now owns `gsf` and `minigsf`.
+- Highly Theoretical owns Sega Saturn `ssf` and `minissf`. Its native bridge merges the PSF loader's sparse program sections before one upload, so a section beyond the SCSP's 512 KiB RAM cannot wrap and overwrite the reset vector.
 - The vendored `2sf2wav` core owns `2sf` and `mini2sf` through `C2SF`. Its bridge is serialized because the underlying DS core uses shared global state.
 - The vendored Play! `PsfCore` owns both PlayStation `psf`/`minipsf` and PlayStation 2 `psf2`/`minipsf2` through one `CPlayPSF` bridge. Separate registry modules share that backend so admission and platform identity remain explicit without duplicating VM code.
 - `vgmstream` owns PlayStation XA streams, PlayStation 3 MSF, shared PlayStation 3/PSP ATRAC3, PSP RWS, Ogg Vorbis, 3DO AIFC, GENH, and STREAM files, and its registered PlayStation 2 stream families. XA inspection enumerates embedded subsongs before playlist rows are finalized.
@@ -41,6 +42,7 @@
 - Do not assume all decoder backends share identical threading or sample-rate behavior.
 - 2SF archive playback materializes the complete archive set before bridge creation so `_lib` dependencies resolve beside the selected file.
 - PSF-family archive playback materializes the complete archive set before bridge creation; `.psflib` files remain dependency-only.
+- SSF-family archive playback also materializes the complete archive set before bridge creation so `_lib` and miniSSF dependencies resolve beside the selected track.
 - Keep [vgmstream-cocoaspice.patch](/Users/john/Downloads/Code/CocoaSpice/patches/vgmstream-cocoaspice.patch) reversible against the vendored revision; the build script uses that check to prevent silently linking an unpatched decoder.
 
 ## Files
@@ -54,5 +56,6 @@
 - [libvgm_bridge.cpp](/Users/john/Downloads/Code/CocoaSpice/Sources/CLibVGM/libvgm_bridge.cpp)
 - [highlycomplete_bridge.h](/Users/john/Downloads/Code/CocoaSpice/Sources/CHighlyComplete/include/highlycomplete_bridge.h)
 - [highlycomplete_bridge.cpp](/Users/john/Downloads/Code/CocoaSpice/Sources/CHighlyComplete/highlycomplete_bridge.cpp)
+- [highly_theoretical_bridge.c](/Users/john/Downloads/Code/CocoaSpice/Sources/CHighlyTheoretical/highly_theoretical_bridge.c)
 - [twosf_bridge.cpp](/Users/john/Downloads/Code/CocoaSpice/Sources/C2SF/twosf_bridge.cpp)
 - [play_psf_bridge.cpp](/Users/john/Downloads/Code/CocoaSpice/Sources/CPlayPSF/play_psf_bridge.cpp)

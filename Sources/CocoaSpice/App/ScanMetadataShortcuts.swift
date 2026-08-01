@@ -22,7 +22,7 @@ enum ScanMetadataShortcuts {
                 descriptor: module.scanDescriptor,
                 fallback: fallback
             )
-        case "lazyusf", "twosf", "play-psf1", "play-psf2":
+        case "lazyusf", "twosf", "play-psf1", "play-psf2", "highly-theoretical":
             return PSFMetadataScanHandler(
                 descriptor: module.scanDescriptor,
                 fallback: fallback

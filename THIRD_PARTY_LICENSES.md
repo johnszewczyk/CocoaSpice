@@ -11,6 +11,7 @@ CocoaSpice embeds third-party decoder and emulator code. This repository does no
 | FFmpeg | ATRAC3 and related streamed-audio decoding used by vgmstream | [FFmpeg](https://ffmpeg.org/) | Preserve the Homebrew package license notices and the linked build's configured license terms. |
 | libvorbis / libogg | Ogg Vorbis decoding used by vgmstream | [Xiph.org](https://xiph.org/) | BSD-style; preserve Homebrew package notices. |
 | mGBA / Highly Complete | GBA GSF playback | [mGBA](https://github.com/mgba-emu/mgba) | MPL-2.0; `vendor/mgba/LICENSE` |
+| Highly Theoretical | Sega Saturn SSF and miniSSF playback | [Highly Theoretical](https://gitlab.com/kode54/highly_theoretical) | GPL-3.0-or-later; `vendor/highly_theoretical/LICENSE.TXT` |
 | lazyusf2 | Nintendo 64 USF and miniUSF | [lazyusf2](https://gitlab.com/kode54/lazyusf2) | GPL-2.0-or-later; vendored source headers and `vendor/lazyusf2/rsp_hle/LICENSES` |
 | 2sf2wav | Nintendo DS 2SF and mini2SF | [2sf2wav](https://bitbucket.org/ahigerd/2sf2wav) | GPL-2.0-or-later; bundled DeSmuME-derived source headers |
 | Play! | PlayStation PSF and PSF2 playback core | [Play!](https://github.com/jpd002/Play-) | BSD-style; `vendor/play/License.txt` and dependency notices |

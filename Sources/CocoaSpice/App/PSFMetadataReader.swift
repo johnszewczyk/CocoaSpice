@@ -66,6 +66,7 @@ enum PSFMetadataReader {
         case "psf2", "minipsf2": return "PlayStation 2"
         case "usf", "miniusf": return "Nintendo 64"
         case "2sf", "mini2sf": return "Nintendo DS"
+        case "ssf", "minissf": return "Sega Saturn"
         default: return ""
         }
     }

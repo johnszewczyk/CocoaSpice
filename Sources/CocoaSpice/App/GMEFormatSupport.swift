@@ -6,6 +6,7 @@ enum PlaybackDecoderBackend: Hashable, Sendable {
     case standardAudio
     case libvgm
     case highlyComplete
+    case highlyTheoretical
     case lazyUSF
     case twoSF
     case vgmstream
@@ -104,6 +105,7 @@ enum PlaybackFormatRegistry {
         "gsf",
         "minigsf"
     ]
+    static let highlyTheoreticalSupportedExtensions: Set<String> = ["ssf", "minissf"]
 
     static let lazyUSFSupportedExtensions: Set<String> = [
         "usf",
@@ -158,6 +160,12 @@ enum PlaybackFormatRegistry {
             pluginID: "highly-complete", displayName: "Highly Complete", backend: .highlyComplete,
             supportedExtensions: highlyCompleteSupportedExtensions,
             requiresTrackEnumeration: true, archiveMaterialization: .completeSet
+        ),
+        PlaybackDecoderModule(
+            pluginID: "highly-theoretical", displayName: "Highly Theoretical", backend: .highlyTheoretical,
+            supportedExtensions: highlyTheoreticalSupportedExtensions,
+            requiresTrackEnumeration: false, archiveMaterialization: .completeSet,
+            scanArchiveMaterialization: .selectedEntry
         ),
         PlaybackDecoderModule(
             pluginID: "lazyusf", displayName: "LazyUSF", backend: .lazyUSF,
