@@ -56,7 +56,6 @@ struct PlaylistTableView: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
-        context.coordinator.model = model
         context.coordinator.reload()
     }
 
@@ -581,11 +580,16 @@ struct PlaylistTableView: NSViewRepresentable {
             let visibility = storedVisibility()
             for column in tableView.tableColumns {
                 guard let playlistColumn = Column(rawValue: column.identifier.rawValue), playlistColumn.userConfigurable else {
-                    column.isHidden = false
+                    if column.isHidden {
+                        column.isHidden = false
+                    }
                     continue
                 }
 
-                column.isHidden = visibility[playlistColumn.rawValue] == false
+                let isHidden = visibility[playlistColumn.rawValue] == false
+                if column.isHidden != isHidden {
+                    column.isHidden = isHidden
+                }
             }
         }
 
@@ -623,6 +627,7 @@ struct PlaylistTableView: NSViewRepresentable {
 
         private func refreshSortIndicators() {
             guard let tableView else { return }
+            var changed = false
 
             for tableColumn in tableView.tableColumns {
                 guard let column = Column(rawValue: tableColumn.identifier.rawValue),
@@ -630,14 +635,18 @@ struct PlaylistTableView: NSViewRepresentable {
                     continue
                 }
 
-                if model.playlistSortColumn == column.sortColumn {
-                    headerCell.sortDirection = model.playlistSortDirection
-                } else {
-                    headerCell.sortDirection = nil
+                let sortDirection = model.playlistSortColumn == column.sortColumn
+                    ? model.playlistSortDirection
+                    : nil
+                if headerCell.sortDirection != sortDirection {
+                    headerCell.sortDirection = sortDirection
+                    changed = true
                 }
             }
 
-            tableView.headerView?.needsDisplay = true
+            if changed {
+                tableView.headerView?.needsDisplay = true
+            }
         }
 
         private func resolvedColumnOrder() -> [Column] {

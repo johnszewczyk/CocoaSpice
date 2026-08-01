@@ -172,8 +172,14 @@ final class PlayerViewModel {
     var browsedFolderTracks: [TrackItem] = []
     var selectedTrackID: TrackItem.ID?
     var selectedTrackIDs: Set<TrackItem.ID> = []
-    var playlist: [TrackItem] = []
+    var playlist: [TrackItem] = [] {
+        didSet { refreshPlaylistTotalDurationReadout() }
+    }
     var metadataCache: [String: TrackMetadata] = [:]
+    private(set) var playlistTotalDurationReadout = "0:00"
+    private var playlistDurationSecondsByTrackID: [TrackItem.ID: Int] = [:]
+    private var playlistDurationTrackIDs: Set<TrackItem.ID> = []
+    private var playlistDurationTotalSeconds = 0
     var playlistColumnWidthHints: PlaylistColumnWidthHints?
     var playlistSortColumn: PlaylistSortColumn?
     var playlistSortDirection: PlaylistSortDirection = .ascending
@@ -2236,19 +2242,41 @@ final class PlayerViewModel {
         Self.formatTime(Int(displayedElapsedSeconds.rounded()))
     }
 
-    /// Sum the durations the playlist has actually discovered. A plus suffix
-    /// keeps a partial total honest while asynchronous metadata inspection is
-    /// still filling in unknown tracks.
-    var playlistTotalDurationReadout: String {
-        guard !playlist.isEmpty else { return "0:00" }
-        let knownDurations = playlist.compactMap { track -> Int? in
+    /// Recompute only when the playlist or its metadata changes. SwiftUI reads
+    /// this value on every body pass, so deriving it there made the status bar
+    /// walk every track continuously at idle.
+    private func refreshPlaylistTotalDurationReadout() {
+        playlistDurationTrackIDs = Set(playlist.map(\.id))
+        playlistDurationSecondsByTrackID = [:]
+        playlistDurationTotalSeconds = 0
+        for track in playlist {
             guard let milliseconds = metadataCache[track.id]?.playLengthMs,
-                  milliseconds > 0 else { return nil }
-            return milliseconds / 1_000
+                  milliseconds > 0 else { continue }
+            let seconds = milliseconds / 1_000
+            playlistDurationSecondsByTrackID[track.id] = seconds
+            playlistDurationTotalSeconds += seconds
         }
-        let total = knownDurations.reduce(0, +)
-        let isPartial = knownDurations.count != playlist.count
-        return "\(Self.formatTime(total))\(isPartial ? "+" : "")"
+        updatePlaylistTotalDurationReadout()
+    }
+
+    private func updatePlaylistDuration(for trackID: TrackItem.ID, metadata: TrackMetadata) {
+        guard playlistDurationTrackIDs.contains(trackID) else { return }
+        let previous = playlistDurationSecondsByTrackID[trackID] ?? 0
+        let updated = max(metadata.playLengthMs, 0) / 1_000
+        if updated > 0 {
+            playlistDurationSecondsByTrackID[trackID] = updated
+        } else {
+            playlistDurationSecondsByTrackID.removeValue(forKey: trackID)
+        }
+        playlistDurationTotalSeconds += updated - previous
+    }
+
+    private func updatePlaylistTotalDurationReadout() {
+        let isPartial = playlistDurationSecondsByTrackID.count != playlistDurationTrackIDs.count
+        let readout = "\(Self.formatTime(playlistDurationTotalSeconds))\(isPartial ? "+" : "")"
+        if playlistTotalDurationReadout != readout {
+            playlistTotalDurationReadout = readout
+        }
     }
 
     var statusPathReadout: String {
@@ -2484,7 +2512,7 @@ final class PlayerViewModel {
         }
     }
 
-    private func refreshPlaylistMetadata() {
+    private func refreshPlaylistMetadata(limit: Int? = nil) {
         let generation = playlistMetadataTaskOwner.begin()
         let tracks = playlist
         let cachedMetadata = metadataCache
@@ -2496,7 +2524,7 @@ final class PlayerViewModel {
             return
         }
 
-        let missingTracks = tracks.filter { track in
+        let unresolvedTracks = tracks.filter { track in
             guard let metadata = cachedMetadata[track.id] else { return true }
 
             // Older database scans may have cached SPC tags but no duration.
@@ -2518,6 +2546,12 @@ final class PlayerViewModel {
                 && metadata.playLengthMs == 0
                 && metadata.fadeLengthMs == 0
         }
+        let missingTracks: [TrackItem]
+        if let limit {
+            missingTracks = Array(unresolvedTracks.prefix(limit))
+        } else {
+            missingTracks = unresolvedTracks
+        }
         if missingTracks.isEmpty {
             if playlistColumnWidthHints == nil {
                 playlistColumnWidthHints = Self.buildPlaylistColumnWidthHints(
@@ -2538,6 +2572,7 @@ final class PlayerViewModel {
             )
             await withTaskGroup(of: (String, TrackMetadata?).self) { group in
                 var nextJobIndex = 0
+                var pendingMetadata: [String: TrackMetadata] = [:]
                 let initialJobCount = min(
                     PlaybackInspection.metadataWorkerLimit,
                     jobs.count
@@ -2562,9 +2597,14 @@ final class PlayerViewModel {
 
                     if let metadata {
                         resolvedMetadata[trackID] = metadata
-                        await MainActor.run {
-                            guard self.playlistMetadataTaskOwner.isCurrent(generation) else { return }
-                            self.updatePlaylistMetadata(for: trackID, metadata: metadata)
+                        pendingMetadata[trackID] = metadata
+                        if pendingMetadata.count >= 64 {
+                            let batch = pendingMetadata
+                            pendingMetadata.removeAll(keepingCapacity: true)
+                            await MainActor.run {
+                                guard self.playlistMetadataTaskOwner.isCurrent(generation) else { return }
+                                self.updatePlaylistMetadata(batch)
+                            }
                         }
                     }
 
@@ -2578,6 +2618,13 @@ final class PlayerViewModel {
                             )
                             return (job.track.id, metadata)
                         }
+                    }
+                }
+
+                if !pendingMetadata.isEmpty, !Task.isCancelled {
+                    await MainActor.run {
+                        guard self.playlistMetadataTaskOwner.isCurrent(generation) else { return }
+                        self.updatePlaylistMetadata(pendingMetadata)
                     }
                 }
             }
@@ -2605,13 +2652,22 @@ final class PlayerViewModel {
         playlistMetadataTaskOwner.install(task, generation: generation)
     }
 
-    private func updatePlaylistMetadata(for trackID: String, metadata: TrackMetadata) {
-        metadataCache[trackID] = metadata
+    private func updatePlaylistMetadata(_ updates: [TrackItem.ID: TrackMetadata]) {
+        guard !updates.isEmpty else { return }
+        metadataCache.merge(updates) { _, replacement in replacement }
+        for (trackID, metadata) in updates {
+            updatePlaylistDuration(for: trackID, metadata: metadata)
+        }
+        updatePlaylistTotalDurationReadout()
         if playlistMetadataRefreshWorkItem == nil {
             playlistMetadataChangedTrackIDs.removeAll(keepingCapacity: true)
         }
-        playlistMetadataChangedTrackIDs.insert(trackID)
+        playlistMetadataChangedTrackIDs.formUnion(updates.keys)
         schedulePlaylistMetadataTableRefresh()
+    }
+
+    private func updatePlaylistMetadata(for trackID: TrackItem.ID, metadata: TrackMetadata) {
+        updatePlaylistMetadata([trackID: metadata])
     }
 
     private func schedulePlaylistMetadataTableRefresh() {
@@ -2786,6 +2842,7 @@ final class PlayerViewModel {
         playlist = []
         syncManualPlaylistOrder()
         metadataCache = [:]
+        refreshPlaylistTotalDurationReadout()
         playlistColumnWidthHints = nil
         selectedTrackID = nil
         currentTrack = nil
@@ -2951,8 +3008,9 @@ final class PlayerViewModel {
             selectedTrackIDs = [selectedTrackID]
         }
         metadataCache = [:]
+        refreshPlaylistTotalDurationReadout()
         playlistColumnWidthHints = nil
-        refreshPlaylistMetadata()
+        refreshPlaylistMetadata(limit: 128)
     }
 
     private func orderedSelectedPlaylistTracks() -> [TrackItem] {
@@ -2985,6 +3043,7 @@ final class PlayerViewModel {
         }
 
         metadataCache = [:]
+        refreshPlaylistTotalDurationReadout()
         playlistColumnWidthHints = nil
         refreshPlaylistMetadata()
         statusText = status
@@ -3061,6 +3120,7 @@ final class PlayerViewModel {
         reapplyPlaylistSortIfNeeded()
         selectedTrackID = tracks.first?.id
         metadataCache = [:]
+        refreshPlaylistTotalDurationReadout()
         playlistColumnWidthHints = nil
         refreshPlaylistMetadata()
         statusText = "Loaded playlist \(url.lastPathComponent)"
