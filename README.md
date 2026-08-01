@@ -17,6 +17,7 @@ This is not ordinary “repeat the file” behavior. Long Play uses the decoder�
 - **One intake path** — supported types work consistently for scanning, Finder drag and drop, direct opening, folders, archives, and playlist construction.
 - **Modern native player** — streamed low-latency PCM output, seek, media keys, repeat, library/playlist random play, AAC export, shared ten-band EQ, app-level volume, and a full-range 10/20/40-band spectrum display.
 - **Database-first library management** — scans run in the background with visible progress and queued requests; Test Links retains moved/missing-file data for fast rediscovery, while Clean Unlinked is the explicit permanent cleanup.
+- **Flexible path control** — unchecked library paths stay out of the active Database and Scan All, but can still be scanned directly from their row when needed.
 
 ## Supported playback formats
 

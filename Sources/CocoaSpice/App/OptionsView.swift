@@ -810,8 +810,8 @@ struct OptionsView: View {
                 Button { model.scanLibraryRoot(root.id) } label: {
                     Image(systemName: "magnifyingglass")
                 }
-                .help("Scan Path")
-                .disabled(!root.isEnabled)
+                .help(root.isEnabled ? "Scan Path" : "Scan Path Without Enabling It")
+                .disabled(model.libraryScanInProgress)
                 Button { model.openLibraryScanLog(root.id) } label: {
                     Image(systemName: "doc.text")
                 }

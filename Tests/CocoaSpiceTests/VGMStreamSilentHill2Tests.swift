@@ -3,7 +3,7 @@ import Testing
 @testable import CocoaSpice
 
 @Test func vgmstreamDecodesSilentHill2IECSAndSVAGArchiveMembers() throws {
-    let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/ZopharsDomain/PSF2/Silent Hill 2 (EMU).zophar.zip")
+    let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/ZopharsDomain/PSF2/Silent Hill 2 (EMU).zophar.tar.zst")
     guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }
 
     for entryPath in ["SOUND_X_1.iecs", "SOUND_1.svag"] {
@@ -19,8 +19,51 @@ import Testing
     }
 }
 
+@Test func vgmstreamSVAGUsesTheSharedExternalFade() throws {
+    let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/ZopharsDomain/PSF2/Silent Hill 2 (EMU).zophar.tar.zst")
+    guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }
+
+    let track = TrackItem(archiveURL: archiveURL, entryPath: "SOUND_1.svag")
+    let rawDecoder = try VGMStreamDecoder(track: track, sampleRate: 44_100)
+    let chunkFrames = max(1, rawDecoder.sampleRate / 10)
+    let session = try PlaybackStreamSession(
+        track: track,
+        sampleRate: rawDecoder.sampleRate,
+        totalSeconds: 2,
+        loopSeconds: 1,
+        fadeSeconds: 1,
+        isLongPlay: false,
+        chunkFrameCount: chunkFrames
+    )
+
+    for _ in 0..<15 {
+        let buffer = try session.makeNextBuffer(
+            sampleRate: Double(rawDecoder.sampleRate),
+            channels: 2
+        )
+        _ = try #require(buffer)
+    }
+    let maybeFadedBuffer = try session.makeNextBuffer(
+        sampleRate: Double(rawDecoder.sampleRate),
+        channels: 2
+    )
+    let fadedBuffer = try #require(maybeFadedBuffer)
+    try rawDecoder.seek(toMilliseconds: 1_500)
+    let rawChunk = try rawDecoder.decode(frameCount: chunkFrames)
+
+    let fadedSamples = Array(UnsafeBufferPointer(
+        start: fadedBuffer.floatChannelData![0],
+        count: Int(fadedBuffer.frameLength)
+    ))
+    let rawEnergy = rawChunk.left.reduce(Float.zero) { $0 + abs($1) }
+    let fadedEnergy = fadedSamples.reduce(Float.zero) { $0 + abs($1) }
+    #expect(rawEnergy > 0)
+    let ratio = fadedEnergy / rawEnergy
+    #expect(ratio > 0.35 && ratio < 0.55, "expected midpoint fade, got \(ratio)")
+}
+
 @Test func deepScanRecognizesEveryPlayableSilentHill2Stream() async throws {
-    let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/ZopharsDomain/PSF2/Silent Hill 2 (EMU).zophar.zip")
+    let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/ZopharsDomain/PSF2/Silent Hill 2 (EMU).zophar.tar.zst")
     guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }
 
     let values = try archiveURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
