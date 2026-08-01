@@ -173,8 +173,17 @@ final class PlayerViewModel {
     var selectedTrackID: TrackItem.ID?
     var selectedTrackIDs: Set<TrackItem.ID> = []
     var playlist: [TrackItem] = [] {
-        didSet { refreshPlaylistTotalDurationReadout() }
+        didSet {
+            if !isRestoringPersistedPlaylist {
+                deferredPersistedPlaylistValues = []
+            }
+            playlistContentRevision &+= 1
+            refreshPlaylistTotalDurationReadout()
+        }
     }
+    private(set) var playlistContentRevision = 0
+    private var isRestoringPersistedPlaylist = false
+    private var deferredPersistedPlaylistValues: [String] = []
     var metadataCache: [String: TrackMetadata] = [:]
     private(set) var playlistTotalDurationReadout = "0:00"
     private var playlistDurationSecondsByTrackID: [TrackItem.ID: Int] = [:]
@@ -3023,6 +3032,7 @@ final class PlayerViewModel {
         sidebarSearchPersistenceWorkItem = nil
         AppSessionPersistence.saveSessionState(
             playlist: playlist,
+            deferredPersistedValues: deferredPersistedPlaylistValues,
             selectedTrackID: selectedTrackID,
             currentTrackID: currentTrack?.id,
             rootPath: rootURL?.path,
@@ -3072,7 +3082,10 @@ final class PlayerViewModel {
 
     private func restorePersistedPlaylist(_ session: RestoredSessionState?) {
         guard let session else { return }
+        isRestoringPersistedPlaylist = true
         playlist = session.tracks
+        isRestoringPersistedPlaylist = false
+        deferredPersistedPlaylistValues = session.deferredPersistedValues
         if let selectedTrackID = session.selectedTrackID {
             self.selectedTrackID = session.tracks.first(where: { $0.id == selectedTrackID })?.id
         }
@@ -3091,6 +3104,9 @@ final class PlayerViewModel {
         refreshPlaylistTotalDurationReadout()
         playlistColumnWidthHints = nil
         refreshPlaylistMetadata(limit: 128)
+        if session.deferredTrackCount > 0 {
+            statusText = "Restored \(session.tracks.count.formatted()) queue tracks; \(session.deferredTrackCount.formatted()) deferred to keep startup responsive"
+        }
     }
 
     private func orderedSelectedPlaylistTracks() -> [TrackItem] {

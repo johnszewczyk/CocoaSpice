@@ -78,6 +78,11 @@ struct RestoredPlaybackPreferences {
 
 struct RestoredSessionState {
     let tracks: [TrackItem]
+    /// Startup must remain usable even if a prior action put an entire large
+    /// library in the queue. The complete saved queue remains in preferences;
+    /// this only records how many entries were deliberately deferred.
+    let deferredTrackCount: Int
+    let deferredPersistedValues: [String]
     let selectedTrackID: String?
     let currentTrackID: String?
     let lastSelectedFolderPath: String?
@@ -102,6 +107,10 @@ struct RestoredAppStartupState {
 
 enum AppSessionPersistence {
     private static let legacyPrefix = "SPCBoy."
+    /// NSTableView can virtualize rows, but restoring hundreds of thousands of
+    /// TrackItems and their session bookkeeping before the first frame cannot.
+    /// Keep a substantial queue available while ensuring launch is bounded.
+    static let maximumRestoredPlaylistTracks = 10_000
 
     static func migrateLegacyPreferences(defaults: UserDefaults = .standard) {
         defaults.removeObject(forKey: "CocoaSpice.fastLibraryScan")
@@ -167,6 +176,7 @@ enum AppSessionPersistence {
 
     static func saveSessionState(
         playlist: [TrackItem],
+        deferredPersistedValues: [String] = [],
         selectedTrackID: String?,
         currentTrackID: String?,
         rootPath: String?,
@@ -175,7 +185,7 @@ enum AppSessionPersistence {
         sidebarSearchText: String,
         defaults: UserDefaults = .standard
     ) {
-        defaults.set(playlist.map(\.persistedValue), forKey: AppDefaultsKey.persistedPlaylistPaths)
+        defaults.set(playlist.map(\.persistedValue) + deferredPersistedValues, forKey: AppDefaultsKey.persistedPlaylistPaths)
         defaults.set(selectedTrackID, forKey: AppDefaultsKey.persistedSelectedTrackPath)
         defaults.set(currentTrackID, forKey: AppDefaultsKey.persistedCurrentTrackPath)
         defaults.set(rootPath, forKey: AppDefaultsKey.lastRootPath)
@@ -282,7 +292,9 @@ enum AppSessionPersistence {
         supportedExtensions: Set<String>
     ) -> RestoredSessionState? {
         let values = defaults.stringArray(forKey: AppDefaultsKey.persistedPlaylistPaths) ?? []
-        let tracks = values
+        let restoredValues = values.prefix(maximumRestoredPlaylistTracks)
+        let deferredValues = Array(values.dropFirst(restoredValues.count))
+        let tracks = restoredValues
             .compactMap(TrackItem.fromPersistedValue)
             .filter { fileManager.fileExists(atPath: $0.url.path) }
             .filter { supportedExtensions.contains($0.playablePathExtension) }
@@ -291,6 +303,8 @@ enum AppSessionPersistence {
 
         return RestoredSessionState(
             tracks: tracks,
+            deferredTrackCount: max(0, values.count - restoredValues.count),
+            deferredPersistedValues: deferredValues,
             selectedTrackID: defaults.string(forKey: AppDefaultsKey.persistedSelectedTrackPath),
             currentTrackID: defaults.string(forKey: AppDefaultsKey.persistedCurrentTrackPath),
             lastSelectedFolderPath: defaults.string(forKey: AppDefaultsKey.lastSelectedFolderPath),

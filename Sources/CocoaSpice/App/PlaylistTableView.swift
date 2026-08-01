@@ -67,7 +67,8 @@ struct PlaylistTableView: NSViewRepresentable {
         private let autoSizeDebounceNanoseconds: UInt64 = 120_000_000
 
         private struct AutoSizeSignature: Equatable {
-            let trackIDs: [TrackItem.ID]
+            let playlistRevision: Int
+            let trackCount: Int
             let widthHints: PlaylistColumnWidthHints?
             let fontSize: CGFloat
             let monospace: Bool
@@ -162,7 +163,7 @@ struct PlaylistTableView: NSViewRepresentable {
         private weak var tableView: NSTableView?
         private var suppressSelectionSync = false
         private var lastAppliedMetadataLoadToken = -1
-        private var lastVisibleTrackIDs: [String] = []
+        private var lastPlaylistContentRevision = -1
         private var lastSelectedTrackIDs: Set<String> = []
         private var lastPrimarySelectedTrackID: String?
         private var lastCurrentTrackID: String?
@@ -209,7 +210,7 @@ struct PlaylistTableView: NSViewRepresentable {
 
             applyVisibility(to: tableView)
             refreshSortIndicators()
-            let visibleTrackIDs = model.visiblePlaylist.map(\.id)
+            let playlistContentRevision = model.playlistContentRevision
             let selectedTrackIDs = model.selectedTrackIDs
             let primarySelectedTrackID = model.selectedTrackID
             let currentTrackID = model.currentTrack?.id
@@ -217,7 +218,7 @@ struct PlaylistTableView: NSViewRepresentable {
             let sortColumn = model.playlistSortColumn
             let sortDirection = model.playlistSortDirection
             let metadataTokenChanged = model.playlistMetadataLoadToken != lastAppliedMetadataLoadToken
-            let rowsChanged = visibleTrackIDs != lastVisibleTrackIDs
+            let rowsChanged = playlistContentRevision != lastPlaylistContentRevision
             let playbackStateChanged = currentTrackID != lastCurrentTrackID || isPlaying != lastIsPlaying
             let sortChanged = sortColumn != lastSortColumn || sortDirection != lastSortDirection
             let fontChanged = model.playlistFontSize != lastFontSize
@@ -254,14 +255,15 @@ struct PlaylistTableView: NSViewRepresentable {
 
             scheduleAutomaticColumnSizing(
                 signature: AutoSizeSignature(
-                    trackIDs: visibleTrackIDs,
+                    playlistRevision: playlistContentRevision,
+                    trackCount: model.visiblePlaylist.count,
                     widthHints: model.playlistColumnWidthHints,
                     fontSize: model.playlistFontSize,
                     monospace: model.playlistMonospaceFont
                 )
             )
 
-            lastVisibleTrackIDs = visibleTrackIDs
+            lastPlaylistContentRevision = playlistContentRevision
             lastSelectedTrackIDs = selectedTrackIDs
             lastPrimarySelectedTrackID = primarySelectedTrackID
             lastCurrentTrackID = currentTrackID
@@ -719,7 +721,7 @@ struct PlaylistTableView: NSViewRepresentable {
         }
 
         private func scheduleAutomaticColumnSizing(signature: AutoSizeSignature) {
-            guard !signature.trackIDs.isEmpty else {
+            guard signature.trackCount > 0 else {
                 autoSizeTask?.cancel()
                 autoSizeTask = nil
                 pendingAutoSizeSignature = nil

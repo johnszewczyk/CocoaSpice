@@ -2579,6 +2579,8 @@ private actor ScanURLRecorder {
         supportedExtensions: ["spc"]
     )
     #expect(restored?.tracks == [track])
+    #expect(restored?.deferredTrackCount == 0)
+    #expect(restored?.deferredPersistedValues.isEmpty == true)
 
     let startup = AppSessionPersistence.restoreStartupState(
         defaults: defaults,
@@ -2590,6 +2592,28 @@ private actor ScanURLRecorder {
     #expect(startup.sidebarSearchText == "search")
     #expect(startup.lastRootPath == "/Music")
     #expect(startup.lastLibrarySelectedFolderPath == "/Music/SNES")
+}
+
+@Test func restoredSessionDefersExcessiveQueueEntries() throws {
+    let suiteName = "CocoaSpiceTests.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        Issue.record("Failed to create isolated UserDefaults suite")
+        return
+    }
+    defaults.removePersistentDomain(forName: suiteName)
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    let trackURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString).appendingPathExtension("spc")
+    try Data().write(to: trackURL)
+    defer { try? FileManager.default.removeItem(at: trackURL) }
+    let track = TrackItem(url: trackURL)
+    let total = AppSessionPersistence.maximumRestoredPlaylistTracks + 2
+    defaults.set(Array(repeating: track.persistedValue, count: total), forKey: AppDefaultsKey.persistedPlaylistPaths)
+
+    let restored = AppSessionPersistence.restoreSessionState(defaults: defaults, supportedExtensions: ["spc"])
+    #expect(restored?.tracks.count == AppSessionPersistence.maximumRestoredPlaylistTracks)
+    #expect(restored?.deferredTrackCount == 2)
+    #expect(restored?.deferredPersistedValues.count == 2)
 }
 
 @Test func playlistM3URoundTripsArchiveLeaf() throws {
