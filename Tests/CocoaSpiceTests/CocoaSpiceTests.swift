@@ -458,6 +458,24 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     ))
 }
 
+@Test func archivePlaybackCacheKeyChangesWhenArchiveSizeChangesAtSameModificationDate() throws {
+    let archiveURL = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString)
+        .appendingPathExtension("tar.zst")
+    defer { try? FileManager.default.removeItem(at: archiveURL) }
+
+    let preservedDate = Date(timeIntervalSinceReferenceDate: 1_234_567)
+    try Data([0]).write(to: archiveURL)
+    try FileManager.default.setAttributes([.modificationDate: preservedDate], ofItemAtPath: archiveURL.path)
+    let originalCacheURL = ZipArchiveSupport.archiveCacheURL(for: archiveURL)
+
+    try Data([0, 1]).write(to: archiveURL)
+    try FileManager.default.setAttributes([.modificationDate: preservedDate], ofItemAtPath: archiveURL.path)
+    let repackedCacheURL = ZipArchiveSupport.archiveCacheURL(for: archiveURL)
+
+    #expect(originalCacheURL != repackedCacheURL)
+}
+
 @Test func tarZstandardSelectedExtractionAcceptsLeadingDotMemberPaths() throws {
     let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/JoshW/Sony PlayStation 3/Hard Corps - Uprising (2011-03-15)(Arc System Works)(Konami)[PS3].tar.zst")
     guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }

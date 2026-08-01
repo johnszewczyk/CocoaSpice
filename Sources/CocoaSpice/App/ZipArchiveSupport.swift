@@ -558,12 +558,14 @@ enum ZipArchiveSupport {
         }
     }
 
-    private static func archiveCacheURL(for archiveURL: URL) -> URL {
-        let archiveModifiedAt =
-            (try? archiveURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
-            ?? .distantPast
+    static func archiveCacheURL(for archiveURL: URL) -> URL {
+        let attributes = try? FileManager.default.attributesOfItem(atPath: archiveURL.path)
+        let archiveFileSize = (attributes?[.size] as? NSNumber)?.int64Value ?? 0
+        let archiveModifiedAt = attributes?[.modificationDate] as? Date ?? .distantPast
         let archiveCacheKey = sha256Hex(
             archiveURL.standardizedFileURL.path
+                + "|"
+                + String(archiveFileSize)
                 + "|"
                 + String(archiveModifiedAt.timeIntervalSinceReferenceDate)
         )
