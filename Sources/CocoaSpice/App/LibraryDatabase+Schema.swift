@@ -80,8 +80,55 @@ extension LibraryDatabase {
             """)
             try execute("CREATE INDEX IF NOT EXISTS dead_sources_path_index ON dead_sources(path);")
         }
+        if version < 13 {
+            try pruneStaleArchiveMembers()
+        }
         guard version < Self.schemaVersion else { return }
         try setUserVersion(Self.schemaVersion)
+    }
+
+    /// Repairs rows written before archive refresh replaced a source's entire
+    /// member set. A member row must carry the same outer-archive fingerprint
+    /// as its parent inventory record; an older fingerprint means a repack
+    /// already replaced that archive and the row is stale.
+    func pruneStaleArchiveMembers() throws {
+        try execute("BEGIN TRANSACTION;")
+        do {
+            try execute("""
+            DELETE FROM tracks
+            WHERE archive_entry IS NOT NULL
+              AND EXISTS (
+                  SELECT 1
+                  FROM scan_items parent
+                  WHERE parent.root_id = tracks.root_id
+                    AND parent.path = tracks.path
+                    AND parent.archive_entry = ''
+                    AND (
+                        parent.file_size <> tracks.file_size
+                        OR parent.modified_at <> tracks.modified_at
+                    )
+              );
+            """)
+            try execute("""
+            DELETE FROM scan_items
+            WHERE archive_entry <> ''
+              AND EXISTS (
+                  SELECT 1
+                  FROM scan_items parent
+                  WHERE parent.root_id = scan_items.root_id
+                    AND parent.path = scan_items.path
+                    AND parent.archive_entry = ''
+                    AND (
+                        parent.file_size <> scan_items.file_size
+                        OR parent.modified_at <> scan_items.modified_at
+                    )
+              );
+            """)
+            try execute("COMMIT;")
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
     }
 
     private func createTrackTables() throws {

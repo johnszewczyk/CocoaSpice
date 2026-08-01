@@ -1577,6 +1577,58 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(inventory[0].identity.archiveEntry == "./01 - Title Screen.vgz")
 }
 
+@Test func staleArchiveMembersFromThePreReplacementScannerAreRepaired() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("cocoaspice-stale-archive-member-repair-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    try database.addRoot(path: directory.path)
+    let root = try #require(database.loadRoots().first)
+    let archivePath = directory.appendingPathComponent("Cool Spot.tar.zst").path
+    let route = ScanRoute(
+        pluginID: "libvgm",
+        formatExtension: "vgz",
+        supportsArchiveMembers: true,
+        supportsMultiTrack: false
+    )
+    let oldFingerprint = ScanFingerprint(fileSize: 797_956, modifiedAt: Date(timeIntervalSince1970: 1))
+    let currentFingerprint = ScanFingerprint(fileSize: 800_289, modifiedAt: Date(timeIntervalSince1970: 2))
+
+    func member(entry: String, fingerprint: ScanFingerprint) -> ScanPipelineResult {
+        .success(
+            ScanCandidate(
+                identity: ScanItemIdentity(rootID: root.id, path: archivePath, archiveEntry: entry),
+                fingerprint: fingerprint,
+                sourceURL: URL(fileURLWithPath: archivePath),
+                route: route
+            ),
+            ScanInspection(route: route, tracks: [
+                ScanTrackMetadata(trackIndex: 0, trackCount: 1, metadata: nil)
+            ])
+        )
+    }
+
+    let parent = ScanCandidate(
+        identity: ScanItemIdentity(rootID: root.id, path: archivePath, archiveEntry: nil),
+        fingerprint: currentFingerprint,
+        sourceURL: URL(fileURLWithPath: archivePath),
+        route: nil
+    )
+    try database.persistScanResults([
+        member(entry: "01 - Wipeout Tune.vgz", fingerprint: oldFingerprint),
+        member(entry: "./01 - Wipeout Tune.vgz", fingerprint: currentFingerprint),
+        .archiveCompleted(parent)
+    ])
+
+    try database.pruneStaleArchiveMembers()
+
+    #expect(try database.trackCount() == 1)
+    let inventory = try database.loadScanInventory(rootID: root.id)
+    #expect(inventory.count == 2)
+    #expect(inventory.contains { $0.identity.archiveEntry == "./01 - Wipeout Tune.vgz" })
+    #expect(!inventory.contains { $0.identity.archiveEntry == "01 - Wipeout Tune.vgz" })
+}
+
 @Test func libraryGameActivationUsesPersistedIndexedBuckets() async throws {
     let directory = FileManager.default.temporaryDirectory
         .appendingPathComponent("cocoaspice-browser-bucket-\(UUID().uuidString)", isDirectory: true)
