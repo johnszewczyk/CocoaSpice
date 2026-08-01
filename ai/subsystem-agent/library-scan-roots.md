@@ -8,7 +8,7 @@
 
 ## Current State
 
-- `LibraryOperationsState` owns observable scan-root, scan/link-test progress (including clamping and aggregate-operation selection), database-cleanup, cache-cleanup, and sidebar-loading state, plus the active library-maintenance task and generation guard. `PlayerViewModel` forwards that state while retaining the UI-facing scan commands.
+- `LibraryOperationsState` owns observable scan-root, scan/link-test progress (including clamping and aggregate-operation selection), database-cleanup, cache-cleanup, and sidebar-loading state, plus the active library-maintenance task and generation guard. `LibraryScanController` owns active scan queue execution, cancellation, live logs, and coordinator callbacks. `PlayerViewModel` forwards the state and exposes the UI-facing scan commands.
 - Scan roots are configured from Options.
 - Scan roots persist in SQLite.
 - Adding a scan root starts a scan automatically.

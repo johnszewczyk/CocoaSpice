@@ -343,8 +343,7 @@ final class PlayerViewModel {
     private var playbackTimer: Timer?
     private let playlistMetadataTaskOwner = LatestTaskOwner()
     private let playbackRequestState = PlaybackRequestState()
-    private var liveScanLogs: [Int64: LibraryScanLiveLogWindow] = [:]
-    private let libraryScanRequestQueue = LibraryScanRequestQueue()
+    @ObservationIgnored private var libraryScanController: LibraryScanController?
     private let folderSelectionTaskOwner = LatestTaskOwner()
     private let queueBuildTaskOwner = LatestTaskOwner()
     private let randomLibraryLoadTaskOwner = LatestTaskOwner()
@@ -444,6 +443,24 @@ final class PlayerViewModel {
         } catch {
             libraryDatabase = nil
             libraryScanStatus = "Library database unavailable: \(error.localizedDescription)"
+        }
+        if let libraryDatabase {
+            libraryScanController = LibraryScanController(
+                database: libraryDatabase,
+                operations: libraryOperations,
+                roots: { [weak self] in self?.libraryScanRoots ?? [] },
+                didCompleteRoot: { [weak self] root, _ in
+                    guard let self else { return }
+                    self.trimmedLibraryScanRootIDs.remove(root.id)
+                    self.persistTrimmedLibraryRootIDs()
+                    self.reloadLibraryScanRoots()
+                    self.reloadDatabaseGameItems()
+                    self.refreshDeadLinkSummary()
+                },
+                didFailRoot: { [weak self] _ in
+                    self?.reloadLibraryScanRoots()
+                }
+            )
         }
         trimmedLibraryScanRootIDs = Set(
             UserDefaults.standard.array(forKey: "trimmedLibraryScanRootIDs")?.compactMap { ($0 as? NSNumber)?.int64Value } ?? []
@@ -573,8 +590,7 @@ final class PlayerViewModel {
                 self.libraryScanStatus = "Could not remove path: \(errorDescription)"
                 return
             }
-            self.liveScanLogs[id]?.close()
-            self.liveScanLogs[id] = nil
+            self.libraryScanController?.closeLiveLog(rootID: id)
             self.reloadLibraryScanRoots()
             self.reloadDatabaseGameItems()
             self.syncActiveRootToLibraryScanRoots()
@@ -584,35 +600,11 @@ final class PlayerViewModel {
     }
 
     func hasLibraryScanLog(_ id: Int64) -> Bool {
-        liveScanLogs[id] != nil
-            || LibraryScanLogStore.exists(rootID: id)
-            || libraryScanRoots.first(where: { $0.id == id })?.lastScanStartedAt != nil
+        libraryScanController?.hasLog(rootID: id) ?? false
     }
 
     func openLibraryScanLog(_ id: Int64) {
-        if let liveLog = liveScanLogs[id] {
-            liveLog.show()
-            return
-        }
-        guard let root = libraryScanRoots.first(where: { $0.id == id }) else { return }
-        let issues = LibraryScanLogStore.read(rootID: id)
-        let summary: String?
-        if let tally = try? libraryDatabase?.scanResultTally(rootID: id) {
-            let date = root.lastScanCompletedAt.map {
-                DateFormatter.localizedString(from: $0, dateStyle: .medium, timeStyle: .short)
-            } ?? "not completed"
-            let duration = root.lastScanStartedAt.flatMap { startedAt in
-                root.lastScanCompletedAt.map { completedAt in
-                    " • \(Int(completedAt.timeIntervalSince(startedAt).rounded()))s"
-                }
-            } ?? ""
-            summary = "Last scan \(date)\(duration) • \(tally.successful) successful / \(tally.total) total • \(issues.count) issue\(issues.count == 1 ? "" : "s")"
-        } else {
-            summary = nil
-        }
-        let logWindow = LibraryScanLiveLogWindow(root: root, pastIssues: issues, summary: summary)
-        liveScanLogs[id] = logWindow
-        logWindow.show()
+        libraryScanController?.showLog(rootID: id)
     }
 
     func canMoveLibraryScanRootUp(_ id: Int64) -> Bool {
@@ -776,8 +768,7 @@ final class PlayerViewModel {
                 return
             }
             for rootID in rootIDs {
-                self.liveScanLogs[rootID]?.close()
-                self.liveScanLogs[rootID] = nil
+                self.libraryScanController?.closeLiveLog(rootID: rootID)
             }
             self.reloadLibraryScanRoots()
             self.clearLibraryState()
@@ -787,134 +778,27 @@ final class PlayerViewModel {
     }
 
     func stopLibraryScan() {
-        guard libraryScanInProgress else { return }
-        libraryOperations.cancelActiveTask()
-        libraryScanInProgress = false
-        libraryScanRequestQueue.clear()
-        libraryOperations.resetScanProgress()
-        libraryScanStatus = "Scan stopped"
+        libraryScanController?.stop()
     }
 
     private var requestedLibraryScanMode: ScanMode {
         forceLibraryScan ? .newScan : .incremental
     }
 
-    var queuedLibraryScanCount: Int { libraryScanRequestQueue.count }
+    var queuedLibraryScanCount: Int { libraryScanController?.queuedRequestCount ?? 0 }
 
     var libraryOperationProgress: LibraryScanProgress? {
         libraryOperations.operationProgress
     }
 
     private func runModernLibraryScan(for roots: [LibraryScanRoot], mode: ScanMode) {
-        guard !roots.isEmpty, let libraryDatabase else {
+        guard !roots.isEmpty else { return }
+        guard let libraryScanController else {
             libraryScanStatus = "Library database unavailable."
             return
         }
-        if libraryScanInProgress {
-            libraryScanRequestQueue.enqueue(roots: roots, mode: mode)
-            libraryScanStatus = "Scan queued • \(libraryScanRequestQueue.count) waiting"
-            return
-        }
-        let generation = libraryOperations.beginTask()
-        libraryScanInProgress = true
-        libraryOperations.resetScanProgress()
-        libraryScanStatus = mode == .newScan ? "Preparing forced scan…" : "Preparing incremental scan…"
-        let task = Task { @MainActor [weak self] in
-            guard let self else { return }
-            // Let Options render the active-state controls and progress bar
-            // before any database setup begins on the main actor.
-            await Task.yield()
-            for root in roots {
-                await self.runModernLibraryScanRoot(
-                    root,
-                    mode: mode,
-                    database: libraryDatabase,
-                    generation: generation
-                )
-            }
-            if self.libraryOperations.isCurrentTask(generation) {
-                self.libraryScanInProgress = false
-                self.libraryOperations.finishTask(generation: generation)
-                self.startNextQueuedLibraryScan()
-            }
-        }
-        libraryOperations.installTask(task, generation: generation)
+        libraryScanController.scan(roots: roots, mode: mode)
     }
-
-    private func startNextQueuedLibraryScan() {
-        guard !libraryScanInProgress else { return }
-        while let request = libraryScanRequestQueue.dequeue() {
-            let liveRoots = request.rootIDs.compactMap { rootID in
-                libraryScanRoots.first(where: { $0.id == rootID })
-            }
-            guard !liveRoots.isEmpty else { continue }
-            runModernLibraryScan(for: liveRoots, mode: request.mode)
-            return
-        }
-    }
-
-    private func runModernLibraryScanRoot(
-        _ root: LibraryScanRoot,
-        mode: ScanMode,
-        database: LibraryDatabase,
-        generation: Int
-    ) async {
-        guard libraryOperations.isCurrentTask(generation), !Task.isCancelled else { return }
-        let liveLog = LibraryScanLiveLogWindow(root: root)
-        liveScanLogs[root.id] = liveLog
-        libraryOperations.setScanProgress(rootID: root.id, current: 0, total: 0)
-        defer {
-            if liveScanLogs[root.id] === liveLog {
-                liveScanLogs[root.id] = nil
-            }
-            libraryOperations.clearScanProgress(rootID: root.id)
-        }
-        let modeTitle = mode == .newScan ? "forced" : "incremental"
-        libraryScanStatus = "Preparing \(modeTitle) scan: \(root.standardizedURL.lastPathComponent)…"
-        do {
-            let databaseURL = database.databaseURL
-            let summary = try await Task.detached(priority: .utility) {
-                let scanDatabase = try LibraryDatabase(databaseURL: databaseURL)
-                let coordinator = LibraryScanCoordinator(database: scanDatabase)
-                return try await coordinator.run(root: root, mode: mode) { [weak self] status in
-                    Task { @MainActor in
-                        guard let self, self.libraryOperations.isCurrentTask(generation) else { return }
-                        self.libraryScanStatus = status
-                    }
-                } progress: { [weak self] current, total in
-                    Task { @MainActor in
-                        guard let self, self.libraryOperations.isCurrentTask(generation) else { return }
-                        self.libraryOperations.setScanProgress(rootID: root.id, current: current, total: total)
-                    }
-                } activity: { [weak liveLog] current, total, detail in
-                    Task { @MainActor in
-                        liveLog?.update(current: current, total: total, detail: detail)
-                    }
-                } issues: { [weak liveLog] lines in
-                    Task { @MainActor in
-                        liveLog?.append(lines)
-                    }
-                }
-            }.value
-            guard libraryOperations.isCurrentTask(generation) else { return }
-            liveLog.finish(successful: summary.successful, failed: summary.failed, unsupported: summary.unsupported)
-            libraryScanStatus = "\(summary.successful) / \(summary.successful + summary.failed + summary.unsupported)"
-            trimmedLibraryScanRootIDs.remove(root.id)
-            persistTrimmedLibraryRootIDs()
-            reloadLibraryScanRoots()
-            reloadDatabaseGameItems()
-            refreshDeadLinkSummary()
-        } catch is CancellationError {
-            guard libraryOperations.isCurrentTask(generation) else { return }
-            libraryScanStatus = "Scan cancelled"
-        } catch {
-            guard libraryOperations.isCurrentTask(generation) else { return }
-            libraryScanStatus = "Scan failed for \(root.standardizedURL.lastPathComponent): \(error.localizedDescription)"
-            try? database.markScanFailed(rootID: root.id, error: error.localizedDescription)
-            reloadLibraryScanRoots()
-        }
-    }
-
     private func loadRoot(url: URL) {
         folderSelectionTaskOwner.cancel()
         rootURL = url

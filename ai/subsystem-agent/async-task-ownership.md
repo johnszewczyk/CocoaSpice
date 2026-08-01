@@ -11,7 +11,7 @@
 - Playback requests use a dedicated task owner.
 - Playlist metadata prefetch uses its own `LatestTaskOwner`; replacement, playback start, and archive-cache clearing invalidate it before stale inspection results can update the playlist.
 - `LatestTaskOwner` centralizes replacement, cancellation, completion invalidation, and generation checks for independently cancellable UI workflows.
-- Library scanning, adding paths, and Test Links share `LibraryOperationsState` and its `LatestTaskOwner`, rather than leaving cancellation machinery mixed with playback and playlist state in `PlayerViewModel`.
+- `LibraryScanController` owns the active scan queue, cancellation, live logs, and background coordinator work. `LibraryOperationsState` supplies its observable progress/status and generation guard; `PlayerViewModel` remains the presentation-facing facade.
 - Remove Path and Reset Paths also use `LibraryOperationsState`; their detached SQLite work must check the operation generation before closing logs or replacing library/sidebar state.
 - Dead-link summary reads and database-sidebar refreshes each use their own `LatestTaskOwner`; stale results cannot overwrite a newer refresh or database cleanup state.
 - Remote transport receives a value-only `RemoteTransportNowPlaying` snapshot and command closures. It must not read or retain `PlayerViewModel` directly.
@@ -33,5 +33,6 @@
 
 - [LatestTaskOwner.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LatestTaskOwner.swift)
 - [LibraryOperationsState.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryOperationsState.swift)
+- [LibraryScanController.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryScanController.swift)
 - [PlaybackRequestState.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackRequestState.swift)
 - [PlayerViewModel.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
