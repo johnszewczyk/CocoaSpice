@@ -67,6 +67,12 @@ extension LibraryDatabase {
         )
     }
 
+    func detachAttachedRoots() throws {
+        try execute(
+            "UPDATE library_roots SET is_attached = 0, is_enabled = 0 WHERE is_attached = 1;"
+        )
+    }
+
     func updateRootOrder(idsInOrder: [Int64]) throws {
         for (index, id) in idsInOrder.enumerated() {
             try execute(

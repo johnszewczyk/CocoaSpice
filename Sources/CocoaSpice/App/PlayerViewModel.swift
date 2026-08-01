@@ -535,12 +535,43 @@ final class PlayerViewModel {
     }
 
     func removeLibraryScanRoot(_ id: Int64) {
-        try? libraryDatabase?.detachRoot(id: id)
-        liveScanLogs[id]?.close()
-        liveScanLogs[id] = nil
-        reloadLibraryScanRoots()
-        reloadDatabaseGameItems()
-        syncActiveRootToLibraryScanRoots()
+        guard !libraryScanInProgress,
+              let databaseURL = libraryDatabase?.databaseURL,
+              let root = libraryScanRoots.first(where: { $0.id == id }) else { return }
+        let generation = libraryOperations.beginTask()
+        libraryScanInProgress = true
+        libraryScanStatus = "Removing \(root.standardizedURL.lastPathComponent)…"
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                if self.libraryOperations.isCurrentTask(generation) {
+                    self.libraryScanInProgress = false
+                    self.libraryOperations.finishTask(generation: generation)
+                }
+            }
+            await Task.yield()
+            let errorDescription = await Task.detached(priority: .utility) { () -> String? in
+                do {
+                    try LibraryDatabase(databaseURL: databaseURL).detachRoot(id: id)
+                    return nil
+                } catch {
+                    return error.localizedDescription
+                }
+            }.value
+            guard self.libraryOperations.isCurrentTask(generation), !Task.isCancelled else { return }
+            if let errorDescription {
+                self.libraryScanStatus = "Could not remove path: \(errorDescription)"
+                return
+            }
+            self.liveScanLogs[id]?.close()
+            self.liveScanLogs[id] = nil
+            self.reloadLibraryScanRoots()
+            self.reloadDatabaseGameItems()
+            self.syncActiveRootToLibraryScanRoots()
+            self.libraryScanStatus = "Removed \(root.standardizedURL.lastPathComponent)"
+        }
+        libraryOperations.installTask(task, generation: generation)
     }
 
     func hasLibraryScanLog(_ id: Int64) -> Bool {
@@ -610,19 +641,12 @@ final class PlayerViewModel {
 
     func trimMissingLibrary() {
         guard !libraryScanInProgress,
-              let libraryDatabase else { return }
-        let sources: [LibraryIndexedSource]
-        do {
-            sources = try libraryDatabase.indexedSources()
-        } catch {
-            libraryScanStatus = "Test Links failed to read the library: \(error.localizedDescription)"
-            return
-        }
+              let databaseURL = libraryDatabase?.databaseURL else { return }
         let generation = libraryOperations.beginTask()
         libraryScanInProgress = true
-        trimMissingProgress = LibraryScanProgress(current: 0, total: sources.count)
+        trimMissingProgress = LibraryScanProgress(current: 0, total: 0)
         trimMissingCurrentPath = nil
-        libraryScanStatus = "Test Links • checking \(sources.count) sources…"
+        libraryScanStatus = "Test Links • preparing…"
 
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -634,6 +658,18 @@ final class PlayerViewModel {
                     self.libraryOperations.finishTask(generation: generation)
                 }
             }
+            await Task.yield()
+            let sources = await Task.detached(priority: .utility) {
+                try? LibraryDatabase(databaseURL: databaseURL).indexedSources()
+            }.value
+            guard let sources else {
+                guard self.libraryOperations.isCurrentTask(generation) else { return }
+                self.libraryScanStatus = "Test Links failed to read the library."
+                return
+            }
+            guard self.libraryOperations.isCurrentTask(generation), !Task.isCancelled else { return }
+            self.trimMissingProgress = LibraryScanProgress(current: 0, total: sources.count)
+            self.libraryScanStatus = "Test Links • checking \(sources.count) sources…"
             let integrityTask = Task.detached(priority: .utility) {
                 await LibraryIntegrityChecker.check(
                     sources: sources,
@@ -653,17 +689,25 @@ final class PlayerViewModel {
                 integrityTask.cancel()
             }
             guard self.libraryOperations.isCurrentTask(generation), !Task.isCancelled else { return }
-            do {
-                try libraryDatabase.markSourcesDead(result.missingSources)
-                self.trimmedLibraryScanRootIDs.formUnion(result.missingSources.map(\.rootID))
-                self.persistTrimmedLibraryRootIDs()
-                self.reloadLibraryScanRoots()
-                self.reloadDatabaseGameItems()
-                self.refreshDeadLinkSummary()
-                self.libraryScanStatus = "Test Links • \(result.checkedCount) sources checked • \(result.missingSources.count) missing marked dead"
-            } catch {
-                self.libraryScanStatus = "Integrity check failed: \(error.localizedDescription)"
+            let writeError = await Task.detached(priority: .utility) { () -> String? in
+                do {
+                    try LibraryDatabase(databaseURL: databaseURL).markSourcesDead(result.missingSources)
+                    return nil
+                } catch {
+                    return error.localizedDescription
+                }
+            }.value
+            guard self.libraryOperations.isCurrentTask(generation), !Task.isCancelled else { return }
+            if let writeError {
+                self.libraryScanStatus = "Integrity check failed: \(writeError)"
+                return
             }
+            self.trimmedLibraryScanRootIDs.formUnion(result.missingSources.map(\.rootID))
+            self.persistTrimmedLibraryRootIDs()
+            self.reloadLibraryScanRoots()
+            self.reloadDatabaseGameItems()
+            self.refreshDeadLinkSummary()
+            self.libraryScanStatus = "Test Links • \(result.checkedCount) sources checked • \(result.missingSources.count) missing marked dead"
         }
         libraryOperations.installTask(task, generation: generation)
     }
@@ -692,13 +736,45 @@ final class PlayerViewModel {
     }
 
     func resetLibraryPaths() {
-        guard !libraryScanInProgress, let libraryDatabase else { return }
-        for root in libraryScanRoots {
-            try? libraryDatabase.detachRoot(id: root.id)
+        guard !libraryScanInProgress,
+              !libraryScanRoots.isEmpty,
+              let databaseURL = libraryDatabase?.databaseURL else { return }
+        let rootIDs = libraryScanRoots.map(\.id)
+        let generation = libraryOperations.beginTask()
+        libraryScanInProgress = true
+        libraryScanStatus = "Removing library paths…"
+
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                if self.libraryOperations.isCurrentTask(generation) {
+                    self.libraryScanInProgress = false
+                    self.libraryOperations.finishTask(generation: generation)
+                }
+            }
+            await Task.yield()
+            let errorDescription = await Task.detached(priority: .utility) { () -> String? in
+                do {
+                    try LibraryDatabase(databaseURL: databaseURL).detachAttachedRoots()
+                    return nil
+                } catch {
+                    return error.localizedDescription
+                }
+            }.value
+            guard self.libraryOperations.isCurrentTask(generation), !Task.isCancelled else { return }
+            if let errorDescription {
+                self.libraryScanStatus = "Could not reset library paths: \(errorDescription)"
+                return
+            }
+            for rootID in rootIDs {
+                self.liveScanLogs[rootID]?.close()
+                self.liveScanLogs[rootID] = nil
+            }
+            self.reloadLibraryScanRoots()
+            self.clearLibraryState()
+            self.libraryScanStatus = "Library paths reset"
         }
-        reloadLibraryScanRoots()
-        clearLibraryState()
-        libraryScanStatus = "Library paths reset"
+        libraryOperations.installTask(task, generation: generation)
     }
 
     func stopLibraryScan() {

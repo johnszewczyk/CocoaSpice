@@ -12,6 +12,7 @@
 - Playlist metadata prefetch uses its own `LatestTaskOwner`; replacement, playback start, and archive-cache clearing invalidate it before stale inspection results can update the playlist.
 - `LatestTaskOwner` centralizes replacement, cancellation, completion invalidation, and generation checks for independently cancellable UI workflows.
 - Library scanning, adding paths, and Test Links share `LibraryOperationsState` and its `LatestTaskOwner`, rather than leaving cancellation machinery mixed with playback and playlist state in `PlayerViewModel`.
+- Remove Path and Reset Paths also use `LibraryOperationsState`; their detached SQLite work must check the operation generation before closing logs or replacing library/sidebar state.
 - Dead-link summary reads and database-sidebar refreshes each use their own `LatestTaskOwner`; stale results cannot overwrite a newer refresh or database cleanup state.
 - Remote transport receives a value-only `RemoteTransportNowPlaying` snapshot and command closures. It must not read or retain `PlayerViewModel` directly.
 - `PlaybackRequestState` owns the pending playback request, task generation, cancellation, end marker, and auto-advance guard. A stale request may never publish an error or clear the active request's loading state.
