@@ -55,4 +55,5 @@
 - [PlayerViewModel.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
 - [OptionsView.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/OptionsView.swift)
 - [AppSessionPersistence.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/AppSessionPersistence.swift)
-- [CocoaSpiceTests.swift](/Users/john/Downloads/Code/CocoaSpice/Tests/CocoaSpiceTests/CocoaSpiceTests.swift)
+- [PlaybackEngineTests.swift](/Users/john/Downloads/Code/CocoaSpice/Tests/CocoaSpiceTests/PlaybackEngineTests.swift)
+- [PlaylistImportAndTimingTests.swift](/Users/john/Downloads/Code/CocoaSpice/Tests/CocoaSpiceTests/PlaylistImportAndTimingTests.swift)

@@ -37,7 +37,7 @@ Relevant files:
 - `Sources/CocoaSpice/App/PlaybackDecoderRouting.swift`
 - `Sources/CocoaSpice/App/ZipArchiveSupport.swift`
 - `Sources/CocoaSpice/App/PlaybackEngine.swift`
-- `Tests/CocoaSpiceTests/CocoaSpiceTests.swift`
+- `Tests/CocoaSpiceTests/PlaybackFoundationTests.swift`
 
 Read first:
 

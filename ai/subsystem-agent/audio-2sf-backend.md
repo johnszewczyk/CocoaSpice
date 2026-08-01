@@ -25,4 +25,4 @@ The app vendors the GPL-2.0-or-later `2sf2wav` core and builds it as `lib2sf.a` 
 - `Sources/CocoaSpice/App/ScanCoreHandlers.swift`
 - `Sources/CocoaSpice/App/PlaybackDecoderRouting.swift`
 - `Sources/CocoaSpice/App/ZipArchiveSupport.swift`
-- `Tests/CocoaSpiceTests/CocoaSpiceTests.swift`
+- `Tests/CocoaSpiceTests/PlaybackFoundationTests.swift`
