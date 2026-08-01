@@ -8,7 +8,7 @@ struct LibraryDatabaseMaintenanceSummary: Sendable, Equatable {
     let unlinkedTrackCount: Int
 
     var deadLinkSummaryText: String {
-        deadLinkCount == 1 ? "1 dead link retained" : "\(deadLinkCount) dead links retained"
+        deadLinkCount == 1 ? "1 unlinked source retained" : "\(deadLinkCount) unlinked sources retained"
     }
 }
 

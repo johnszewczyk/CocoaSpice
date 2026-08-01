@@ -63,8 +63,8 @@ final class OpenMPTDecoder: AudioTrackDecoder {
         var left = [Float](repeating: 0, count: count)
         var right = [Float](repeating: 0, count: count)
         for frame in 0..<count {
-            left[frame] = Float(interleaved[frame * 2]) / Float(Int16.max)
-            right[frame] = Float(interleaved[frame * 2 + 1]) / Float(Int16.max)
+            left[frame] = PCMFloatConversion.normalized(interleaved[frame * 2])
+            right[frame] = PCMFloatConversion.normalized(interleaved[frame * 2 + 1])
         }
         return DecodedChunk(left: left, right: right, frameCount: count)
     }

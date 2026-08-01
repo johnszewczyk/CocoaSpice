@@ -52,8 +52,8 @@ final class PlayPSFDecoder: AudioTrackDecoder {
         var left = [Float](repeating: 0, count: rendered)
         var right = [Float](repeating: 0, count: rendered)
         for frame in 0..<rendered {
-            left[frame] = Float(samples[frame * 2]) / Float(Int16.max)
-            right[frame] = Float(samples[frame * 2 + 1]) / Float(Int16.max)
+            left[frame] = PCMFloatConversion.normalized(samples[frame * 2])
+            right[frame] = PCMFloatConversion.normalized(samples[frame * 2 + 1])
         }
         return DecodedChunk(left: left, right: right, frameCount: rendered)
     }

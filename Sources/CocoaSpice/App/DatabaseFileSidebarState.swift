@@ -20,7 +20,6 @@ final class DatabaseFileSidebarState {
     func replaceFileItems(_ items: [DatabaseFileItem]) {
         fileItems = items
         expandedFolderIDs.formIntersection(Set(DatabaseFileSidebarTree.rootFolderIDs(for: items)))
-        expandedFolderIDs.formUnion(DatabaseFileSidebarTree.rootFolderIDs(for: items))
         if let selectedFileID,
            !items.contains(where: { $0.id == selectedFileID }) {
             clearSelection()

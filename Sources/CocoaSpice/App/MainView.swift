@@ -98,7 +98,9 @@ struct MainView: View {
                 .padding(.bottom, 2)
 
                 Group {
-                    if model.isLoadingDatabaseSidebar {
+                    if model.sidebarBrowserMode == .games
+                        ? model.isLoadingDatabaseSidebar
+                        : model.isLoadingDatabaseFileSidebar {
                         VStack(spacing: 10) {
                             ProgressView()
                             Text("Loading Library…")
@@ -152,7 +154,9 @@ struct MainView: View {
                             model: model,
                             sidebarFontSize: model.databaseSidebarFontSize,
                             sidebarTextColor: model.databaseSidebarTextColor,
-                            sidebarMonospace: model.databaseSidebarMonospaceFont
+                            sidebarMonospace: model.databaseSidebarMonospaceFont,
+                            sidebarDisclosureGap: model.databaseSidebarDisclosureGapPoints,
+                            hideFileExtensions: model.databaseSidebarHidesFileExtensions
                         )
                     }
                 }
@@ -186,11 +190,11 @@ struct MainView: View {
 
             Spacer(minLength: 12)
 
-            Text("\(model.currentTrackDurationReadout) / \(model.elapsedReadout) / \(model.playlistTotalDurationReadout)")
+            Text("\(model.elapsedReadout) / \(model.currentTrackDurationReadout) / \(model.playlistTotalDurationReadout)")
                 .font(.system(size: 11))
                 .monospacedDigit()
                 .foregroundStyle(.secondary)
-                .help("Total playlist duration. A + means one or more track durations are still unknown.")
+                .help("Elapsed time / song total / playlist total. A + means one or more track durations are still unknown.")
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
@@ -654,13 +658,17 @@ private struct DatabaseFileListView: NSViewRepresentable {
     let sidebarFontSize: CGFloat
     let sidebarTextColor: PlayerViewModel.DatabaseSidebarTextColor
     let sidebarMonospace: Bool
+    let sidebarDisclosureGap: CGFloat
+    let hideFileExtensions: Bool
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
             model: model,
             sidebarFontSize: sidebarFontSize,
             sidebarTextColor: sidebarTextColor,
-            sidebarMonospace: sidebarMonospace
+            sidebarMonospace: sidebarMonospace,
+            sidebarDisclosureGap: sidebarDisclosureGap,
+            hideFileExtensions: hideFileExtensions
         )
     }
 
@@ -679,6 +687,9 @@ private struct DatabaseFileListView: NSViewRepresentable {
             supportsDragging: true
         )
         context.coordinator.attach(tableView: chrome.tableView)
+        chrome.tableView.spaceHandler = { [weak coordinator = context.coordinator] in
+            coordinator?.toggleSelectedFolderDisclosure()
+        }
         return chrome.scrollView
     }
 
@@ -687,6 +698,8 @@ private struct DatabaseFileListView: NSViewRepresentable {
         context.coordinator.sidebarFontSize = sidebarFontSize
         context.coordinator.sidebarTextColor = sidebarTextColor
         context.coordinator.sidebarMonospace = sidebarMonospace
+        context.coordinator.sidebarDisclosureGap = sidebarDisclosureGap
+        context.coordinator.hideFileExtensions = hideFileExtensions
         context.coordinator.reload()
     }
 
@@ -696,6 +709,8 @@ private struct DatabaseFileListView: NSViewRepresentable {
         var sidebarFontSize: CGFloat
         var sidebarTextColor: PlayerViewModel.DatabaseSidebarTextColor
         var sidebarMonospace: Bool
+        var sidebarDisclosureGap: CGFloat
+        var hideFileExtensions: Bool
         private weak var tableView: DatabaseSidebarNativeTableView?
         private var reloadScheduled = false
         private var cachedRows: [DatabaseFileSidebarTree.Row] = []
@@ -706,23 +721,42 @@ private struct DatabaseFileListView: NSViewRepresentable {
         private var lastFontSize: CGFloat?
         private var lastTextColor: PlayerViewModel.DatabaseSidebarTextColor?
         private var lastMonospace: Bool?
+        private var lastDisclosureGap: CGFloat?
+        private var lastHideFileExtensions: Bool?
+
+        private final class ContextMenuAction: NSObject {
+            let payload: DatabaseFileSidebarDragPayload
+
+            init(payload: DatabaseFileSidebarDragPayload) {
+                self.payload = payload
+            }
+        }
 
         init(
             model: PlayerViewModel,
             sidebarFontSize: CGFloat,
             sidebarTextColor: PlayerViewModel.DatabaseSidebarTextColor,
-            sidebarMonospace: Bool
+            sidebarMonospace: Bool,
+            sidebarDisclosureGap: CGFloat,
+            hideFileExtensions: Bool
         ) {
             self._model = Bindable(model)
             self.sidebarFontSize = sidebarFontSize
             self.sidebarTextColor = sidebarTextColor
             self.sidebarMonospace = sidebarMonospace
+            self.sidebarDisclosureGap = sidebarDisclosureGap
+            self.hideFileExtensions = hideFileExtensions
         }
 
         func attach(tableView: DatabaseSidebarNativeTableView) {
             self.tableView = tableView
-            tableView.rowClickHandler = { [weak self] row, modifierFlags in
-                self?.handleDirectFolderClick(row: row, modifierFlags: modifierFlags) ?? false
+            tableView.rowClickHandler = { [weak self] row, point, modifierFlags, wasSelected in
+                self?.handleFolderClick(
+                    row: row,
+                    locationX: point.x,
+                    modifierFlags: modifierFlags,
+                    wasSelected: wasSelected
+                ) ?? false
             }
         }
 
@@ -735,6 +769,8 @@ private struct DatabaseFileListView: NSViewRepresentable {
                 || sidebarFontSize != lastFontSize
                 || sidebarTextColor != lastTextColor
                 || sidebarMonospace != lastMonospace
+                || sidebarDisclosureGap != lastDisclosureGap
+                || hideFileExtensions != lastHideFileExtensions
             let selectionChanged = model.selectedDatabaseFileIDs != lastSelectionIDs
                 || model.selectedDatabaseFileFolders != lastSelectedFolders
             guard needsContentReload || selectionChanged else { return }
@@ -744,6 +780,8 @@ private struct DatabaseFileListView: NSViewRepresentable {
             lastFontSize = sidebarFontSize
             lastTextColor = sidebarTextColor
             lastMonospace = sidebarMonospace
+            lastDisclosureGap = sidebarDisclosureGap
+            lastHideFileExtensions = hideFileExtensions
             if treeChanged {
                 cachedRows = DatabaseFileSidebarTree.rows(
                     items: model.visibleDatabaseFileItems,
@@ -797,30 +835,42 @@ private struct DatabaseFileListView: NSViewRepresentable {
         }
 
         func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
-            guard row >= 0, row < cachedRows.count else { return false }
-            guard case .file = cachedRows[row] else { return false }
-            return true
+            row >= 0 && row < cachedRows.count
         }
 
         func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
             guard row >= 0, row < cachedRows.count else { return nil }
             let identifier = NSUserInterfaceItemIdentifier("DatabaseFileCell")
-            let cell = DatabaseSidebarTableChrome.textCell(in: tableView, identifier: identifier)
+            let cell = (tableView.makeView(withIdentifier: identifier, owner: self) as? DatabaseFileSidebarCellView)
+                ?? DatabaseFileSidebarCellView(identifier: identifier)
 
             switch cachedRows[row] {
             case .folder(_, let title, let depth, let isExpanded):
-                cell.textField?.stringValue = "\(sidebarIndent(depth))\(isExpanded ? "▾" : "▸")  \(title)"
-                cell.textField?.font = sidebarMonospace
-                    ? .monospacedSystemFont(ofSize: sidebarFontSize, weight: .semibold)
-                    : .boldSystemFont(ofSize: sidebarFontSize)
+                let font: NSFont = sidebarMonospace
+                    ? NSFont.monospacedSystemFont(ofSize: sidebarFontSize, weight: .semibold)
+                    : NSFont.boldSystemFont(ofSize: sidebarFontSize)
+                cell.configureFolder(
+                    title: title,
+                    depth: depth,
+                    isExpanded: isExpanded,
+                    font: font,
+                    color: DatabaseSidebarTableChrome.textColor(sidebarTextColor),
+                    fontSize: sidebarFontSize,
+                    disclosureGap: sidebarDisclosureGap
+                )
             case .file(let item, let depth):
-                let trackLabel = item.trackCount == 1 ? "1 track" : "\(item.trackCount) tracks"
-                cell.textField?.stringValue = "\(sidebarIndent(depth))\(item.filename) • \(trackLabel)"
-                cell.textField?.font = sidebarMonospace
-                    ? .monospacedSystemFont(ofSize: sidebarFontSize, weight: .regular)
-                    : .systemFont(ofSize: sidebarFontSize)
+                let font: NSFont = sidebarMonospace
+                    ? NSFont.monospacedSystemFont(ofSize: sidebarFontSize, weight: .regular)
+                    : NSFont.systemFont(ofSize: sidebarFontSize)
+                cell.configureFile(
+                    title: displayedFilename(for: item),
+                    depth: depth,
+                    font: font,
+                    color: DatabaseSidebarTableChrome.textColor(sidebarTextColor),
+                    fontSize: sidebarFontSize,
+                    disclosureGap: sidebarDisclosureGap
+                )
             }
-            cell.textField?.textColor = DatabaseSidebarTableChrome.textColor(sidebarTextColor)
             return cell
         }
 
@@ -861,6 +911,9 @@ private struct DatabaseFileListView: NSViewRepresentable {
 
         func makeRowMenu(clickedRow: Int) -> NSMenu? {
             guard clickedRow >= 0, clickedRow < cachedRows.count else { return nil }
+            let action = ContextMenuAction(
+                payload: dragPayload(for: IndexSet(integer: clickedRow))
+            )
             let menu = NSMenu(title: "Actions")
             let showOnDisk = NSMenuItem(title: "Show on Disk", action: #selector(handleShowOnDisk(_:)), keyEquivalent: "")
             showOnDisk.representedObject = fileURL(for: cachedRows[clickedRow])
@@ -868,21 +921,24 @@ private struct DatabaseFileListView: NSViewRepresentable {
             menu.addItem(showOnDisk)
             menu.addItem(.separator())
             let playNow = NSMenuItem(title: "Set as Playlist", action: #selector(handlePlayNow(_:)), keyEquivalent: "")
+            playNow.representedObject = action
             playNow.target = self
             menu.addItem(playNow)
             let enqueue = NSMenuItem(title: "Add to Playlist", action: #selector(handleEnqueue(_:)), keyEquivalent: "")
+            enqueue.representedObject = action
             enqueue.target = self
             menu.addItem(enqueue)
             return menu
         }
 
         @objc private func handlePlayNow(_ sender: NSMenuItem) {
-            model.activateSelectedDatabaseFilesWithReturn()
+            guard let action = sender.representedObject as? ContextMenuAction else { return }
+            model.queueDatabaseFileSidebarSelection(action.payload, replace: true)
         }
 
         @objc private func handleEnqueue(_ sender: NSMenuItem) {
-            guard let tableView else { return }
-            model.appendDatabaseFileSidebarDrag(dragPayload(for: tableView.selectedRowIndexes))
+            guard let action = sender.representedObject as? ContextMenuAction else { return }
+            model.queueDatabaseFileSidebarSelection(action.payload, replace: false)
         }
 
         @objc private func handleShowOnDisk(_ sender: NSMenuItem) {
@@ -905,23 +961,39 @@ private struct DatabaseFileListView: NSViewRepresentable {
             return true
         }
 
-        private func sidebarIndent(_ depth: Int) -> String {
-            String(repeating: "    ", count: depth)
-        }
-
-        private func handleDirectFolderClick(
+        private func handleFolderClick(
             row: Int,
-            modifierFlags: NSEvent.ModifierFlags
+            locationX: CGFloat,
+            modifierFlags: NSEvent.ModifierFlags,
+            wasSelected: Bool
         ) -> Bool {
             guard row >= 0,
                   row < cachedRows.count,
                   DatabaseFileSidebarInteraction.allowsFolderDisclosure(modifierFlags: modifierFlags),
-                  case .folder(let id, _, _, _) = cachedRows[row] else {
+                  case .folder(let id, _, let depth, _) = cachedRows[row] else {
                 return false
             }
+            let clickedDisclosure = DatabaseFileSidebarInteraction.isDisclosureHit(
+                locationX: locationX,
+                depth: depth,
+                fontSize: sidebarFontSize,
+                gap: sidebarDisclosureGap
+            )
+            guard clickedDisclosure || wasSelected else { return false }
             model.toggleDatabaseFileFolder(id)
             reload()
             return true
+        }
+
+        func toggleSelectedFolderDisclosure() {
+            guard let tableView,
+                  tableView.selectedRow >= 0,
+                  tableView.selectedRow < cachedRows.count,
+                  case .folder(let id, _, _, _) = cachedRows[tableView.selectedRow] else {
+                return
+            }
+            model.toggleDatabaseFileFolder(id)
+            reload()
         }
 
         private func folder(for row: DatabaseFileSidebarTree.Row) -> DatabaseFileSidebarFolder? {
@@ -936,6 +1008,13 @@ private struct DatabaseFileListView: NSViewRepresentable {
                 return nil
             }
             return DatabaseFileSidebarFolder(rootID: rootID, rootPath: item.rootPath, path: path)
+        }
+
+        private func displayedFilename(for item: DatabaseFileItem) -> String {
+            guard hideFileExtensions else { return item.filename }
+            let filenameURL = URL(fileURLWithPath: item.filename)
+            let stem = filenameURL.deletingPathExtension().lastPathComponent
+            return stem.isEmpty ? item.filename : stem
         }
 
         private func fileURL(for row: DatabaseFileSidebarTree.Row) -> URL? {
@@ -963,15 +1042,104 @@ private struct DatabaseFileListView: NSViewRepresentable {
 }
 
 @MainActor
+private final class DatabaseFileSidebarCellView: NSTableCellView {
+    private let disclosureField = NSTextField(labelWithString: "")
+    private let titleField = NSTextField(labelWithString: "")
+    private var disclosureLeadingConstraint: NSLayoutConstraint!
+    private var disclosureWidthConstraint: NSLayoutConstraint!
+    private var titleLeadingConstraint: NSLayoutConstraint!
+
+    init(identifier: NSUserInterfaceItemIdentifier) {
+        super.init(frame: .zero)
+        self.identifier = identifier
+
+        disclosureField.translatesAutoresizingMaskIntoConstraints = false
+        titleField.translatesAutoresizingMaskIntoConstraints = false
+        disclosureField.alignment = .center
+        titleField.lineBreakMode = .byTruncatingTail
+        addSubview(disclosureField)
+        addSubview(titleField)
+
+        disclosureLeadingConstraint = disclosureField.leadingAnchor.constraint(equalTo: leadingAnchor)
+        disclosureWidthConstraint = disclosureField.widthAnchor.constraint(equalToConstant: 10)
+        titleLeadingConstraint = titleField.leadingAnchor.constraint(equalTo: leadingAnchor)
+        NSLayoutConstraint.activate([
+            disclosureLeadingConstraint,
+            titleLeadingConstraint,
+            disclosureWidthConstraint,
+            disclosureField.centerYAnchor.constraint(equalTo: centerYAnchor),
+            titleField.centerYAnchor.constraint(equalTo: centerYAnchor),
+            titleField.trailingAnchor.constraint(lessThanOrEqualTo: trailingAnchor, constant: -4)
+        ])
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func configureFolder(
+        title: String,
+        depth: Int,
+        isExpanded: Bool,
+        font: NSFont,
+        color: NSColor,
+        fontSize: CGFloat,
+        disclosureGap: CGFloat
+    ) {
+        disclosureField.isHidden = false
+        disclosureField.stringValue = isExpanded ? "▾" : "▸"
+        disclosureField.font = font
+        disclosureField.textColor = color
+        disclosureWidthConstraint.constant = DatabaseFileSidebarInteraction.disclosureGlyphWidth(fontSize: fontSize)
+        titleField.stringValue = title
+        titleField.font = font
+        titleField.textColor = color
+        disclosureLeadingConstraint.constant = DatabaseFileSidebarInteraction.disclosureOrigin(
+            depth: depth,
+            fontSize: fontSize,
+            gap: disclosureGap
+        )
+        titleLeadingConstraint.constant = DatabaseFileSidebarInteraction.titleLeading(
+            depth: depth,
+            fontSize: fontSize,
+            gap: disclosureGap
+        )
+    }
+
+    func configureFile(
+        title: String,
+        depth: Int,
+        font: NSFont,
+        color: NSColor,
+        fontSize: CGFloat,
+        disclosureGap: CGFloat
+    ) {
+        disclosureField.isHidden = true
+        disclosureWidthConstraint.constant = 0
+        titleField.stringValue = title
+        titleField.font = font
+        titleField.textColor = color
+        titleLeadingConstraint.constant = DatabaseFileSidebarInteraction.disclosureOrigin(
+            depth: depth,
+            fontSize: fontSize,
+            gap: disclosureGap
+        )
+    }
+}
+
+@MainActor
 private final class DatabaseSidebarNativeTableView: NSTableView {
     var activationHandler: (() -> Void)?
+    var spaceHandler: (() -> Void)?
     var rowMenuProvider: ((Int) -> NSMenu?)?
-    var rowClickHandler: ((Int, NSEvent.ModifierFlags) -> Bool)?
+    var rowClickHandler: ((Int, CGPoint, NSEvent.ModifierFlags, Bool) -> Bool)?
 
     override func mouseDown(with event: NSEvent) {
         let point = convert(event.locationInWindow, from: nil)
         let clickedRow = row(at: point)
-        if clickedRow >= 0, rowClickHandler?(clickedRow, event.modifierFlags) == true {
+        if event.clickCount == 1,
+           clickedRow >= 0,
+           rowClickHandler?(clickedRow, point, event.modifierFlags, selectedRowIndexes.contains(clickedRow)) == true {
             return
         }
         super.mouseDown(with: event)
@@ -981,6 +1149,8 @@ private final class DatabaseSidebarNativeTableView: NSTableView {
         switch event.keyCode {
         case 36, 76:
             activationHandler?()
+        case 49:
+            spaceHandler?()
         default:
             super.keyDown(with: event)
         }

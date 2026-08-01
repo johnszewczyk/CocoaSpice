@@ -1,5 +1,14 @@
 import Foundation
 
+enum PCMFloatConversion {
+    /// Canonical signed 16-bit PCM normalization: -32,768 maps exactly to
+    /// -1.0 while +32,767 remains just below +1.0. Dividing by Int16.max
+    /// misclassifies every legal minimum sample as an over-range clip.
+    static func normalized(_ sample: Int16) -> Float {
+        Float(sample) / 32_768
+    }
+}
+
 enum PlaybackTransportState: String, Equatable, Sendable {
     case stopped
     case loading
@@ -18,6 +27,12 @@ enum NativeAudioOutputState: String, Equatable, Sendable {
     case failed
 }
 
+enum PlaybackOutputHealth: String, Equatable, Sendable {
+    case inactive
+    case running
+    case stalled
+}
+
 struct NativeAudioOutputSnapshot: Equatable, Sendable {
     let transportState: PlaybackTransportState
     let outputState: NativeAudioOutputState
@@ -34,6 +49,7 @@ struct NativeAudioOutputSnapshot: Equatable, Sendable {
     let clippedSampleCount: Int64
     let positionFrames: Int64
     let generation: Int
+    let engineIsRunning: Bool
 }
 
 struct PlaybackDiagnosticsSnapshot: Equatable, Sendable {
@@ -42,13 +58,15 @@ struct PlaybackDiagnosticsSnapshot: Equatable, Sendable {
     let underrunCount: Int64
     let clippedSampleCount: Int64
     let sampleRate: Int
+    let outputHealth: PlaybackOutputHealth
 
     static let idle = PlaybackDiagnosticsSnapshot(
         bufferedFrames: 0,
         ringBufferFrames: 0,
         underrunCount: 0,
         clippedSampleCount: 0,
-        sampleRate: 0
+        sampleRate: 0,
+        outputHealth: .inactive
     )
 
     var bufferedMilliseconds: Int {
@@ -59,6 +77,38 @@ struct PlaybackDiagnosticsSnapshot: Equatable, Sendable {
     var bufferPercent: Int {
         guard ringBufferFrames > 0 else { return 0 }
         return Int((bufferedFrames * 100) / ringBufferFrames)
+    }
+}
+
+/// Tracks whether the system output is still pulling PCM without ever touching
+/// a decoder or the realtime render callback. The lock is only used by the UI
+/// diagnostics path and session control operations; the callback writes its
+/// counters to the atomic C ring buffer instead.
+final class PlaybackOutputHeartbeat: @unchecked Sendable {
+    private let lock = NSLock()
+    private var expectingRenderRequests = false
+    private var lastRequestCount: Int64 = 0
+    private var lastProgressDate = Date.distantPast
+
+    func reset(expectingRenderRequests: Bool, now: Date = Date()) {
+        lock.lock()
+        self.expectingRenderRequests = expectingRenderRequests
+        lastRequestCount = 0
+        lastProgressDate = now
+        lock.unlock()
+    }
+
+    func health(framesRequested: Int64, now: Date = Date()) -> PlaybackOutputHealth {
+        lock.lock()
+        defer { lock.unlock() }
+
+        guard expectingRenderRequests else { return .inactive }
+        if framesRequested > lastRequestCount {
+            lastRequestCount = framesRequested
+            lastProgressDate = now
+            return .running
+        }
+        return now.timeIntervalSince(lastProgressDate) >= 2 ? .stalled : .running
     }
 }
 

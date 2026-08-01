@@ -4,7 +4,7 @@
 
 - Database: scanned game-music library in the left pane.
 - Rows: dense list of scanned games by default.
-- Files: the standalone icon immediately left of the transport controls switches to a folder tree built only from scanned database records. It uses the same dense native row style as Games, with `▾`/`▸` disclosure glyphs and nested text indentation. Its own toolbar grouping distinguishes browser navigation from playback. It shows enabled library roots, scanned subfolders, and source files without live filesystem browsing.
+- Files: the standalone icon immediately left of the transport controls switches to a folder tree built only from scanned database records. It uses the same dense native row style as Games, with `▾`/`▸` disclosure glyphs and nested text indentation. Its own toolbar grouping distinguishes browser navigation from playback. It loads only when opened and starts with library roots collapsed, so a very large collection does not delay launch. It shows enabled library roots, scanned subfolders, and source files without live filesystem browsing.
 - Files: selecting a source file queues its stored tracks; archive files remain one source-file leaf and queue their indexed members.
 - Console View: Options can group games under expandable console headings.
 - Rows: show track counts and scan-root status.
@@ -25,7 +25,7 @@
 - Files: selecting a folder only expands or collapses it; selection alone never changes the playlist.
 - Files: dragging selected file rows to the Playlist appends their stored tracks without rescanning their sources.
 - Files: clicking a single archive source immediately loads its stored archive-member tracks into the playlist.
-- Files: right-click offers Show on Disk for source files and folders.
+- Files: right-click offers Show on Disk, Set as Playlist, and Add to Playlist for source files and folders. Folder actions use the clicked folder and include all of its indexed descendant leaves.
 - Context menu: opens without changing the selected row.
 
 ## Activation

@@ -347,11 +347,9 @@ final class LibraryDatabase: @unchecked Sendable {
 
     func deadTrackCount() throws -> Int {
         try scalarInt("""
-        SELECT COUNT(*) FROM tracks
-        WHERE EXISTS (
-            SELECT 1 FROM dead_sources d
-            WHERE d.root_id = tracks.root_id AND d.path = tracks.path
-        );
+        SELECT COUNT(*)
+        FROM dead_sources d
+        INNER JOIN tracks t ON t.root_id = d.root_id AND t.path = d.path;
         """)
     }
 
@@ -544,6 +542,35 @@ final class LibraryDatabase: @unchecked Sendable {
             gameItems: try loadGameItems(handle: handle),
             fileItems: try loadFileItems(handle: handle)
         )
+    }
+
+    /// The Games sidebar is the startup browser. Keep its compact grouped
+    /// result separate from the potentially very large Files listing.
+    static func loadGameSidebarItems(databaseURL: URL) throws -> [DatabaseGameItem] {
+        let handle = try openReadOnlyConnection(databaseURL: databaseURL)
+        defer { sqlite3_close(handle) }
+        return try loadGameItems(handle: handle)
+    }
+
+    /// Builds the covering index used by the Games sidebar. It is deliberately
+    /// not part of the synchronous schema migration: creating it for a large
+    /// existing collection belongs on the sidebar's utility task, never on the
+    /// first-window path.
+    static func prepareGameSidebarIndex(databaseURL: URL) throws {
+        let database = try LibraryDatabase(databaseURL: databaseURL)
+        try database.execute("""
+        CREATE INDEX IF NOT EXISTS tracks_game_sidebar_index
+        ON tracks(browser_game, browser_system, root_id, path);
+        """)
+    }
+
+    /// File rows are intentionally loaded only when Files mode is shown. A
+    /// large collection can have hundreds of thousands of source rows, which
+    /// must not delay the initial application window.
+    static func loadFileSidebarItems(databaseURL: URL) throws -> [DatabaseFileItem] {
+        let handle = try openReadOnlyConnection(databaseURL: databaseURL)
+        defer { sqlite3_close(handle) }
+        return try loadFileItems(handle: handle)
     }
 
     private static func loadGameItems(handle: OpaquePointer) throws -> [DatabaseGameItem] {

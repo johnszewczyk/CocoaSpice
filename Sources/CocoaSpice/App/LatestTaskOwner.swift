@@ -8,11 +8,13 @@ import Foundation
 final class LatestTaskOwner {
     private var task: Task<Void, Never>?
     private var generation = 0
+    private(set) var isActive = false
 
     func begin() -> Int {
         task?.cancel()
         task = nil
         generation &+= 1
+        isActive = true
         return generation
     }
 
@@ -31,6 +33,7 @@ final class LatestTaskOwner {
     func finish(generation: Int) {
         guard isCurrent(generation) else { return }
         task = nil
+        isActive = false
         self.generation &+= 1
     }
 
@@ -38,5 +41,6 @@ final class LatestTaskOwner {
         generation &+= 1
         task?.cancel()
         task = nil
+        isActive = false
     }
 }

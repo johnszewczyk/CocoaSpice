@@ -34,6 +34,11 @@ enum AppDefaultsKey {
     static let databaseSidebarFontSize = "CocoaSpice.databaseSidebarFontSize"
     static let databaseSidebarTextColor = "CocoaSpice.databaseSidebarTextColor"
     static let databaseSidebarMonospaceFont = "CocoaSpice.databaseSidebarMonospaceFont"
+    static let databaseSidebarDisclosureGap = "CocoaSpice.databaseSidebarDisclosureGap"
+    static let databaseSidebarDisclosureGapPoints = "CocoaSpice.databaseSidebarDisclosureGapPoints"
+    static let databaseSidebarHidesFileExtensions = "CocoaSpice.databaseSidebarHidesFileExtensions"
+    static let playlistFontSize = "CocoaSpice.playlistFontSize"
+    static let playlistTextColor = "CocoaSpice.playlistTextColor"
     static let playlistMonospaceFont = "CocoaSpice.playlistMonospaceFont"
     static let sidebarSystemMode = "CocoaSpice.sidebarSystemMode"
     static let sidebarBrowserMode = "CocoaSpice.sidebarBrowserMode"
@@ -61,6 +66,11 @@ struct RestoredPlaybackPreferences {
     let databaseSidebarFontSize: Double?
     let databaseSidebarTextColor: String?
     let databaseSidebarMonospaceFont: Bool
+    let databaseSidebarDisclosureGap: Double?
+    let databaseSidebarDisclosureGapPoints: Double?
+    let databaseSidebarHidesFileExtensions: Bool
+    let playlistFontSize: Double?
+    let playlistTextColor: String?
     let playlistMonospaceFont: Bool
     let sidebarSystemMode: Bool
     let sidebarBrowserModeRawValue: String?
@@ -103,7 +113,7 @@ enum AppSessionPersistence {
             "sidebarDoubleClickAction", "playlistFollowsCursor", "lastAudioExportDirectoryPath",
             "playlistSortColumn", "playlistSortDirection", "persistedPlaylistPaths",
             "persistedSelectedTrackPath", "persistedCurrentTrackPath", "playlistColumnOrder",
-            "playlistColumnVisibility", "playlistColumnWidths", "databaseSidebarFontSize", "databaseSidebarTextColor", "databaseSidebarMonospaceFont", "playlistMonospaceFont", "sidebarSystemMode", "sidebarBrowserMode"
+            "playlistColumnVisibility", "playlistColumnWidths", "databaseSidebarFontSize", "databaseSidebarTextColor", "databaseSidebarMonospaceFont", "databaseSidebarDisclosureGap", "databaseSidebarDisclosureGapPoints", "databaseSidebarHidesFileExtensions", "playlistFontSize", "playlistTextColor", "playlistMonospaceFont", "sidebarSystemMode", "sidebarBrowserMode"
         ]
 
         for suffix in keys {
@@ -130,7 +140,7 @@ enum AppSessionPersistence {
             spectrumGradientStartColor: defaults.string(forKey: AppDefaultsKey.spectrumGradientStartColor),
             spectrumGradientEndColor: defaults.string(forKey: AppDefaultsKey.spectrumGradientEndColor),
             spectrumPeakColor: defaults.string(forKey: AppDefaultsKey.spectrumPeakColor),
-            spectrumEnabled: defaults.object(forKey: AppDefaultsKey.spectrumEnabled) as? Bool ?? true,
+            spectrumEnabled: defaults.object(forKey: AppDefaultsKey.spectrumEnabled) as? Bool ?? false,
             spectrumBandCount: SpectrumBandCount.clamped(defaults.integer(forKey: AppDefaultsKey.spectrumBandCount)),
             equalizerEnabled: defaults.object(forKey: AppDefaultsKey.equalizerEnabled) as? Bool ?? false,
             equalizerBandGains: (defaults.array(forKey: AppDefaultsKey.equalizerBandGains) as? [NSNumber])?.map(\.doubleValue),
@@ -144,6 +154,11 @@ enum AppSessionPersistence {
             databaseSidebarFontSize: defaults.object(forKey: AppDefaultsKey.databaseSidebarFontSize) as? Double,
             databaseSidebarTextColor: defaults.string(forKey: AppDefaultsKey.databaseSidebarTextColor),
             databaseSidebarMonospaceFont: defaults.object(forKey: AppDefaultsKey.databaseSidebarMonospaceFont) as? Bool ?? false,
+            databaseSidebarDisclosureGap: defaults.object(forKey: AppDefaultsKey.databaseSidebarDisclosureGap) as? Double,
+            databaseSidebarDisclosureGapPoints: defaults.object(forKey: AppDefaultsKey.databaseSidebarDisclosureGapPoints) as? Double,
+            databaseSidebarHidesFileExtensions: defaults.object(forKey: AppDefaultsKey.databaseSidebarHidesFileExtensions) as? Bool ?? false,
+            playlistFontSize: defaults.object(forKey: AppDefaultsKey.playlistFontSize) as? Double,
+            playlistTextColor: defaults.string(forKey: AppDefaultsKey.playlistTextColor),
             playlistMonospaceFont: defaults.object(forKey: AppDefaultsKey.playlistMonospaceFont) as? Bool ?? false,
             sidebarSystemMode: defaults.object(forKey: AppDefaultsKey.sidebarSystemMode) as? Bool ?? false,
             sidebarBrowserModeRawValue: defaults.string(forKey: AppDefaultsKey.sidebarBrowserMode)
@@ -190,6 +205,10 @@ enum AppSessionPersistence {
         databaseSidebarFontSize: CGFloat,
         databaseSidebarTextColor: String,
         databaseSidebarMonospaceFont: Bool,
+        databaseSidebarDisclosureGapPoints: CGFloat,
+        databaseSidebarHidesFileExtensions: Bool,
+        playlistFontSize: CGFloat,
+        playlistTextColor: String,
         playlistMonospaceFont: Bool,
         sidebarSystemMode: Bool,
         sidebarBrowserModeRawValue: String,
@@ -214,6 +233,10 @@ enum AppSessionPersistence {
         defaults.set(Double(databaseSidebarFontSize), forKey: AppDefaultsKey.databaseSidebarFontSize)
         defaults.set(databaseSidebarTextColor, forKey: AppDefaultsKey.databaseSidebarTextColor)
         defaults.set(databaseSidebarMonospaceFont, forKey: AppDefaultsKey.databaseSidebarMonospaceFont)
+        defaults.set(Double(databaseSidebarDisclosureGapPoints), forKey: AppDefaultsKey.databaseSidebarDisclosureGapPoints)
+        defaults.set(databaseSidebarHidesFileExtensions, forKey: AppDefaultsKey.databaseSidebarHidesFileExtensions)
+        defaults.set(Double(playlistFontSize), forKey: AppDefaultsKey.playlistFontSize)
+        defaults.set(playlistTextColor, forKey: AppDefaultsKey.playlistTextColor)
         defaults.set(playlistMonospaceFont, forKey: AppDefaultsKey.playlistMonospaceFont)
         defaults.set(sidebarSystemMode, forKey: AppDefaultsKey.sidebarSystemMode)
         defaults.set(sidebarBrowserModeRawValue, forKey: AppDefaultsKey.sidebarBrowserMode)

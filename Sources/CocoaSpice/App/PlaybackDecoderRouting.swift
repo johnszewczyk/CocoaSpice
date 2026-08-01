@@ -234,8 +234,8 @@ final class LibVGMDecoder: AudioTrackDecoder {
 
         for frame in 0..<actualFrameCount {
             let sourceIndex = frame * 2
-            left[frame] = Float(interleaved[sourceIndex]) / Float(Int16.max)
-            right[frame] = Float(interleaved[sourceIndex + 1]) / Float(Int16.max)
+            left[frame] = PCMFloatConversion.normalized(interleaved[sourceIndex])
+            right[frame] = PCMFloatConversion.normalized(interleaved[sourceIndex + 1])
         }
 
         return DecodedChunk(left: left, right: right, frameCount: actualFrameCount)
@@ -429,8 +429,8 @@ final class HighlyCompleteDecoder: AudioTrackDecoder {
 
         for frame in 0..<actualFrameCount {
             let sourceIndex = frame * 2
-            left[frame] = Float(interleaved[sourceIndex]) / Float(Int16.max)
-            right[frame] = Float(interleaved[sourceIndex + 1]) / Float(Int16.max)
+            left[frame] = PCMFloatConversion.normalized(interleaved[sourceIndex])
+            right[frame] = PCMFloatConversion.normalized(interleaved[sourceIndex + 1])
         }
 
         return DecodedChunk(left: left, right: right, frameCount: actualFrameCount)
@@ -567,8 +567,8 @@ final class LazyUSFDecoder: AudioTrackDecoder {
         var right = [Float](repeating: 0, count: actualFrameCount)
         for frame in 0..<actualFrameCount {
             let sourceIndex = frame * 2
-            left[frame] = Float(interleaved[sourceIndex]) / Float(Int16.max)
-            right[frame] = Float(interleaved[sourceIndex + 1]) / Float(Int16.max)
+            left[frame] = PCMFloatConversion.normalized(interleaved[sourceIndex])
+            right[frame] = PCMFloatConversion.normalized(interleaved[sourceIndex + 1])
         }
         return DecodedChunk(left: left, right: right, frameCount: actualFrameCount)
     }

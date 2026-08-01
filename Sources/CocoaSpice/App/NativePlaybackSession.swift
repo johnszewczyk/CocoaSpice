@@ -13,6 +13,7 @@ final class NativePlaybackSession: @unchecked Sendable {
     private var generation = 0
     private var finishedGeneration: Int?
     private var completionHandler: (@Sendable (Int) -> Void)?
+    private let outputHeartbeat = PlaybackOutputHeartbeat()
 
     init(
         sampleRate: Double = 44_100,
@@ -88,6 +89,7 @@ final class NativePlaybackSession: @unchecked Sendable {
         try refillQueue.sync {
             refillTimer?.cancel()
             refillTimer = nil
+            outputHeartbeat.reset(expectingRenderRequests: false)
             output.prepareForRestart()
             // The 2SF player owns process-global DS state. Release the old
             // decoder before constructing its replacement, otherwise the old
@@ -116,9 +118,11 @@ final class NativePlaybackSession: @unchecked Sendable {
 
             if autoplay {
                 try output.start()
+                outputHeartbeat.reset(expectingRenderRequests: true)
                 startRefillTimer()
             } else {
                 stream.setSuspended(true)
+                outputHeartbeat.reset(expectingRenderRequests: false)
             }
             return stream.metadata
         }
@@ -132,11 +136,13 @@ final class NativePlaybackSession: @unchecked Sendable {
                 stream?.setSuspended(true)
                 refillTimer?.cancel()
                 refillTimer = nil
+                outputHeartbeat.reset(expectingRenderRequests: false)
                 return false
             }
 
             stream?.setSuspended(false)
             try output.start()
+            outputHeartbeat.reset(expectingRenderRequests: true)
             startRefillTimer()
             return true
         }
@@ -146,6 +152,7 @@ final class NativePlaybackSession: @unchecked Sendable {
         try refillQueue.sync {
             guard let stream else { return }
             let wasPlaying = output.snapshot.transportState == .playing
+            outputHeartbeat.reset(expectingRenderRequests: false)
             output.prepareForRestart()
             generation += 1
             finishedGeneration = nil
@@ -158,6 +165,9 @@ final class NativePlaybackSession: @unchecked Sendable {
             try refillTo(targetBufferedFrames: output.primeFrameCount)
             if wasPlaying {
                 try output.start()
+                outputHeartbeat.reset(expectingRenderRequests: true)
+            } else {
+                outputHeartbeat.reset(expectingRenderRequests: false)
             }
         }
     }
@@ -171,6 +181,7 @@ final class NativePlaybackSession: @unchecked Sendable {
             stream = nil
             currentTrack = nil
             output.stop()
+            outputHeartbeat.reset(expectingRenderRequests: false)
         }
     }
 
@@ -191,16 +202,17 @@ final class NativePlaybackSession: @unchecked Sendable {
     }
 
     func diagnosticsSnapshot() -> PlaybackDiagnosticsSnapshot {
-        refillQueue.sync {
-            let snapshot = output.snapshot
-            return PlaybackDiagnosticsSnapshot(
-                bufferedFrames: snapshot.bufferedFrames,
-                ringBufferFrames: snapshot.ringBufferFrames,
-                underrunCount: snapshot.underrunCount,
-                clippedSampleCount: snapshot.clippedSampleCount,
-                sampleRate: snapshot.sampleRate
-            )
-        }
+        // This deliberately bypasses refillQueue. A blocked decoder must not
+        // also hide the fact that the source node has stopped being serviced.
+        let ringBuffer = output.ringBuffer
+        return PlaybackDiagnosticsSnapshot(
+            bufferedFrames: Int64(ringBuffer.bufferedFrames),
+            ringBufferFrames: Int64(ringBuffer.capacityFrames),
+            underrunCount: ringBuffer.underrunCount,
+            clippedSampleCount: ringBuffer.clippedSampleCount,
+            sampleRate: Int(sampleRate),
+            outputHealth: outputHeartbeat.health(framesRequested: ringBuffer.framesRequested)
+        )
     }
 
     func isCurrentGeneration(_ generation: Int) -> Bool {
@@ -228,6 +240,7 @@ final class NativePlaybackSession: @unchecked Sendable {
             try refillToHighWaterMark()
         } catch {
             output.stop()
+            outputHeartbeat.reset(expectingRenderRequests: false)
             return
         }
 
@@ -239,6 +252,7 @@ final class NativePlaybackSession: @unchecked Sendable {
 
         finishedGeneration = generation
         output.finish()
+        outputHeartbeat.reset(expectingRenderRequests: false)
         completionHandler?(generation)
     }
 
@@ -246,29 +260,40 @@ final class NativePlaybackSession: @unchecked Sendable {
         refillQueue.async {
             guard let stream = self.stream else { return }
             let wasPlaying = self.output.snapshot.transportState == .playing
-            let position = self.output.snapshot.positionFrames
-            let seconds = PlaybackFrameAccounting.positionSeconds(
-                sessionStartFrame: 0,
-                framesSupplied: position,
-                sampleRate: Int(self.sampleRate)
-            )
 
             do {
-                self.output.stop()
+                // An AVAudioEngine configuration change (usually sleep/wake or
+                // an output-device change) invalidates the output graph, not
+                // the decoder's current state. Seeking here is actively
+                // harmful for emulated, indefinitely looping formats: a USF
+                // seek renders every millisecond from the beginning, so an
+                // hours-old Long Play session can monopolize this serial queue
+                // indefinitely and strand the UI in a loading state.
+                //
+                // Keep the live decoder exactly where it is, discard the short
+                // render-ahead buffer, then prime the rebuilt graph from the
+                // decoder's current state. The only cost is up to the old
+                // ring-buffer horizon (about two seconds), never elapsed-time
+                // re-emulation.
+                self.refillTimer?.cancel()
+                self.refillTimer = nil
+                self.output.prepareForRestart()
                 self.generation += 1
                 self.finishedGeneration = nil
-                try stream.seek(to: seconds)
-                if !wasPlaying {
-                    stream.setSuspended(true)
-                }
-                self.output.clear()
+                stream.setSuspended(false)
                 self.output.markTrackLoaded(generation: self.generation)
                 try self.refillTo(targetBufferedFrames: self.output.primeFrameCount)
                 if wasPlaying {
                     try self.output.start()
+                    self.outputHeartbeat.reset(expectingRenderRequests: true)
+                    self.startRefillTimer()
+                } else {
+                    stream.setSuspended(true)
+                    self.outputHeartbeat.reset(expectingRenderRequests: false)
                 }
             } catch {
                 self.output.stop()
+                self.outputHeartbeat.reset(expectingRenderRequests: false)
             }
         }
     }

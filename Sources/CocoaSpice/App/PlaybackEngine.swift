@@ -156,10 +156,8 @@ final class PlaybackEngine: @unchecked Sendable {
         }
     }
 
-    func diagnosticsSnapshot() async -> PlaybackDiagnosticsSnapshot {
-        await enqueue {
-            self.nativeSession.diagnosticsSnapshot()
-        }
+    func diagnosticsSnapshot() -> PlaybackDiagnosticsSnapshot {
+        nativeSession.diagnosticsSnapshot()
     }
 
     func currentTrackID() async -> TrackItem.ID? {
@@ -734,8 +732,8 @@ final class SPCDecoder {
 
         for frame in 0..<frameCount {
             let sourceIndex = frame * 2
-            left[frame] = Float(interleaved[sourceIndex]) / Float(Int16.max)
-            right[frame] = Float(interleaved[sourceIndex + 1]) / Float(Int16.max)
+            left[frame] = PCMFloatConversion.normalized(interleaved[sourceIndex])
+            right[frame] = PCMFloatConversion.normalized(interleaved[sourceIndex + 1])
         }
 
         return DecodedChunk(left: left, right: right, frameCount: frameCount)

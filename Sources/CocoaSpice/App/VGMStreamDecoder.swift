@@ -79,8 +79,8 @@ final class VGMStreamDecoder: AudioTrackDecoder {
         var left = [Float](repeating: 0, count: rendered)
         var right = [Float](repeating: 0, count: rendered)
         for frame in 0..<rendered {
-            left[frame] = Float(samples[frame * channels]) / Float(Int16.max)
-            right[frame] = channels > 1 ? Float(samples[frame * channels + 1]) / Float(Int16.max) : left[frame]
+            left[frame] = PCMFloatConversion.normalized(samples[frame * channels])
+            right[frame] = channels > 1 ? PCMFloatConversion.normalized(samples[frame * channels + 1]) : left[frame]
         }
         return DecodedChunk(left: left, right: right, frameCount: rendered)
     }

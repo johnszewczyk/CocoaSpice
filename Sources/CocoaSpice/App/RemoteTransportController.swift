@@ -1,11 +1,25 @@
 import Foundation
 import MediaPlayer
 
+struct RemoteTransportNowPlaying: Equatable, Sendable {
+    let title: String
+    let albumTitle: String
+    let elapsedSeconds: TimeInterval
+    let durationSeconds: TimeInterval
+    let isPlaying: Bool
+}
+
 @MainActor
 final class RemoteTransportController {
     private var isConfigured = false
 
-    func configure(with model: PlayerViewModel) {
+    func configure(
+        previous: @escaping @MainActor () -> Void,
+        play: @escaping @MainActor () -> Void,
+        pause: @escaping @MainActor () -> Void,
+        togglePlayPause: @escaping @MainActor () -> Void,
+        next: @escaping @MainActor () -> Void
+    ) {
         guard !isConfigured else { return }
         isConfigured = true
 
@@ -17,46 +31,41 @@ final class RemoteTransportController {
         commandCenter.togglePlayPauseCommand.isEnabled = true
         commandCenter.nextTrackCommand.isEnabled = true
 
-        commandCenter.previousTrackCommand.addTarget { [weak model] _ in
-            guard let model else { return .commandFailed }
-            model.handleMediaPreviousCommand()
+        commandCenter.previousTrackCommand.addTarget { _ in
+            Task { @MainActor in previous() }
             return .success
         }
 
-        commandCenter.playCommand.addTarget { [weak model] _ in
-            guard let model else { return .commandFailed }
-            model.handleMediaPlayCommand()
+        commandCenter.playCommand.addTarget { _ in
+            Task { @MainActor in play() }
             return .success
         }
 
-        commandCenter.pauseCommand.addTarget { [weak model] _ in
-            guard let model else { return .commandFailed }
-            model.handleMediaPauseCommand()
+        commandCenter.pauseCommand.addTarget { _ in
+            Task { @MainActor in pause() }
             return .success
         }
 
-        commandCenter.togglePlayPauseCommand.addTarget { [weak model] _ in
-            guard let model else { return .commandFailed }
-            model.handleMediaPlayPauseCommand()
+        commandCenter.togglePlayPauseCommand.addTarget { _ in
+            Task { @MainActor in togglePlayPause() }
             return .success
         }
 
-        commandCenter.nextTrackCommand.addTarget { [weak model] _ in
-            guard let model else { return .commandFailed }
-            model.handleMediaNextCommand()
+        commandCenter.nextTrackCommand.addTarget { _ in
+            Task { @MainActor in next() }
             return .success
         }
     }
 
-    func updateNowPlaying(from model: PlayerViewModel) {
+    func updateNowPlaying(_ nowPlaying: RemoteTransportNowPlaying) {
         var info: [String: Any] = [:]
-        info[MPMediaItemPropertyTitle] = model.currentSongTitle
-        info[MPMediaItemPropertyAlbumTitle] = model.currentGameTitle
-        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = model.playbackElapsedSeconds
-        info[MPMediaItemPropertyPlaybackDuration] = Double(model.totalPlaybackSeconds)
-        info[MPNowPlayingInfoPropertyPlaybackRate] = model.isPlaying ? 1.0 : 0.0
+        info[MPMediaItemPropertyTitle] = nowPlaying.title
+        info[MPMediaItemPropertyAlbumTitle] = nowPlaying.albumTitle
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = nowPlaying.elapsedSeconds
+        info[MPMediaItemPropertyPlaybackDuration] = nowPlaying.durationSeconds
+        info[MPNowPlayingInfoPropertyPlaybackRate] = nowPlaying.isPlaying ? 1.0 : 0.0
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
-        MPNowPlayingInfoCenter.default().playbackState = model.isPlaying ? .playing : .paused
+        MPNowPlayingInfoCenter.default().playbackState = nowPlaying.isPlaying ? .playing : .paused
     }
 }

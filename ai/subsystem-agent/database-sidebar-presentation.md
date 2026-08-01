@@ -9,18 +9,21 @@
 ## Current State
 
 - The sidebar presents database games as a dense native list by default. System Mode instead shows expandable `System → Game` rows using the same game items and activation path.
-- Files mode presents an expandable `library root → stored folder → stored source file` tree derived from `DatabaseFileItem` records. Its folder expansion is in-memory presentation state; it must not enumerate the live filesystem or archives.
+- Files mode presents an expandable `library root → stored folder → stored source file` tree derived from `DatabaseFileItem` records. Its folder expansion is in-memory presentation state; it must not enumerate the live filesystem or archives. Its compact fixed 12-point disclosure columns deliberately differ from Games: each child folder's triangle aligns with its parent title, while a file label aligns with its parent folder title.
 - Games and Files use one shared dense native-table chrome for table configuration, keyboard/Return activation, row menus, scroll host, text-cell geometry, colors, and visible-row reload. Files render folder disclosure and depth as `▾`/`▸` plus four-space text indentation in the row label; do not add a separate disclosure-button layout.
-- Files-folder disclosure is handled only by an unmodified direct click. Folder rows are nonselectable during Shift/Command range selection, so multi-selecting file leaves never expands or collapses intermediate folders.
+- Files-folder disclosure is handled only by an unmodified direct click on its triangle. Folder titles remain selectable, so Return and double-click can replace playback with all descendant leaves; selection never expands or collapses a folder.
 - Duplicate game titles are disambiguated in the visible label with system text only when needed.
-- Sidebar filtering runs in memory over loaded game rows rather than issuing live recursive filesystem work. The native field debounces filter-state publication by 100 ms so typing does not rebuild the sidebar for every keypress.
+- Sidebar filtering runs in memory over loaded rows rather than issuing live recursive filesystem work. The native field keeps AppKit's uncommitted text while it debounces filter-state publication by 100 ms, so unrelated SwiftUI refreshes never replace a fast typist's visible input with a stale query.
+- A committed query filters only the active Games or Files mode. The inactive sidebar retains the query until it is selected, avoiding a second large in-memory filter for every search update.
 - Game selection status text is standardized as `name • N tracks`.
 - Library scan-root status text is standardized as enabled state, display order, indexed track count, and last completed scan time or error.
 - Sidebar presentation state owns loaded rows, the visible filtered subset, and native selection independently from queue and playback state.
 - In System Mode, root system rows only expand or collapse. Game leaves retain selection, multi-select, Return, double-click, and context-menu behavior.
 - A non-empty sidebar search temporarily expands the matching system groups. Clearing the query folds every system group while retaining the library/sidebar root itself.
 - Sidebar state publishes a content revision whenever the loaded or filtered game rows change. The native table caches the flattened rows for that revision and rebuilds them only after a content, System Mode, or expansion change.
-- Database game/file aggregation and sorting load off the main actor at startup through one read-only `DatabaseSidebarContent` snapshot; Games and Files therefore apply rows from the same database moment while the sidebar displays its loading state.
+- Startup loads only the sidebar mode that was last selected, on its own background connection. A persisted Files view begins its Files request immediately; Games remains deferred until Games is selected, and vice versa. A large Files listing must never wait behind the Games query or delay first-window creation.
+- The Games query uses the persistent covering `tracks_game_sidebar_index` (`browser_game`, `browser_system`, `root_id`, `path`) so testing unlinked sources does not require a table-row lookup for every indexed track. Existing libraries build that index on the background sidebar task, not in synchronous schema migration.
+- File roots begin collapsed after a Files refresh. This keeps flattened native-table construction proportional to the folders the user opens instead of eagerly building every source-file row.
 
 ## Rules
 
@@ -29,6 +32,10 @@
 - Keep sidebar search focused on game leaves; it does not become a separate system search mode.
 - Do not regroup or re-signature the complete sidebar during ordinary table redraws or scrolling.
 - Keep row-status text and scan-root readouts centralized so wording changes do not drift across call sites.
+- Files mode uses a native tree interaction: triangle click, a repeat click on a selected folder, and Space toggle only that folder. Double-click and Return activate the selected file or folder rather than changing disclosure.
+- Files disclosure geometry uses a persisted point gap from Sidebar Options. The triangle glyph follows Sidebar Style font size while the user-selected triangle-to-label space stays exact.
+- Database sidebar tables and the playlist both use the same native rounded macOS selection treatment; do not add a custom selection overlay.
+- Files-mode labels omit archive track counts. The optional extension-hiding preference is presentation-only and must not alter database paths, drag payloads, or playback URLs.
 
 ## Files
 

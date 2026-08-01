@@ -63,6 +63,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
 @Test func latestTaskOwnerCancelsReplacedAndCompletedWork() {
     let owner = LatestTaskOwner()
     let firstGeneration = owner.begin()
+    #expect(owner.isActive)
     let task = Task { @MainActor in
         await Task.yield()
     }
@@ -75,6 +76,20 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
 
     owner.finish(generation: secondGeneration)
     #expect(!owner.isCurrent(secondGeneration))
+    #expect(!owner.isActive)
+}
+
+@MainActor
+@Test func playbackRequestStateInvalidatesCancelledRequestsAndTracksPendingPlayback() {
+    let state = PlaybackRequestState()
+    let track = TrackItem(url: URL(fileURLWithPath: "/tmp/theme.spc"))
+    let generation = state.begin(track: track)
+
+    #expect(state.pendingTrack == track)
+    #expect(state.isCurrent(generation))
+    state.cancel()
+    #expect(state.pendingTrack == nil)
+    #expect(!state.isCurrent(generation))
 }
 
 @MainActor
@@ -174,11 +189,47 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
         ringBufferFrames: 88_200,
         underrunCount: 2,
         clippedSampleCount: 3,
-        sampleRate: 44_100
+        sampleRate: 44_100,
+        outputHealth: .running
     )
 
     #expect(diagnostics.bufferedMilliseconds == 500)
     #expect(diagnostics.bufferPercent == 25)
+    #expect(diagnostics.outputHealth == .running)
+}
+
+@Test func signed16PCMNormalizesItsLegalMinimumWithoutAFalseClip() {
+    #expect(PCMFloatConversion.normalized(.min) == -1)
+    #expect(PCMFloatConversion.normalized(.max) < 1)
+}
+
+@Test func outputHeartbeatReportsAStalledOutputWithoutPlaybackQueueAccess() {
+    let heartbeat = PlaybackOutputHeartbeat()
+    let start = Date(timeIntervalSinceReferenceDate: 1_000)
+    heartbeat.reset(expectingRenderRequests: true, now: start)
+
+    #expect(heartbeat.health(framesRequested: 512, now: start) == .running)
+    #expect(heartbeat.health(framesRequested: 512, now: start.addingTimeInterval(1.9)) == .running)
+    #expect(heartbeat.health(framesRequested: 512, now: start.addingTimeInterval(2)) == .stalled)
+
+    heartbeat.reset(expectingRenderRequests: false, now: start)
+    #expect(heartbeat.health(framesRequested: 512, now: start.addingTimeInterval(10)) == .inactive)
+}
+
+@Test func remoteTransportNowPlayingKeepsPlaybackStateIndependentFromTheModel() {
+    let nowPlaying = RemoteTransportNowPlaying(
+        title: "Theme",
+        albumTitle: "Game",
+        elapsedSeconds: 42,
+        durationSeconds: 180,
+        isPlaying: true
+    )
+
+    #expect(nowPlaying.title == "Theme")
+    #expect(nowPlaying.albumTitle == "Game")
+    #expect(nowPlaying.elapsedSeconds == 42)
+    #expect(nowPlaying.durationSeconds == 180)
+    #expect(nowPlaying.isPlaying)
 }
 
 @Test func linearResamplerKeepsPlayStationXAOnTheOutputClock() {
@@ -1485,6 +1536,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
         supportsMultiTrack: false
     )
     let timestamp = Date(timeIntervalSince1970: 1)
+    let gameFolder = directory.appendingPathComponent("Game", isDirectory: true)
 
     func result(path: String, title: String, game: String, system: String) -> ScanPipelineResult {
         let candidate = ScanCandidate(
@@ -1519,8 +1571,8 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     }
 
     try database.persistScanTrackResults([
-        result(path: directory.appendingPathComponent("one.spc").path, title: "One", game: "Game", system: "SNES"),
-        result(path: directory.appendingPathComponent("two.spc").path, title: "Two", game: "Game", system: "SNES"),
+        result(path: gameFolder.appendingPathComponent("one.spc").path, title: "One", game: "Game", system: "SNES"),
+        result(path: gameFolder.appendingPathComponent("Nested/two.spc").path, title: "Two", game: "Game", system: "SNES"),
         result(path: directory.appendingPathComponent("other.spc").path, title: "Other", game: "Game", system: "Game Boy")
     ])
 
@@ -1529,19 +1581,37 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     let loaded = try database.tracksAndMetadataForGames([selectedGame])
     let files = try database.loadFileItems()
     let sidebarContent = try LibraryDatabase.loadSidebarContent(databaseURL: database.databaseURL)
+    let startupGames = try LibraryDatabase.loadGameSidebarItems(databaseURL: database.databaseURL)
+    let deferredFiles = try LibraryDatabase.loadFileSidebarItems(databaseURL: database.databaseURL)
     let loadedFiles = try database.tracksAndMetadataForFiles(Array(files.prefix(2)))
     let queued = await PlaylistQueueLoader.loadLibraryTracks(
         databaseURL: database.databaseURL,
         request: .games([selectedGame])
     )
+    let folderQueued = await PlaylistQueueLoader.loadLibraryTracks(
+        databaseURL: database.databaseURL,
+        request: .fileSidebar(
+            fileItems: [],
+            folders: [
+                DatabaseFileSidebarFolder(
+                    rootID: root.id,
+                    rootPath: directory.path,
+                    path: gameFolder.path
+                )
+            ]
+        )
+    )
 
     #expect(selectedGame.trackCount == 2)
     #expect(loaded.tracks.map(\.filename) == ["one.spc", "two.spc"])
     #expect(loaded.metadata.values.allSatisfy { $0.game == "Game" && $0.system == "SNES" })
-    #expect(files.map(\.filename) == ["one.spc", "other.spc", "two.spc"])
+    #expect(Set(files.map(\.filename)) == ["one.spc", "other.spc", "two.spc"])
     #expect(sidebarContent.gameItems == games)
     #expect(sidebarContent.fileItems == files)
+    #expect(startupGames == games)
+    #expect(deferredFiles == files)
     #expect(queued.tracks.map(\.filename) == ["one.spc", "two.spc"])
+    #expect(folderQueued.tracks.map(\.filename) == ["one.spc", "two.spc"])
     #expect(loadedFiles.tracks.count == 2)
 }
 
@@ -1596,7 +1666,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(summary.deadLinkCount == 1)
     #expect(summary.indexedTrackCount == 1)
     #expect(summary.unlinkedTrackCount == 1)
-    #expect(summary.deadLinkSummaryText == "1 dead link retained")
+    #expect(summary.deadLinkSummaryText == "1 unlinked source retained")
     #expect(try LibraryDatabaseMaintenance.clearDeadLinks(databaseURL: database.databaseURL) == 1)
     #expect(try database.loadGameItems().isEmpty)
 }
@@ -2395,6 +2465,39 @@ private actor ScanURLRecorder {
 }
 
 @MainActor
+@Test func databaseFileSidebarKeepsLargeRootsCollapsedAfterLoading() {
+    let sidebar = DatabaseFileSidebarState()
+    let item = DatabaseFileItem(
+        rootID: 1,
+        rootPath: "/music/Library",
+        folderPath: "/music/Library/Neo Geo CD",
+        path: "/music/Library/Neo Geo CD/KOF96.tar.zst",
+        isArchive: true,
+        trackCount: 26
+    )
+
+    sidebar.replaceFileItems([item])
+
+    let rootID = DatabaseFileSidebarTree.folderID(rootID: 1, path: "/music/Library")
+    #expect(sidebar.expandedFolderIDs.isEmpty)
+    #expect(DatabaseFileSidebarTree.rows(
+        items: sidebar.visibleFileItems,
+        expandedFolderIDs: sidebar.expandedFolderIDs
+    ) == [.folder(id: rootID, title: "Library", depth: 0, isExpanded: false)])
+}
+
+@Test func fileSidebarDisclosureUsesPointGap() {
+    let fontSize: CGFloat = 12
+    let gap: CGFloat = 6
+    #expect(DatabaseFileSidebarInteraction.indentationStep(fontSize: fontSize, gap: gap) == 17)
+    #expect(DatabaseFileSidebarInteraction.isDisclosureHit(locationX: 4, depth: 0, fontSize: fontSize, gap: gap))
+    #expect(DatabaseFileSidebarInteraction.isDisclosureHit(locationX: 21, depth: 1, fontSize: fontSize, gap: gap))
+    #expect(!DatabaseFileSidebarInteraction.isDisclosureHit(locationX: 20, depth: 1, fontSize: fontSize, gap: gap))
+    #expect(!DatabaseFileSidebarInteraction.isDisclosureHit(locationX: 32, depth: 1, fontSize: fontSize, gap: gap))
+    #expect(DatabaseFileSidebarInteraction.indentationStep(fontSize: 18, gap: gap) == 23)
+}
+
+@MainActor
 @Test func databaseSidebarSearchPreservesSelection() {
     let sidebar = DatabaseSidebarState()
     let selected = DatabaseGameItem(name: "Actraiser", systemName: "SNES", trackCount: 18)
@@ -2768,7 +2871,11 @@ private actor ScanURLRecorder {
     let legacyOnlyPreferences = AppSessionPersistence.restorePlaybackPreferences(defaults: defaults)
     #expect(!legacyOnlyPreferences.longPlayEnabled)
     #expect(legacyOnlyPreferences.manualPreFadeSeconds == nil)
+    #expect(!legacyOnlyPreferences.spectrumEnabled)
     #expect(!legacyOnlyPreferences.databaseSidebarMonospaceFont)
+    #expect(legacyOnlyPreferences.databaseSidebarDisclosureGap == nil)
+    #expect(legacyOnlyPreferences.databaseSidebarDisclosureGapPoints == nil)
+    #expect(!legacyOnlyPreferences.databaseSidebarHidesFileExtensions)
     #expect(!legacyOnlyPreferences.sidebarSystemMode)
     #expect(!legacyOnlyPreferences.equalizerEnabled)
     #expect(legacyOnlyPreferences.equalizerBandGains == nil)
@@ -2780,6 +2887,10 @@ private actor ScanURLRecorder {
     defaults.set("0.400000,0.500000,0.600000,1.000000", forKey: AppDefaultsKey.spectrumPeakColor)
     defaults.set(true, forKey: AppDefaultsKey.sidebarSystemMode)
     defaults.set(true, forKey: AppDefaultsKey.databaseSidebarMonospaceFont)
+    defaults.set(12, forKey: AppDefaultsKey.databaseSidebarDisclosureGapPoints)
+    defaults.set(true, forKey: AppDefaultsKey.databaseSidebarHidesFileExtensions)
+    defaults.set(15, forKey: AppDefaultsKey.playlistFontSize)
+    defaults.set("tertiary", forKey: AppDefaultsKey.playlistTextColor)
     defaults.set(true, forKey: AppDefaultsKey.equalizerEnabled)
     defaults.set([-12.0, -3.5, 4.0, 12.0], forKey: AppDefaultsKey.equalizerBandGains)
 
@@ -2790,6 +2901,10 @@ private actor ScanURLRecorder {
     #expect(unifiedPreferences.spectrumGradientEndColor == "0.900000,0.800000,0.700000,1.000000")
     #expect(unifiedPreferences.spectrumPeakColor == "0.400000,0.500000,0.600000,1.000000")
     #expect(unifiedPreferences.databaseSidebarMonospaceFont)
+    #expect(unifiedPreferences.databaseSidebarDisclosureGapPoints == 12)
+    #expect(unifiedPreferences.databaseSidebarHidesFileExtensions)
+    #expect(unifiedPreferences.playlistFontSize == 15)
+    #expect(unifiedPreferences.playlistTextColor == "tertiary")
     #expect(unifiedPreferences.sidebarSystemMode)
     #expect(unifiedPreferences.equalizerEnabled)
     #expect(unifiedPreferences.equalizerBandGains == [-12.0, -3.5, 4.0, 12.0])

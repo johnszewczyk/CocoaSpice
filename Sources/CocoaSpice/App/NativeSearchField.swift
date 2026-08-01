@@ -26,20 +26,40 @@ struct NativeSearchField: NSViewRepresentable {
         }
     }
 
-    @MainActor
-    final class Coordinator: NSObject, NSSearchFieldDelegate {
-        var parent: NativeSearchField
-        private var debounceWorkItem: DispatchWorkItem?
+        @MainActor
+        final class Coordinator: NSObject, NSSearchFieldDelegate {
+            var parent: NativeSearchField
+            private var debounceWorkItem: DispatchWorkItem?
+            private var lastCommittedText: String
+            private var pendingText: String?
 
-        init(_ parent: NativeSearchField) {
-            self.parent = parent
-        }
+            init(_ parent: NativeSearchField) {
+                self.parent = parent
+                lastCommittedText = parent.text
+            }
 
         func update(parent: NativeSearchField, field: NSSearchField) {
             self.parent = parent
-            if field.stringValue != parent.text {
+            if parent.text == pendingText {
                 debounceWorkItem?.cancel()
                 debounceWorkItem = nil
+                pendingText = nil
+                lastCommittedText = parent.text
+                return
+            }
+
+            // SwiftUI may update this representable for playback progress,
+            // spectrum, or other unrelated state while a fast typist's input
+            // is still inside the debounce window. In that case the binding
+            // intentionally contains the previous committed query; never
+            // overwrite AppKit's live editor with that stale value.
+            guard parent.text != lastCommittedText else { return }
+            debounceWorkItem?.cancel()
+            debounceWorkItem = nil
+            pendingText = nil
+            lastCommittedText = parent.text
+            if field.stringValue != parent.text {
+                field.stringValue = parent.text
             }
         }
 
@@ -47,6 +67,7 @@ struct NativeSearchField: NSViewRepresentable {
             guard let field = notification.object as? NSSearchField else { return }
             let value = field.stringValue
             debounceWorkItem?.cancel()
+            pendingText = value
             let workItem = DispatchWorkItem { [weak self] in
                 self?.parent.text = value
             }

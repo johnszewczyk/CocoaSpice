@@ -21,7 +21,7 @@ struct PlaylistTableView: NSViewRepresentable {
         tableView.intercellSpacing = NSSize(width: 0, height: 0)
         tableView.focusRingType = .none
         tableView.style = .fullWidth
-        tableView.selectionHighlightStyle = .none
+        tableView.selectionHighlightStyle = .regular
         tableView.usesAutomaticRowHeights = false
         tableView.delegate = context.coordinator
         tableView.dataSource = context.coordinator
@@ -43,14 +43,7 @@ struct PlaylistTableView: NSViewRepresentable {
             coordinator?.autoSizeColumn(at: columnIndex)
         }
 
-        let selectionHighlightView = PlaylistSelectionHighlightView(frame: tableView.bounds)
-        selectionHighlightView.autoresizingMask = [.width, .height]
-        tableView.addSubview(selectionHighlightView, positioned: .below, relativeTo: nil)
-
-        context.coordinator.attach(
-            tableView: tableView,
-            selectionHighlightView: selectionHighlightView
-        )
+        context.coordinator.attach(tableView: tableView)
         context.coordinator.installColumns()
 
         let scrollView = NSScrollView(frame: .zero)
@@ -77,6 +70,8 @@ struct PlaylistTableView: NSViewRepresentable {
         private struct AutoSizeSignature: Equatable {
             let trackIDs: [TrackItem.ID]
             let widthHints: PlaylistColumnWidthHints?
+            let fontSize: CGFloat
+            let monospace: Bool
         }
 
         private enum Column: String, CaseIterable {
@@ -166,7 +161,6 @@ struct PlaylistTableView: NSViewRepresentable {
 
         @Bindable var model: PlayerViewModel
         private weak var tableView: NSTableView?
-        private weak var selectionHighlightView: PlaylistSelectionHighlightView?
         private var suppressSelectionSync = false
         private var lastAppliedMetadataLoadToken = -1
         private var lastVisibleTrackIDs: [String] = []
@@ -176,6 +170,8 @@ struct PlaylistTableView: NSViewRepresentable {
         private var lastIsPlaying = false
         private var lastSortColumn: PlayerViewModel.PlaylistSortColumn?
         private var lastSortDirection: PlayerViewModel.PlaylistSortDirection = .ascending
+        private var lastFontSize: CGFloat?
+        private var lastTextColor: PlayerViewModel.DatabaseSidebarTextColor?
         private var lastMonospaceFont: Bool?
         private var lastAutoSizeSignature: AutoSizeSignature?
         private var pendingAutoSizeSignature: AutoSizeSignature?
@@ -187,12 +183,8 @@ struct PlaylistTableView: NSViewRepresentable {
             self._model = Bindable(model)
         }
 
-        func attach(
-            tableView: NSTableView,
-            selectionHighlightView: PlaylistSelectionHighlightView? = nil
-        ) {
+        func attach(tableView: NSTableView) {
             self.tableView = tableView
-            self.selectionHighlightView = selectionHighlightView
         }
 
         func installColumns() {
@@ -229,7 +221,13 @@ struct PlaylistTableView: NSViewRepresentable {
             let rowsChanged = visibleTrackIDs != lastVisibleTrackIDs
             let playbackStateChanged = currentTrackID != lastCurrentTrackID || isPlaying != lastIsPlaying
             let sortChanged = sortColumn != lastSortColumn || sortDirection != lastSortDirection
-            let fontChanged = model.playlistMonospaceFont != lastMonospaceFont
+            let fontChanged = model.playlistFontSize != lastFontSize
+                || model.playlistTextColor != lastTextColor
+                || model.playlistMonospaceFont != lastMonospaceFont
+            let rowHeight = max(18, model.playlistFontSize + 6)
+            if tableView.rowHeight != rowHeight {
+                tableView.rowHeight = rowHeight
+            }
 
             if rowsChanged || sortChanged || fontChanged {
                 tableView.reloadData()
@@ -249,7 +247,6 @@ struct PlaylistTableView: NSViewRepresentable {
                 syncSelection(in: tableView)
             } else if rowsChanged || sortChanged {
                 tableView.layoutSubtreeIfNeeded()
-                updateSelectionHighlight(in: tableView, animated: false)
             }
 
             if metadataTokenChanged {
@@ -259,7 +256,9 @@ struct PlaylistTableView: NSViewRepresentable {
             scheduleAutomaticColumnSizing(
                 signature: AutoSizeSignature(
                     trackIDs: visibleTrackIDs,
-                    widthHints: model.playlistColumnWidthHints
+                    widthHints: model.playlistColumnWidthHints,
+                    fontSize: model.playlistFontSize,
+                    monospace: model.playlistMonospaceFont
                 )
             )
 
@@ -270,6 +269,8 @@ struct PlaylistTableView: NSViewRepresentable {
             lastIsPlaying = isPlaying
             lastSortColumn = sortColumn
             lastSortDirection = sortDirection
+            lastFontSize = model.playlistFontSize
+            lastTextColor = model.playlistTextColor
             lastMonospaceFont = model.playlistMonospaceFont
         }
 
@@ -280,7 +281,9 @@ struct PlaylistTableView: NSViewRepresentable {
         }
 
         nonisolated func tableView(_ tableView: NSTableView, heightOfRow row: Int) -> CGFloat {
-            18
+            MainActor.assumeIsolated {
+                max(18, model.playlistFontSize + 6)
+            }
         }
 
         nonisolated func tableView(_ tableView: NSTableView, shouldSelectRow row: Int) -> Bool {
@@ -355,7 +358,6 @@ struct PlaylistTableView: NSViewRepresentable {
                 // follows does not immediately reselect the previous row.
                 lastSelectedTrackIDs = model.selectedTrackIDs
                 lastPrimarySelectedTrackID = model.selectedTrackID
-                updateSelectionHighlight(in: tableView, animated: true)
             }
         }
 
@@ -538,12 +540,22 @@ struct PlaylistTableView: NSViewRepresentable {
 
             cell.textField?.stringValue = text
             cell.textField?.font = model.playlistMonospaceFont
-                ? NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+                ? NSFont.monospacedSystemFont(ofSize: model.playlistFontSize, weight: .regular)
                 : (monospace
-                    ? NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
-                    : NSFont.systemFont(ofSize: NSFont.systemFontSize))
-            cell.textField?.textColor = isCurrentTrack ? NSColor.labelColor : NSColor.secondaryLabelColor
+                    ? NSFont.monospacedDigitSystemFont(ofSize: model.playlistFontSize, weight: .regular)
+                    : NSFont.systemFont(ofSize: model.playlistFontSize))
+            cell.textField?.textColor = isCurrentTrack
+                ? .labelColor
+                : Self.playlistTextColor(model.playlistTextColor)
             return cell
+        }
+
+        private static func playlistTextColor(_ color: PlayerViewModel.DatabaseSidebarTextColor) -> NSColor {
+            switch color {
+            case .primary: .labelColor
+            case .secondary: .secondaryLabelColor
+            case .tertiary: .tertiaryLabelColor
+            }
         }
 
         private func syncSelection(in tableView: NSTableView) {
@@ -556,27 +568,13 @@ struct PlaylistTableView: NSViewRepresentable {
 
             guard !rows.isEmpty else {
                 tableView.deselectAll(nil)
-                updateSelectionHighlight(in: tableView, animated: false)
                 return
             }
 
             tableView.selectRowIndexes(rows, byExtendingSelection: false)
-            updateSelectionHighlight(in: tableView, animated: false)
             if let row = rows.last {
                 tableView.scrollRowToVisible(row)
             }
-        }
-
-        private func updateSelectionHighlight(in tableView: NSTableView, animated: Bool) {
-            let selectedRows = tableView.selectedRowIndexes.filter {
-                $0 >= 0 && $0 < tableView.numberOfRows
-            }
-            let rowRects = selectedRows.map(tableView.rect(ofRow:))
-            selectionHighlightView?.update(
-                selectionRects: rowRects,
-                primaryRect: selectedRows.count == 1 ? rowRects.first : nil,
-                animated: animated
-            )
         }
 
         private func applyVisibility(to tableView: NSTableView) {
@@ -882,10 +880,10 @@ struct PlaylistTableView: NSViewRepresentable {
             exportAAC.isEnabled = clickedRow >= 0 && clickedRow < model.visiblePlaylist.count
             menu.addItem(exportAAC)
 
-            let revealInFinder = NSMenuItem(title: "Reveal in Finder", action: #selector(revealSelectedInFinder(_:)), keyEquivalent: "")
-            revealInFinder.target = self
-            revealInFinder.isEnabled = model.canRevealSelectedTracksInFinder
-            menu.addItem(revealInFinder)
+            let showInFinder = NSMenuItem(title: "Show in Finder", action: #selector(showSelectedInFinder(_:)), keyEquivalent: "")
+            showInFinder.target = self
+            showInFinder.isEnabled = model.canShowSelectedTracksInFinder
+            menu.addItem(showInFinder)
 
             let remove = NSMenuItem(title: "Remove Tracks", action: #selector(removeSelected(_:)), keyEquivalent: "")
             remove.target = self
@@ -943,8 +941,8 @@ struct PlaylistTableView: NSViewRepresentable {
         }
 
         @objc
-        private func revealSelectedInFinder(_ sender: NSMenuItem) {
-            model.revealSelectedTracksInFinder()
+        private func showSelectedInFinder(_ sender: NSMenuItem) {
+            model.showSelectedTracksInFinder()
         }
 
         @objc
@@ -982,10 +980,10 @@ struct PlaylistTableView: NSViewRepresentable {
 
         private func widestWidth(for column: Column) -> CGFloat {
             let font = model.playlistMonospaceFont
-                ? NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+                ? NSFont.monospacedSystemFont(ofSize: model.playlistFontSize, weight: .regular)
                 : (column == .index || column == .length
-                    ? NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
-                    : NSFont.systemFont(ofSize: NSFont.systemFontSize))
+                    ? NSFont.monospacedDigitSystemFont(ofSize: model.playlistFontSize, weight: .regular)
+                    : NSFont.systemFont(ofSize: model.playlistFontSize))
 
             let sample = model.visiblePlaylist.prefix(autoSizeSampleLimit)
             let sampledWidth = sample.reduce(CGFloat.zero) { currentMax, track in
@@ -1065,78 +1063,6 @@ struct PlaylistTableView: NSViewRepresentable {
 private let playlistRowDragType = NSPasteboard.PasteboardType("com.cocoaspice.playlist-row")
 
 extension PlaylistTableView.Coordinator: @preconcurrency NSTableViewDataSource, NSTableViewDelegate {
-}
-
-@MainActor
-final class PlaylistSelectionHighlightView: NSView {
-    private let primarySelectionLayer = CALayer()
-    private let multipleSelectionLayer = CAShapeLayer()
-
-    override var isFlipped: Bool { true }
-
-    override init(frame frameRect: NSRect) {
-        super.init(frame: frameRect)
-        wantsLayer = true
-        layer?.isGeometryFlipped = true
-        primarySelectionLayer.isHidden = true
-        multipleSelectionLayer.isHidden = true
-        layer?.addSublayer(primarySelectionLayer)
-        layer?.addSublayer(multipleSelectionLayer)
-    }
-
-    required init?(coder: NSCoder) {
-        nil
-    }
-
-    override func hitTest(_ point: NSPoint) -> NSView? {
-        nil
-    }
-
-    func update(selectionRects: [NSRect], primaryRect: NSRect?, animated: Bool) {
-        let color = NSColor.selectedContentBackgroundColor.withAlphaComponent(0.9).cgColor
-        primarySelectionLayer.backgroundColor = color
-        multipleSelectionLayer.fillColor = color
-
-        guard let primaryRect, selectionRects.count == 1 else {
-            primarySelectionLayer.removeAllAnimations()
-            primarySelectionLayer.isHidden = true
-            multipleSelectionLayer.path = selectionPath(for: selectionRects)
-            multipleSelectionLayer.isHidden = selectionRects.isEmpty
-            return
-        }
-
-        multipleSelectionLayer.isHidden = true
-        multipleSelectionLayer.path = nil
-
-        let targetPosition = CGPoint(x: bounds.midX, y: primaryRect.midY)
-        let targetBounds = CGRect(x: 0, y: 0, width: bounds.width, height: primaryRect.height)
-        let wasVisible = !primarySelectionLayer.isHidden
-        let startPosition = primarySelectionLayer.presentation()?.position ?? primarySelectionLayer.position
-
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        primarySelectionLayer.bounds = targetBounds
-        primarySelectionLayer.position = targetPosition
-        primarySelectionLayer.isHidden = false
-        CATransaction.commit()
-
-        primarySelectionLayer.removeAllAnimations()
-        guard animated, wasVisible, startPosition != targetPosition else { return }
-
-        let movement = CABasicAnimation(keyPath: "position")
-        movement.fromValue = startPosition
-        movement.toValue = targetPosition
-        movement.duration = 0.1
-        movement.timingFunction = CAMediaTimingFunction(name: .easeOut)
-        primarySelectionLayer.add(movement, forKey: "playlistSelectionMovement")
-    }
-
-    private func selectionPath(for rects: [NSRect]) -> CGPath? {
-        guard !rects.isEmpty else { return nil }
-        let path = CGMutablePath()
-        rects.forEach { path.addRect($0, transform: .identity) }
-        return path
-    }
 }
 
 @MainActor

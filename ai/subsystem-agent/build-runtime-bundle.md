@@ -20,7 +20,7 @@
 - `build.sh` assembles a standalone app bundle under `dist/`.
 - `build.sh` runs `scripts/build-libvgm.sh` before `swift build` so the vendored `libvgm` archives exist when SwiftPM links the executable.
 - `build.sh` also runs `scripts/build-mgba.sh` so the vendored `mGBA` archive exists when SwiftPM links the `Highly Complete` backend.
-- `build.sh` runs the bounded `scripts/build-play-psf.sh` and `scripts/build-vgmstream.sh` helpers before SwiftPM links their bridge targets.
+- `build.sh` runs the bounded `scripts/build-play-psf.sh` and `scripts/build-vgmstream.sh` helpers before SwiftPM links their bridge targets. The vgmstream helper uses a SHA-256 input stamp and returns without CMake work when its vendored commit, dirty/untracked source inputs, compatibility patch, helper/configuration, compiler/CMake, and FFmpeg/Vorbis dependency versions are unchanged. Set `COCOASPICE_REBUILD_VGMSTREAM=1` to force its configure/build step.
 - `build.sh` stages the `.app` in a temporary directory outside the project tree, copies `libgme.0.dylib` into the bundle, rewrites install names, clears recursive macOS extended attributes before and after signing, then copies the verified bundle back into `dist/`.
 - `build.sh` also stages `libopenmpt` and its non-system runtime dylibs in `Contents/Frameworks`, then rewrites their mutual install names before signing.
 - `build.sh` stages FFmpeg's directly linked components and recursively bundles their non-system Homebrew dylib closure, rewriting each bundled load path before signing. This supplies vgmstream's ATRAC3/MSF support without relying on a developer-installed FFmpeg at runtime.

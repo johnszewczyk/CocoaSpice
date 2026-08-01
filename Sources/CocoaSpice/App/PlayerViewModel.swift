@@ -123,23 +123,24 @@ final class PlayerViewModel {
     let databaseSidebar = DatabaseSidebarState()
     let databaseFileSidebar = DatabaseFileSidebarState()
     private var sidebarSearchPersistenceWorkItem: DispatchWorkItem?
+    private var sidebarSearchQuery = ""
     var sidebarSearchText: String {
-        get { databaseSidebar.searchText }
+        get { sidebarSearchQuery }
         set {
-            databaseSidebar.searchText = newValue
-            databaseFileSidebar.searchText = newValue
-            if sidebarSystemMode {
-                let hasQuery = !newValue.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                expandedDatabaseSystems = hasQuery
-                    ? Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
-                    : []
-            }
+            guard sidebarSearchQuery != newValue else { return }
+            sidebarSearchQuery = newValue
+            applySidebarSearch()
             scheduleSidebarSearchPersistence()
         }
     }
     var databaseSidebarFontSize: CGFloat = 12
     var databaseSidebarTextColor: DatabaseSidebarTextColor = .primary
     var databaseSidebarMonospaceFont = false
+    /// Space between a Files-mode disclosure triangle and its label, in points.
+    var databaseSidebarDisclosureGapPoints: CGFloat = 6
+    var databaseSidebarHidesFileExtensions = false
+    var playlistFontSize: CGFloat = 12
+    var playlistTextColor: DatabaseSidebarTextColor = .primary
     var playlistMonospaceFont = false
     var sidebarBrowserMode: SidebarBrowserMode = .games
     var sidebarSystemMode = false
@@ -179,31 +180,34 @@ final class PlayerViewModel {
     var currentTrack: TrackItem?
     var currentMetadata: TrackMetadata?
     let toolbarSpectrum = ToolbarSpectrumModel()
-    var spectrumGradientStartColor = NSColor(
+    private static let defaultSpectrumGradientStartColor = NSColor(
         calibratedRed: 0.000000,
         green: 0.976805,
         blue: 0.000000,
         alpha: 1.000000
-    ) {
-        didSet { toolbarSpectrum.gradientStartColor = spectrumGradientStartColor }
-    }
-    var spectrumGradientEndColor = NSColor(
+    )
+    private static let defaultSpectrumGradientEndColor = NSColor(
         calibratedRed: 0.016804,
         green: 0.198351,
         blue: 1.000000,
         alpha: 1.000000
-    ) {
-        didSet { toolbarSpectrum.gradientEndColor = spectrumGradientEndColor }
-    }
-    var spectrumPeakColor = NSColor(
+    )
+    private static let defaultSpectrumPeakColor = NSColor(
         calibratedRed: 1.000000,
         green: 0.149131,
         blue: 0.000000,
         alpha: 1.000000
-    ) {
+    )
+    var spectrumGradientStartColor = PlayerViewModel.defaultSpectrumGradientStartColor {
+        didSet { toolbarSpectrum.gradientStartColor = spectrumGradientStartColor }
+    }
+    var spectrumGradientEndColor = PlayerViewModel.defaultSpectrumGradientEndColor {
+        didSet { toolbarSpectrum.gradientEndColor = spectrumGradientEndColor }
+    }
+    var spectrumPeakColor = PlayerViewModel.defaultSpectrumPeakColor {
         didSet { toolbarSpectrum.peakColor = spectrumPeakColor }
     }
-    var spectrumEnabled = true {
+    var spectrumEnabled = false {
         didSet {
             toolbarSpectrum.isVisible = spectrumEnabled
             playbackStorage?.setSpectrumEnabled(spectrumEnabled)
@@ -322,29 +326,37 @@ final class PlayerViewModel {
     private var remoteTransportConfigured = false
     private let libraryDatabase: LibraryDatabase?
     private var playbackTimer: Timer?
-    private var playlistLoadTask: Task<Void, Never>?
-    private var playbackTask: Task<Void, Never>?
+    private let playlistMetadataTaskOwner = LatestTaskOwner()
+    private let playbackRequestState = PlaybackRequestState()
     private var liveScanLogs: [Int64: LibraryScanLiveLogWindow] = [:]
     private let libraryScanRequestQueue = LibraryScanRequestQueue()
-    private var folderSelectionTask: Task<Void, Never>?
-    private var queueBuildTask: Task<Void, Never>?
-    private var randomLibraryLoadTask: Task<Void, Never>?
+    private let folderSelectionTaskOwner = LatestTaskOwner()
+    private let queueBuildTaskOwner = LatestTaskOwner()
+    private let randomLibraryLoadTaskOwner = LatestTaskOwner()
     private var audioExportTask: Task<Void, Never>?
     private var archiveCacheSummaryTask: Task<Void, Never>?
     private var archiveCacheClearTask: Task<Void, Never>?
     private let deadLinkSummaryTaskOwner = LatestTaskOwner()
     private var deadLinkCleanupTask: Task<Void, Never>?
     private let databaseSidebarLoadTaskOwner = LatestTaskOwner()
+    private let databaseFileSidebarLoadTaskOwner = LatestTaskOwner()
+    private var hasLoadedDatabaseGameSidebar = false
+    private(set) var isLoadingDatabaseFileSidebar = false
+    private var hasLoadedDatabaseFileSidebar = false
     private var playlistMetadataRefreshWorkItem: DispatchWorkItem?
-    private var playlistLoadGeneration = 0
-    private var playbackRequestGeneration = 0
-    private var folderSelectionGeneration = 0
-    private var queueBuildGeneration = 0
-    private var randomLibraryLoadGeneration = 0
     private var randomLibraryPlaybackPending = false
-    private var didAutoAdvanceForCurrentTrack = false
-    private var playbackReachedEnd = false
-    private var pendingPlaybackTrack: TrackItem?
+    private var didAutoAdvanceForCurrentTrack: Bool {
+        get { playbackRequestState.didAutoAdvance }
+        set { playbackRequestState.didAutoAdvance = newValue }
+    }
+    private var playbackReachedEnd: Bool {
+        get { playbackRequestState.reachedEnd }
+        set { playbackRequestState.reachedEnd = newValue }
+    }
+    private var pendingPlaybackTrack: TrackItem? {
+        get { playbackRequestState.pendingTrack }
+        set { playbackRequestState.pendingTrack = newValue }
+    }
     private var playlistClipboard: [TrackItem] = []
     private var playlistManualOrder: [String: Int] = [:]
     var pendingPlaylistColumnOrder: [String]?
@@ -397,6 +409,16 @@ final class PlayerViewModel {
         return remoteTransport
     }
 
+    private var remoteNowPlaying: RemoteTransportNowPlaying {
+        RemoteTransportNowPlaying(
+            title: currentSongTitle,
+            albumTitle: currentGameTitle,
+            elapsedSeconds: playbackElapsedSeconds,
+            durationSeconds: Double(totalPlaybackSeconds),
+            isPlaying: isPlaying
+        )
+    }
+
     init() {
         AppSessionPersistence.migrateLegacyPreferences()
         let restoredState = AppSessionPersistence.restoreStartupState(
@@ -426,8 +448,6 @@ final class PlayerViewModel {
             lastLibrarySelectedFolderPath: restoredState.lastLibrarySelectedFolderPath
         )
         updateRemoteTransportState()
-        refreshArchiveCacheSummary()
-        refreshDeadLinkSummary()
     }
 
     func chooseLibraryScanRoots() {
@@ -805,6 +825,7 @@ final class PlayerViewModel {
     }
 
     private func loadRoot(url: URL) {
+        folderSelectionTaskOwner.cancel()
         rootURL = url
         selectedFolderPath = librarySelectedFolderPath ?? url.path
         librarySelectedFolderPath = selectedFolderPath
@@ -816,19 +837,17 @@ final class PlayerViewModel {
     func handleFolderSelection(_ folderURL: URL) {
         selectedFolderPath = folderURL.path
         librarySelectedFolderPath = folderURL.path
-        folderSelectionTask?.cancel()
-        folderSelectionGeneration += 1
-        let generation = folderSelectionGeneration
+        let generation = folderSelectionTaskOwner.begin()
         let shouldQueue = playlistFollowsCursor
         statusText = shouldQueue
             ? "Loading \(folderURL.lastPathComponent)..."
             : "Browsing \(folderURL.lastPathComponent)..."
 
-        folderSelectionTask = Task { [weak self] in
+        let task = Task { [weak self] in
             guard let self else { return }
             let tracks = await PlaylistQueueLoader.loadTracks(in: folderURL)
             guard !Task.isCancelled else { return }
-            guard generation == self.folderSelectionGeneration,
+            guard self.folderSelectionTaskOwner.isCurrent(generation),
                   self.selectedFolderPath == folderURL.path else {
                 return
             }
@@ -841,7 +860,9 @@ final class PlayerViewModel {
                     ? "No supported tracks in \(folderURL.lastPathComponent)"
                     : "Browsing \(tracks.count) tracks in \(folderURL.lastPathComponent)"
             }
+            self.folderSelectionTaskOwner.finish(generation: generation)
         }
+        folderSelectionTaskOwner.install(task, generation: generation)
     }
 
     func handleSidebarFolderActivation(_ folderURL: URL) {
@@ -975,11 +996,16 @@ final class PlayerViewModel {
         let selectedItems = databaseFileItems.filter { selectedDatabaseFileIDs.contains($0.id) }
         let selectedFolders = Array(selectedDatabaseFileFolders)
         guard !selectedItems.isEmpty || !selectedFolders.isEmpty else { return }
-        activateDatabaseFileSidebarSelection(fileItems: selectedItems, folders: selectedFolders, replace: true)
+        activateDatabaseFileSidebarSelection(
+            fileItems: selectedItems,
+            folders: selectedFolders,
+            replace: true,
+            autoplay: true
+        )
     }
 
     func activateDatabaseFileFolder(_ folder: DatabaseFileSidebarFolder) {
-        activateDatabaseFileSidebarSelection(fileItems: [], folders: [folder], replace: true)
+        activateDatabaseFileSidebarSelection(fileItems: [], folders: [folder], replace: true, autoplay: true)
     }
 
     private func activateDatabaseGames(_ items: [DatabaseGameItem], replace: Bool) {
@@ -1010,15 +1036,23 @@ final class PlayerViewModel {
         )
     }
 
-    func appendDatabaseFileSidebarDrag(_ payload: DatabaseFileSidebarDragPayload) {
+    func queueDatabaseFileSidebarSelection(
+        _ payload: DatabaseFileSidebarDragPayload,
+        replace: Bool
+    ) {
         let fileItems = databaseFileItems.filter { payload.fileIDs.contains($0.id) }
-        activateDatabaseFileSidebarSelection(fileItems: fileItems, folders: payload.folders, replace: false)
+        activateDatabaseFileSidebarSelection(fileItems: fileItems, folders: payload.folders, replace: replace)
+    }
+
+    func appendDatabaseFileSidebarDrag(_ payload: DatabaseFileSidebarDragPayload) {
+        queueDatabaseFileSidebarSelection(payload, replace: false)
     }
 
     private func activateDatabaseFileSidebarSelection(
         fileItems: [DatabaseFileItem],
         folders: [DatabaseFileSidebarFolder],
-        replace: Bool
+        replace: Bool,
+        autoplay: Bool = false
     ) {
         guard !fileItems.isEmpty || !folders.isEmpty else { return }
         let itemCount = fileItems.count + folders.count
@@ -1029,7 +1063,8 @@ final class PlayerViewModel {
             request: .fileSidebar(fileItems: fileItems, folders: folders),
             label: label,
             sourceURL: URL(fileURLWithPath: label, isDirectory: false),
-            replace: replace
+            replace: replace,
+            autoplay: autoplay
         )
     }
 
@@ -1037,33 +1072,35 @@ final class PlayerViewModel {
         request: LibraryPlaylistLoadRequest,
         label: String,
         sourceURL: URL,
-        replace: Bool
+        replace: Bool,
+        autoplay: Bool = false
     ) {
-        queueBuildTask?.cancel()
-        queueBuildGeneration += 1
-        let generation = queueBuildGeneration
+        let generation = queueBuildTaskOwner.begin()
         statusText = "Loading \(label)..."
         let databaseURL = libraryDatabaseURL
 
-        queueBuildTask = Task { [weak self] in
+        let task = Task { [weak self] in
             guard let self else { return }
             let loaded = await PlaylistQueueLoader.loadLibraryTracks(
                 databaseURL: databaseURL,
                 request: request
             )
-            guard !Task.isCancelled, generation == self.queueBuildGeneration else { return }
+            guard !Task.isCancelled, self.queueBuildTaskOwner.isCurrent(generation) else { return }
             self.applyQueuedTracks(
                 loaded.tracks,
                 from: sourceURL,
                 replace: replace,
-                preservePlayback: replace,
+                preservePlayback: replace && !autoplay,
                 seedMetadataCache: loaded.metadata,
-                widthHints: loaded.widthHints
+                widthHints: loaded.widthHints,
+                autoplay: autoplay
             )
             self.statusText = replace
                 ? "Queued \(loaded.tracks.count) tracks from \(label)"
                 : "Enqueued \(loaded.tracks.count) tracks from \(label)"
+            self.queueBuildTaskOwner.finish(generation: generation)
         }
+        queueBuildTaskOwner.install(task, generation: generation)
     }
 
     func queueFolder(_ folderURL: URL, replace: Bool = true, preservePlayback: Bool = false) {
@@ -1072,18 +1109,18 @@ final class PlayerViewModel {
             return
         }
 
-        queueBuildTask?.cancel()
-        queueBuildGeneration += 1
-        let generation = queueBuildGeneration
+        let generation = queueBuildTaskOwner.begin()
         statusText = "Loading \(folderURL.lastPathComponent)..."
 
-        queueBuildTask = Task { [weak self] in
+        let task = Task { [weak self] in
             guard let self else { return }
             let tracks = await PlaylistQueueLoader.loadTracks(in: folderURL)
             guard !Task.isCancelled else { return }
-            guard generation == self.queueBuildGeneration else { return }
+            guard self.queueBuildTaskOwner.isCurrent(generation) else { return }
             self.applyQueuedTracks(tracks, from: folderURL, replace: replace, preservePlayback: preservePlayback)
+            self.queueBuildTaskOwner.finish(generation: generation)
         }
+        queueBuildTaskOwner.install(task, generation: generation)
     }
 
     func importDroppedURLs(_ urls: [URL]) {
@@ -1093,21 +1130,20 @@ final class PlayerViewModel {
             return
         }
 
-        queueBuildTask?.cancel()
-        queueBuildGeneration += 1
-        let generation = queueBuildGeneration
+        let generation = queueBuildTaskOwner.begin()
         let sourceLabel = normalizedURLs.count == 1
             ? normalizedURLs[0].lastPathComponent
             : "\(normalizedURLs.count) dropped items"
         statusText = "Importing \(sourceLabel)..."
 
-        queueBuildTask = Task { [weak self] in
+        let task = Task { [weak self] in
             guard let self else { return }
             let loaded = await PlaylistQueueLoader.loadDroppedTracks(from: normalizedURLs)
             guard !Task.isCancelled else { return }
-            guard generation == self.queueBuildGeneration else { return }
+            guard self.queueBuildTaskOwner.isCurrent(generation) else { return }
             guard !loaded.tracks.isEmpty else {
                 self.statusText = "No supported tracks in \(sourceLabel)"
+                self.queueBuildTaskOwner.finish(generation: generation)
                 return
             }
 
@@ -1117,7 +1153,9 @@ final class PlayerViewModel {
                 seedMetadataCache: loaded.metadata,
                 widthHints: loaded.widthHints
             )
+            self.queueBuildTaskOwner.finish(generation: generation)
         }
+        queueBuildTaskOwner.install(task, generation: generation)
     }
 
     private func applyQueuedTracks(
@@ -1126,7 +1164,8 @@ final class PlayerViewModel {
         replace: Bool,
         preservePlayback: Bool = false,
         seedMetadataCache: [String: TrackMetadata] = [:],
-        widthHints: PlaylistColumnWidthHints? = nil
+        widthHints: PlaylistColumnWidthHints? = nil,
+        autoplay: Bool = false
     ) {
         guard !tracks.isEmpty else {
             statusText = "No supported tracks in \(folderURL.lastPathComponent)"
@@ -1138,7 +1177,8 @@ final class PlayerViewModel {
 
         if replace {
             if !preservePlayback {
-                playbackTask?.cancel()
+                playbackRequestState.cancel()
+                isLoading = false
                 let playback = self.playback
                 Task {
                     await playback.stopPlayback()
@@ -1178,6 +1218,9 @@ final class PlayerViewModel {
         refreshPlaylistMetadata()
         statusText = "Queued \(tracks.count) tracks from \(folderURL.lastPathComponent)"
         updateRemoteTransportState()
+        if autoplay, let firstTrack = playlist.first {
+            requestPlayback(for: firstTrack)
+        }
     }
 
     private func appendTracksToPlaylist(
@@ -1232,7 +1275,7 @@ final class PlayerViewModel {
         !playlistClipboard.isEmpty
     }
 
-    var canRevealSelectedTracksInFinder: Bool {
+    var canShowSelectedTracksInFinder: Bool {
         !orderedSelectedPlaylistTracks().isEmpty
     }
 
@@ -1316,12 +1359,12 @@ final class PlayerViewModel {
         updateRemoteTransportState()
     }
 
-    func revealSelectedTracksInFinder() {
+    func showSelectedTracksInFinder() {
         let tracks = orderedSelectedPlaylistTracks()
         guard !tracks.isEmpty else { return }
 
         NSWorkspace.shared.activateFileViewerSelecting(tracks.map(\.url))
-        statusText = "Revealed \(tracks.count) track\(tracks.count == 1 ? "" : "s") in Finder"
+        statusText = "Showing \(tracks.count) track\(tracks.count == 1 ? "" : "s") in Finder"
     }
 
     func exportSelectedTracksToAAC() {
@@ -1349,6 +1392,10 @@ final class PlayerViewModel {
             databaseSidebarFontSize: databaseSidebarFontSize,
             databaseSidebarTextColor: databaseSidebarTextColor.rawValue,
             databaseSidebarMonospaceFont: databaseSidebarMonospaceFont,
+            databaseSidebarDisclosureGapPoints: databaseSidebarDisclosureGapPoints,
+            databaseSidebarHidesFileExtensions: databaseSidebarHidesFileExtensions,
+            playlistFontSize: playlistFontSize,
+            playlistTextColor: playlistTextColor.rawValue,
             playlistMonospaceFont: playlistMonospaceFont,
             sidebarSystemMode: sidebarSystemMode,
             sidebarBrowserModeRawValue: sidebarBrowserMode.rawValue
@@ -1373,6 +1420,13 @@ final class PlayerViewModel {
 
     func setSpectrumBandCount(_ bandCount: Int) {
         spectrumBandCount = SpectrumBandCount.clamped(bandCount)
+        savePreferencesNow()
+    }
+
+    func resetSpectrumColors() {
+        spectrumGradientStartColor = Self.defaultSpectrumGradientStartColor
+        spectrumGradientEndColor = Self.defaultSpectrumGradientEndColor
+        spectrumPeakColor = Self.defaultSpectrumPeakColor
         savePreferencesNow()
     }
 
@@ -1404,6 +1458,26 @@ final class PlayerViewModel {
         savePreferencesNow()
     }
 
+    func setDatabaseSidebarDisclosureGapPoints(_ gap: CGFloat) {
+        databaseSidebarDisclosureGapPoints = min(max(gap, 0), 48)
+        savePreferencesNow()
+    }
+
+    func setDatabaseSidebarHidesFileExtensions(_ enabled: Bool) {
+        databaseSidebarHidesFileExtensions = enabled
+        savePreferencesNow()
+    }
+
+    func setPlaylistFontSize(_ size: CGFloat) {
+        playlistFontSize = min(max(size.rounded(), 6), 18)
+        savePreferencesNow()
+    }
+
+    func setPlaylistTextColor(_ color: DatabaseSidebarTextColor) {
+        playlistTextColor = color
+        savePreferencesNow()
+    }
+
     func setPlaylistMonospaceFont(_ enabled: Bool) {
         playlistMonospaceFont = enabled
         savePreferencesNow()
@@ -1411,7 +1485,7 @@ final class PlayerViewModel {
 
     func setSidebarSystemMode(_ enabled: Bool) {
         sidebarSystemMode = enabled
-        expandedDatabaseSystems = enabled && !sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        expandedDatabaseSystems = enabled && sidebarBrowserMode == .games && !sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
             : []
         savePreferencesNow()
@@ -1419,6 +1493,12 @@ final class PlayerViewModel {
 
     func setSidebarBrowserMode(_ mode: SidebarBrowserMode) {
         sidebarBrowserMode = mode
+        applySidebarSearch()
+        if mode == .files {
+            loadDatabaseFileItemsIfNeeded()
+        } else {
+            loadDatabaseGameItemsIfNeeded()
+        }
         savePreferencesNow()
     }
 
@@ -1438,7 +1518,7 @@ final class PlayerViewModel {
         guard !isClearingArchiveCache, !libraryScanInProgress else { return }
         isClearingArchiveCache = true
         archiveCacheSummaryTask?.cancel()
-        playlistLoadTask?.cancel()
+        playlistMetadataTaskOwner.cancel()
         let playback = playbackStorage
 
         archiveCacheClearTask = Task { [weak self] in
@@ -1497,10 +1577,10 @@ final class PlayerViewModel {
                 self.reloadDatabaseGameItems()
                 self.refreshDeadLinkSummary()
                 self.libraryScanStatus = clearedCount == 1
-                    ? "Database cleanup • 1 dead link cleared"
-                    : "Database cleanup • \(clearedCount) dead links cleared"
+                    ? "Database cleanup • 1 unlinked source cleared"
+                    : "Database cleanup • \(clearedCount) unlinked sources cleared"
             case .failure(let error):
-                self.libraryScanStatus = "Clear Dead Links failed: \(error.localizedDescription)"
+                self.libraryScanStatus = "Clean Unlinked failed: \(error.localizedDescription)"
             }
         }
     }
@@ -1809,8 +1889,8 @@ final class PlayerViewModel {
 
     func toggleTrackPlayback(_ track: TrackItem) {
         if currentTrack?.id == track.id, isPlaying {
-            playbackTask?.cancel()
-            pendingPlaybackTrack = nil
+            playbackRequestState.cancel()
+            isLoading = false
             let playback = self.playback
             Task {
                 await playback.stopPlayback()
@@ -1857,9 +1937,7 @@ final class PlayerViewModel {
             loadRandomLibraryTracks()
         } else {
             randomLibraryPlaybackPending = false
-            randomLibraryLoadGeneration += 1
-            randomLibraryLoadTask?.cancel()
-            randomLibraryLoadTask = nil
+            randomLibraryLoadTaskOwner.cancel()
             if randomPlaybackScope == .off { randomLibraryTracks = [] }
         }
         savePreferencesNow()
@@ -1884,7 +1962,7 @@ final class PlayerViewModel {
     }
 
     private func loadRandomLibraryTracks() {
-        guard randomPlaybackScope == .library, randomLibraryLoadTask == nil else { return }
+        guard randomPlaybackScope == .library, !randomLibraryLoadTaskOwner.isActive else { return }
         guard let databaseURL = libraryDatabaseURL, !databaseGameItems.isEmpty else {
             if randomLibraryPlaybackPending {
                 randomLibraryPlaybackPending = false
@@ -1897,15 +1975,14 @@ final class PlayerViewModel {
             statusText = "Random Library has no playable tracks."
             return
         }
-        randomLibraryLoadGeneration += 1
-        let generation = randomLibraryLoadGeneration
-        randomLibraryLoadTask = Task { [weak self] in
+        let generation = randomLibraryLoadTaskOwner.begin()
+        let task = Task { [weak self] in
             let loaded = await PlaylistQueueLoader.loadLibraryTracksForGames(databaseURL: databaseURL, gameItems: [item])
             guard let self,
                   self.randomPlaybackScope == .library,
-                  generation == self.randomLibraryLoadGeneration else { return }
-            self.randomLibraryLoadTask = nil
+                  self.randomLibraryLoadTaskOwner.isCurrent(generation) else { return }
             self.randomLibraryTracks = loaded.tracks
+            self.randomLibraryLoadTaskOwner.finish(generation: generation)
             guard self.randomLibraryPlaybackPending else { return }
             self.randomLibraryPlaybackPending = false
             guard let randomTrack = self.randomPlaybackTarget() else {
@@ -1914,6 +1991,7 @@ final class PlayerViewModel {
             }
             self.startRandomLibraryPlayback(randomTrack)
         }
+        randomLibraryLoadTaskOwner.install(task, generation: generation)
     }
 
     private func startRandomLibraryPlayback(_ track: TrackItem) {
@@ -1977,7 +2055,6 @@ final class PlayerViewModel {
 
     func applyPlaybackTiming() {
         guard let currentTrack, !isLoading else { return }
-        playbackTask?.cancel()
         isPlaying = false
         toolbarSpectrum.reset()
         isSeeking = false
@@ -2028,27 +2105,26 @@ final class PlayerViewModel {
             return
         }
 
-        playbackTask?.cancel()
-        playlistLoadTask?.cancel()
-        playlistLoadGeneration += 1
-        playbackRequestGeneration += 1
-        let generation = playbackRequestGeneration
-        pendingPlaybackTrack = track
+        playlistMetadataTaskOwner.cancel()
+        let generation = playbackRequestState.begin(track: track)
         isPlaying = false
-        playbackReachedEnd = false
         toolbarSpectrum.reset()
-        didAutoAdvanceForCurrentTrack = false
         isLoading = true
         statusText = "Rendering \(track.filename)..."
 
         let playback = self.playback
         let requestID = playback.reservePlaybackRequest()
-        playbackTask = Task { [weak self] in
-            guard await playback.stopPlayback(ifLatestRequest: requestID) else { return }
+        let task = Task { [weak self] in
+            guard await playback.stopPlayback(ifLatestRequest: requestID) else {
+                guard let self, self.playbackRequestState.isCurrent(generation) else { return }
+                self.finishPlaybackRequest(generation: generation)
+                return
+            }
             guard !Task.isCancelled else { return }
-            guard let self, generation == self.playbackRequestGeneration else { return }
+            guard let self, self.playbackRequestState.isCurrent(generation) else { return }
             await self.play(track: track, generation: generation, requestID: requestID)
         }
+        playbackRequestState.install(task, generation: generation)
     }
 
     private func play(track: TrackItem, generation: Int, requestID: Int) async {
@@ -2068,11 +2144,11 @@ final class PlayerViewModel {
             }
 
             try Task.checkCancellation()
-            guard generation == playbackRequestGeneration else { return }
+            guard playbackRequestState.isCurrent(generation) else { return }
 
             let plan = playbackPlan(for: seedMetadata, trackPathExtension: track.playablePathExtension)
             let loadedMetadata = try await playback.play(track: track, plan: plan, requestID: requestID)
-            guard generation == playbackRequestGeneration else { return }
+            guard playbackRequestState.isCurrent(generation) else { return }
             currentTrack = track
             pendingPlaybackTrack = nil
             currentMetadata = loadedMetadata
@@ -2087,21 +2163,25 @@ final class PlayerViewModel {
             statusText = "\(gameTitle) • \(songTitle)"
             updateRemoteTransportState()
         } catch is CancellationError {
-            if generation == playbackRequestGeneration {
+            if playbackRequestState.isCurrent(generation) {
                 isPlaying = await playback.statusSnapshot().isPlaying
                 updateRemoteTransportState()
             }
         } catch {
+            guard playbackRequestState.isCurrent(generation) else { return }
             isPlaying = false
             statusText = error.localizedDescription
             updateRemoteTransportState()
         }
 
-        if generation == playbackRequestGeneration {
-            isLoading = false
-            playbackTask = nil
-            refreshPlaylistMetadata()
-        }
+        finishPlaybackRequest(generation: generation)
+    }
+
+    private func finishPlaybackRequest(generation: Int) {
+        guard playbackRequestState.isCurrent(generation) else { return }
+        isLoading = false
+        playbackRequestState.finish(generation: generation)
+        refreshPlaylistMetadata()
     }
 
     var currentSongTitle: String {
@@ -2259,8 +2339,8 @@ final class PlayerViewModel {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 let playback = self.playback
+                self.playbackDiagnostics = playback.diagnosticsSnapshot()
                 let snapshot = await playback.statusSnapshot()
-                self.playbackDiagnostics = await playback.diagnosticsSnapshot()
                 if !self.isSeeking {
                     self.playbackElapsedSeconds = snapshot.elapsedSeconds
                 }
@@ -2329,21 +2409,19 @@ final class PlayerViewModel {
     }
 
     private func queueLibraryFolder(_ folderURL: URL, rootPath: String, replace: Bool, preservePlayback: Bool) {
-        queueBuildTask?.cancel()
-        queueBuildGeneration += 1
-        let generation = queueBuildGeneration
+        let generation = queueBuildTaskOwner.begin()
         statusText = "Loading \(folderURL.lastPathComponent)..."
         let databaseURL = libraryDatabaseURL
         let folderPath = folderURL.path
 
-        queueBuildTask = Task { [weak self] in
+        let task = Task { [weak self] in
             guard let self else { return }
             let loaded = await PlaylistQueueLoader.loadLibraryTracksForFolder(
                 databaseURL: databaseURL,
                 rootPath: rootPath,
                 folderPath: folderPath
             )
-            guard !Task.isCancelled, generation == self.queueBuildGeneration else { return }
+            guard !Task.isCancelled, self.queueBuildTaskOwner.isCurrent(generation) else { return }
             self.applyQueuedTracks(
                 loaded.tracks,
                 from: folderURL,
@@ -2352,7 +2430,9 @@ final class PlayerViewModel {
                 seedMetadataCache: loaded.metadata,
                 widthHints: loaded.widthHints
             )
+            self.queueBuildTaskOwner.finish(generation: generation)
         }
+        queueBuildTaskOwner.install(task, generation: generation)
     }
 
     private func queueLibraryTracks(forPaths paths: [String], replace: Bool) {
@@ -2361,22 +2441,20 @@ final class PlayerViewModel {
         })) as? [String] ?? []
         guard !normalizedPaths.isEmpty else { return }
 
-        queueBuildTask?.cancel()
-        queueBuildGeneration += 1
-        let generation = queueBuildGeneration
+        let generation = queueBuildTaskOwner.begin()
         let label = normalizedPaths.count == 1
             ? URL(fileURLWithPath: normalizedPaths[0]).lastPathComponent
             : "\(normalizedPaths.count) files"
         statusText = "Loading \(label)..."
         let databaseURL = libraryDatabaseURL
 
-        queueBuildTask = Task { [weak self] in
+        let task = Task { [weak self] in
             guard let self else { return }
             let loaded = await PlaylistQueueLoader.loadLibraryTracksForPaths(
                 databaseURL: databaseURL,
                 paths: normalizedPaths
             )
-            guard !Task.isCancelled, generation == self.queueBuildGeneration else { return }
+            guard !Task.isCancelled, self.queueBuildTaskOwner.isCurrent(generation) else { return }
             self.applyQueuedTracks(
                 loaded.tracks,
                 from: URL(fileURLWithPath: label, isDirectory: false),
@@ -2390,7 +2468,9 @@ final class PlayerViewModel {
                 self.selectedTrackID = firstTrack.id
                 self.requestPlayback(for: firstTrack)
             }
+            self.queueBuildTaskOwner.finish(generation: generation)
         }
+        queueBuildTaskOwner.install(task, generation: generation)
     }
 
     private func applyPlayableTrackActivation(_ track: TrackItem, replace: Bool) {
@@ -2405,15 +2485,14 @@ final class PlayerViewModel {
     }
 
     private func refreshPlaylistMetadata() {
-        playlistLoadTask?.cancel()
-        playlistLoadGeneration += 1
-        let generation = playlistLoadGeneration
+        let generation = playlistMetadataTaskOwner.begin()
         let tracks = playlist
         let cachedMetadata = metadataCache
 
         guard !tracks.isEmpty else {
             playlistColumnWidthHints = nil
             playlistMetadataLoadToken += 1
+            playlistMetadataTaskOwner.finish(generation: generation)
             return
         }
 
@@ -2447,10 +2526,11 @@ final class PlayerViewModel {
                 )
             }
             playlistMetadataLoadToken += 1
+            playlistMetadataTaskOwner.finish(generation: generation)
             return
         }
 
-        playlistLoadTask = Task.detached(priority: .utility) { [weak self] in
+        let task = Task.detached(priority: .utility) { [weak self] in
             guard let self else { return }
             var resolvedMetadata = cachedMetadata
             let jobs = PlaybackInspection.prepareMetadataInspectionJobs(
@@ -2483,7 +2563,7 @@ final class PlayerViewModel {
                     if let metadata {
                         resolvedMetadata[trackID] = metadata
                         await MainActor.run {
-                            guard generation == self.playlistLoadGeneration else { return }
+                            guard self.playlistMetadataTaskOwner.isCurrent(generation) else { return }
                             self.updatePlaylistMetadata(for: trackID, metadata: metadata)
                         }
                     }
@@ -2508,7 +2588,7 @@ final class PlayerViewModel {
             )
 
             await MainActor.run {
-                guard generation == self.playlistLoadGeneration else { return }
+                guard self.playlistMetadataTaskOwner.isCurrent(generation) else { return }
                 self.playlistColumnWidthHints = widthHints
                 if self.playlistSortDependsOnMetadata(self.playlistSortColumn),
                    let sortColumn = self.playlistSortColumn {
@@ -2519,8 +2599,10 @@ final class PlayerViewModel {
                     )
                 }
                 self.playlistMetadataLoadToken += 1
+                self.playlistMetadataTaskOwner.finish(generation: generation)
             }
         }
+        playlistMetadataTaskOwner.install(task, generation: generation)
     }
 
     private func updatePlaylistMetadata(for trackID: String, metadata: TrackMetadata) {
@@ -2572,42 +2654,91 @@ final class PlayerViewModel {
     }
 
     private func reloadDatabaseGameItems() {
-        guard let databaseURL = libraryDatabase?.databaseURL else {
+        guard libraryDatabase?.databaseURL != nil else {
             databaseSidebarLoadTaskOwner.cancel()
+            databaseFileSidebarLoadTaskOwner.cancel()
             isLoadingDatabaseSidebar = false
+            isLoadingDatabaseFileSidebar = false
+            hasLoadedDatabaseGameSidebar = false
+            hasLoadedDatabaseFileSidebar = false
             databaseSidebar.clear()
             databaseFileSidebar.clear()
             return
         }
+        databaseSidebarLoadTaskOwner.cancel()
+        databaseFileSidebarLoadTaskOwner.cancel()
+        isLoadingDatabaseSidebar = false
+        isLoadingDatabaseFileSidebar = false
+        hasLoadedDatabaseGameSidebar = false
+        hasLoadedDatabaseFileSidebar = false
+        databaseSidebar.clear()
+        databaseFileSidebar.clear()
+
+        switch sidebarBrowserMode {
+        case .games:
+            loadDatabaseGameItemsIfNeeded()
+        case .files:
+            loadDatabaseFileItemsIfNeeded()
+        }
+    }
+
+    private func loadDatabaseGameItemsIfNeeded() {
+        guard !hasLoadedDatabaseGameSidebar,
+              !isLoadingDatabaseSidebar,
+              let databaseURL = libraryDatabase?.databaseURL else {
+            return
+        }
         let generation = databaseSidebarLoadTaskOwner.begin()
         isLoadingDatabaseSidebar = true
-        // Loading and grouping the complete files sidebar can be expensive for
-        // a JoshW-sized library. It must never delay first-window creation or
-        // hold the main actor while a scan refreshes the browser.
         let task = Task { [weak self] in
-            let content = await Task.detached(priority: .userInitiated) {
-                (try? LibraryDatabase.loadSidebarContent(databaseURL: databaseURL)) ?? .empty
+            let content = await Task.detached(priority: .utility) {
+                // On an older large library this creates a compact covering
+                // index once, on this utility task. The first window and main
+                // actor remain free while SQLite builds it.
+                try? LibraryDatabase.prepareGameSidebarIndex(databaseURL: databaseURL)
+                return (try? LibraryDatabase.loadGameSidebarItems(databaseURL: databaseURL)) ?? []
             }.value
             guard !Task.isCancelled,
                   let self,
                   self.databaseSidebarLoadTaskOwner.isCurrent(generation) else { return }
             self.isLoadingDatabaseSidebar = false
-            self.databaseSidebar.replaceGameItems(content.gameItems)
-            self.databaseFileSidebar.replaceFileItems(content.fileItems)
+            self.databaseSidebar.replaceGameItems(content)
+            self.hasLoadedDatabaseGameSidebar = true
             if self.sidebarSystemMode,
                !self.sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 self.expandedDatabaseSystems = Set(self.visibleDatabaseGameItems.map { self.sidebarSystemName(for: $0) })
             }
             if self.randomPlaybackScope == .library {
                 self.randomLibraryTracks = []
-                self.randomLibraryLoadGeneration += 1
-                self.randomLibraryLoadTask?.cancel()
-                self.randomLibraryLoadTask = nil
+                self.randomLibraryLoadTaskOwner.cancel()
                 self.loadRandomLibraryTracks()
             }
             self.databaseSidebarLoadTaskOwner.finish(generation: generation)
         }
         databaseSidebarLoadTaskOwner.install(task, generation: generation)
+    }
+
+    private func loadDatabaseFileItemsIfNeeded() {
+        guard !hasLoadedDatabaseFileSidebar,
+              !isLoadingDatabaseFileSidebar,
+              let databaseURL = libraryDatabase?.databaseURL else {
+            return
+        }
+        let generation = databaseFileSidebarLoadTaskOwner.begin()
+        isLoadingDatabaseFileSidebar = true
+        let task = Task { [weak self] in
+            let items = await Task.detached(priority: .utility) {
+                (try? LibraryDatabase.loadFileSidebarItems(databaseURL: databaseURL)) ?? []
+            }.value
+            guard !Task.isCancelled,
+                  let self,
+                  self.databaseFileSidebarLoadTaskOwner.isCurrent(generation) else { return }
+            self.databaseFileSidebar.replaceFileItems(items)
+            self.hasLoadedDatabaseFileSidebar = true
+            self.isLoadingDatabaseFileSidebar = false
+            self.databaseFileSidebarLoadTaskOwner.finish(generation: generation)
+        }
+        databaseFileSidebarLoadTaskOwner.install(task, generation: generation)
     }
 
     private func persistLibraryScanRootOrder() {
@@ -2645,6 +2776,8 @@ final class PlayerViewModel {
     }
 
     private func clearLibraryState() {
+        folderSelectionTaskOwner.cancel()
+        queueBuildTaskOwner.cancel()
         rootURL = nil
         selectedFolderPath = nil
         databaseSidebar.clear()
@@ -2665,6 +2798,8 @@ final class PlayerViewModel {
     }
 
     private func resetSidebarContext(message: String) {
+        folderSelectionTaskOwner.cancel()
+        queueBuildTaskOwner.cancel()
         rootURL = nil
         selectedFolderPath = nil
         databaseSidebar.clearSelection()
@@ -2715,10 +2850,27 @@ final class PlayerViewModel {
             databaseSidebarTextColor = storedSidebarTextColor
         }
         databaseSidebarMonospaceFont = preferences.databaseSidebarMonospaceFont
+        if let storedSidebarDisclosureGapPoints = preferences.databaseSidebarDisclosureGapPoints {
+            databaseSidebarDisclosureGapPoints = min(max(CGFloat(storedSidebarDisclosureGapPoints), 0), 48)
+        } else if let legacyEmGap = preferences.databaseSidebarDisclosureGap {
+            // The brief pre-release implementation stored a font-relative value.
+            // Preserve its visual distance once, then persist future edits in points.
+            databaseSidebarDisclosureGapPoints = min(max(CGFloat(legacyEmGap) * databaseSidebarFontSize, 0), 48)
+        }
+        databaseSidebarHidesFileExtensions = preferences.databaseSidebarHidesFileExtensions
+        if let storedPlaylistFontSize = preferences.playlistFontSize {
+            playlistFontSize = min(max(CGFloat(storedPlaylistFontSize).rounded(), 6), 18)
+        }
+        if let storedPlaylistTextColor = preferences.playlistTextColor.flatMap(DatabaseSidebarTextColor.init(rawValue:)) {
+            playlistTextColor = storedPlaylistTextColor
+        }
         playlistMonospaceFont = preferences.playlistMonospaceFont
         sidebarSystemMode = preferences.sidebarSystemMode
         sidebarBrowserMode = SidebarBrowserMode(rawValue: preferences.sidebarBrowserModeRawValue ?? "games") ?? .games
-        if sidebarSystemMode, !sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        applySidebarSearch()
+        if sidebarSystemMode,
+           sidebarBrowserMode == .games,
+           !sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             expandedDatabaseSystems = Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
         }
         if let storedSortColumn = preferences.playlistSortColumnRawValue.flatMap(PlaylistSortColumn.init(rawValue:)) {
@@ -2758,6 +2910,21 @@ final class PlayerViewModel {
         }
         sidebarSearchPersistenceWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: workItem)
+    }
+
+    private func applySidebarSearch() {
+        switch sidebarBrowserMode {
+        case .games:
+            databaseSidebar.searchText = sidebarSearchQuery
+            if sidebarSystemMode {
+                let hasQuery = !sidebarSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                expandedDatabaseSystems = hasQuery
+                    ? Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
+                    : []
+            }
+        case .files:
+            databaseFileSidebar.searchText = sidebarSearchQuery
+        }
     }
 
     private func restorePlaylistColumnState(_ state: RestoredPlaylistColumnState) {
@@ -2877,7 +3044,8 @@ final class PlayerViewModel {
         )
 
         guard !tracks.isEmpty else { return }
-        playbackTask?.cancel()
+        playbackRequestState.cancel()
+        isLoading = false
         let playback = self.playback
         Task {
             await playback.stopPlayback()
@@ -3016,9 +3184,15 @@ final class PlayerViewModel {
     private func updateRemoteTransportState() {
         guard currentTrack != nil || isPlaying || !playlist.isEmpty else { return }
         if !remoteTransportConfigured {
-            remoteTransport.configure(with: self)
+            remoteTransport.configure(
+                previous: { [weak self] in self?.handleMediaPreviousCommand() },
+                play: { [weak self] in self?.handleMediaPlayCommand() },
+                pause: { [weak self] in self?.handleMediaPauseCommand() },
+                togglePlayPause: { [weak self] in self?.handleMediaPlayPauseCommand() },
+                next: { [weak self] in self?.handleMediaNextCommand() }
+            )
             remoteTransportConfigured = true
         }
-        remoteTransport.updateNowPlaying(from: self)
+        remoteTransport.updateNowPlaying(remoteNowPlaying)
     }
 }

@@ -7,9 +7,10 @@ struct OptionsView: View {
     @State private var selection: OptionsSection = .library
 
     private enum OptionsSection: String, CaseIterable, Identifiable {
-        case library = "Library"
+        case audio = "Audio"
         case data = "Data"
         case interface = "Interface"
+        case library = "Library"
         case playback = "Playback"
         case plugins = "Plugins"
 
@@ -17,10 +18,11 @@ struct OptionsView: View {
 
         var systemImage: String {
             switch self {
-            case .playback: "waveform"
+            case .audio: "speaker.wave.2"
+            case .data: "cylinder.split.1x2"
             case .interface: "paintbrush"
             case .library: "externaldrive"
-            case .data: "cylinder.split.1x2"
+            case .playback: "waveform"
             case .plugins: "puzzlepiece.extension"
             }
         }
@@ -57,10 +59,11 @@ struct OptionsView: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
                         switch selection {
-                        case .playback: playbackPage
+                        case .audio: audioPage
+                        case .data: dataPage
                         case .interface: interfacePage
                         case .library: libraryPage
-                        case .data: dataPage
+                        case .playback: playbackPage
                         case .plugins: pluginsPage
                         }
                     }
@@ -73,7 +76,6 @@ struct OptionsView: View {
         .background(OptionsWindowConfigurator())
         .onAppear {
             longPlayTimeText = Self.formatTime(model.manualPreFadeSeconds)
-            model.refreshArchiveCacheSummary()
         }
         .onDisappear {
             model.savePreferencesNow()
@@ -104,8 +106,13 @@ struct OptionsView: View {
             sectionCard(title: "Long Play") {
                 HStack(spacing: 12) {
                     Toggle(isOn: $model.longPlayEnabled) {
-                        Text("Enable extended playback")
-                            .foregroundStyle(.white)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Enable extended playback")
+                                .foregroundStyle(.white)
+                            Text("Set the target duration used when Long Play is enabled.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
                     }
                     .toggleStyle(.checkbox)
                     .onChange(of: model.longPlayEnabled) { _, _ in
@@ -133,9 +140,6 @@ struct OptionsView: View {
                         .onSubmit(applyLongPlayTimeText)
                 }
 
-                Text("Set the target duration used when Long Play is enabled.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
             }
 
             sectionCard(title: "End Fade") {
@@ -152,26 +156,31 @@ struct OptionsView: View {
                     }
                 }
                 .toggleStyle(.checkbox)
+
             }
 
             libraryBehaviorCard
-
-            appVolumeCard
-
-            equalizerCard
 
             sectionCard(title: "Playback Diagnostics") {
                 diagnosticRow(
                     "Buffer",
                     "\(model.playbackDiagnostics.bufferedMilliseconds) ms • \(model.playbackDiagnostics.bufferPercent)%"
                 )
+                diagnosticRow("Output", model.playbackDiagnostics.outputHealth.rawValue.capitalized)
                 diagnosticRow("Underruns", "\(model.playbackDiagnostics.underrunCount)")
                 diagnosticRow("Source Clips", "\(model.playbackDiagnostics.clippedSampleCount)")
 
-                Text("Counters reset for each new track. Source Clips counts PCM samples above full scale before macOS output; it cannot detect amplifier or speaker distortion.")
+                Text("Output detects when the source node stops receiving render requests while CocoaSpice thinks it is playing. It cannot detect a Bluetooth radio, codec, or speaker failure after Core Audio. Counters reset for each new track.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+
+    private var audioPage: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            appVolumeCard
+            equalizerCard
         }
     }
 
@@ -228,125 +237,103 @@ struct OptionsView: View {
         VStack(alignment: .leading, spacing: 16) {
             sectionCard(title: "Spectrum") {
                 VStack(alignment: .leading, spacing: 12) {
-                Text("Uses a 4,096-point FFT at 10 analyses per second, plus a 45 FPS direct bar/peak display. 10/20/40 means 1/2/4 bands per octave from 20 Hz–20.48 kHz. 20/40 add detail and CPU work while playing; disable Spectrum to remove analyzer and display work.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-
-                    Toggle("Enable Spectrum", isOn: $model.spectrumEnabled)
-                        .toggleStyle(.checkbox)
-                        .foregroundStyle(.white)
-
-                    Picker("Bands", selection: Binding(
-                        get: { model.spectrumBandCount },
-                        set: { model.setSpectrumBandCount($0) }
-                    )) {
-                        ForEach(SpectrumBandCount.supported, id: \.self) { bandCount in
-                            Text("\(bandCount)").tag(bandCount)
+                    Toggle(isOn: $model.spectrumEnabled) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Enable Spectrum")
+                            Text("Uses a 4,096-point FFT at 10 analyses per second, plus a 45 FPS direct bar/peak display. 10/20/40 means 1/2/4 bands per octave from 20 Hz–20.48 kHz. It can consume significant CPU while playing, especially at 20 or 40 bands, so Spectrum is off by default.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
                         }
                     }
-                    .foregroundStyle(.white)
+                        .toggleStyle(.checkbox)
 
-                    Divider()
-
-                    Text("Spectrum Colors")
-                        .font(.system(size: 12, weight: .semibold))
+                    HStack {
+                        Text("Bands")
+                        Spacer()
+                        Picker("Bands", selection: Binding(
+                            get: { model.spectrumBandCount },
+                            set: { model.setSpectrumBandCount($0) }
+                        )) {
+                            ForEach(SpectrumBandCount.supported, id: \.self) { bandCount in
+                                Text("\(bandCount)").tag(bandCount)
+                            }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.menu)
                         .foregroundStyle(.white)
-
-                    HStack(spacing: 16) {
-                        ColorPicker("Base", selection: colorBinding(for: \.spectrumGradientStartColor), supportsOpacity: false)
-                            .foregroundStyle(.white)
-                        ColorPicker("Peak", selection: colorBinding(for: \.spectrumGradientEndColor), supportsOpacity: false)
-                            .foregroundStyle(.white)
-                        ColorPicker("Cap", selection: colorBinding(for: \.spectrumPeakColor), supportsOpacity: false)
-                            .foregroundStyle(.white)
                     }
+
+                    spectrumColorRow("Spectrum Base", selection: colorBinding(for: \.spectrumGradientStartColor))
+                    spectrumColorRow("Spectrum Peak", selection: colorBinding(for: \.spectrumGradientEndColor))
+                    spectrumColorRow("Spectrum Cap", selection: colorBinding(for: \.spectrumPeakColor))
+
+                    HStack {
+                        Spacer()
+                        Button("Reset") {
+                            model.resetSpectrumColors()
+                        }
+                    }
+                    .frame(maxWidth: .infinity, alignment: .trailing)
                 }
             }
 
-            sectionCard(title: "Sidebar") {
-                Text("Controls the game list text in the main database sidebar.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+            LazyVGrid(
+                columns: [GridItem(.adaptive(minimum: 240), spacing: 16)],
+                spacing: 16
+            ) {
+                sidebarAppearanceCard
+                playlistAppearanceCard
+            }
 
-                HStack {
-                    Text("Font Size")
-                    Spacer()
-                    Picker("Font Size", selection: Binding(
-                        get: { Int(model.databaseSidebarFontSize) },
-                        set: { model.setDatabaseSidebarFontSize(CGFloat($0)) }
-                    )) {
-                        ForEach(6...18, id: \.self) { size in
-                            Text("\(size)").tag(size)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                }
-
-                HStack {
-                    Text("Font Color")
-                    Spacer()
-                    Picker("Font Color", selection: Binding(
-                        get: { model.databaseSidebarTextColor },
-                        set: { model.setDatabaseSidebarTextColor($0) }
-                    )) {
-                        ForEach(PlayerViewModel.DatabaseSidebarTextColor.allCases) { color in
-                            Text(color.title).tag(color)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                }
-
-                HStack {
-                    Text("Monospace Font")
-                    Spacer()
-                    Toggle("", isOn: Binding(
-                        get: { model.databaseSidebarMonospaceFont },
-                        set: { model.setDatabaseSidebarMonospaceFont($0) }
-                    ))
-                    .labelsHidden()
-                    .toggleStyle(.checkbox)
-                }
-
-                HStack {
-                    Text("Group by Console")
-                    Spacer()
-                    Toggle("", isOn: Binding(
+            sectionCard(title: "Sidebar Options") {
+                Toggle(isOn: Binding(
                         get: { model.sidebarSystemMode },
                         set: { model.setSidebarSystemMode($0) }
-                    ))
-                    .labelsHidden()
-                    .toggleStyle(.checkbox)
-                    .help("Group the sidebar into expandable System → Game trees.")
-                }
-
-                HStack {
-                    Spacer()
-                    Button("Reset") {
-                        model.setDatabaseSidebarFontSize(12)
-                        model.setDatabaseSidebarTextColor(.primary)
-                        model.setDatabaseSidebarMonospaceFont(false)
-                        model.setSidebarSystemMode(false)
+                    )) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Group by Console")
+                        Text("Sort game list into consoles using metadata and parent folders in Database view.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .trailing)
-            }
+                .toggleStyle(.checkbox)
 
-            sectionCard(title: "Playlist") {
-                Text("Controls the editable track table in the main window.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
+                Toggle(isOn: Binding(
+                    get: { model.databaseSidebarHidesFileExtensions },
+                    set: { model.setDatabaseSidebarHidesFileExtensions($0) }
+                )) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Hide File Extensions")
+                        Text("Hide extensions in Files view without changing the scanned filename or playback path.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .toggleStyle(.checkbox)
 
                 HStack {
-                    Text("Monospace Font")
-                    Spacer()
-                    Toggle("", isOn: Binding(
-                        get: { model.playlistMonospaceFont },
-                        set: { model.setPlaylistMonospaceFont($0) }
-                    ))
-                    .labelsHidden()
-                    .toggleStyle(.checkbox)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Files Disclosure Gap")
+                        Text("Space between folder triangles and names in Files view, measured in points.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 16)
+                    VStack(alignment: .trailing, spacing: 4) {
+                        Slider(
+                            value: Binding(
+                                get: { Double(model.databaseSidebarDisclosureGapPoints) },
+                                set: { model.setDatabaseSidebarDisclosureGapPoints(CGFloat($0)) }
+                            ),
+                            in: 0...48,
+                            step: 1
+                        )
+                        .frame(width: 140)
+                        Text("\(Int(model.databaseSidebarDisclosureGapPoints)) pt")
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
 
@@ -354,29 +341,147 @@ struct OptionsView: View {
                 Text("Restore the default size and centered position for CocoaSpice windows.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
-                Button("Reset Windows") {
-                    NotificationCenter.default.post(name: .cocoaSpiceResetWindows, object: nil)
+                HStack {
+                    Spacer()
+                    Button("Reset") {
+                        NotificationCenter.default.post(name: .cocoaSpiceResetWindows, object: nil)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+    }
+
+    private var sidebarAppearanceCard: some View {
+        sectionCard(title: "Sidebar Style") {
+            Text("Controls the game list text in the main database sidebar.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+
+            HStack {
+                Text("Font Size")
+                Spacer()
+                Picker("Font Size", selection: Binding(
+                    get: { Int(model.databaseSidebarFontSize) },
+                    set: { model.setDatabaseSidebarFontSize(CGFloat($0)) }
+                )) {
+                    ForEach(6...18, id: \.self) { size in
+                        Text("\(size)").tag(size)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+            }
+
+            HStack {
+                Text("Font Color")
+                Spacer()
+                Picker("Font Color", selection: Binding(
+                    get: { model.databaseSidebarTextColor },
+                    set: { model.setDatabaseSidebarTextColor($0) }
+                )) {
+                    ForEach(PlayerViewModel.DatabaseSidebarTextColor.allCases) { color in
+                        Text(color.title).tag(color)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+            }
+
+            Toggle(isOn: Binding(
+                    get: { model.databaseSidebarMonospaceFont },
+                    set: { model.setDatabaseSidebarMonospaceFont($0) }
+                )) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Monospace Font")
+                    Text("Use system fixed-width font in Sidebar.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
                 }
             }
+            .toggleStyle(.checkbox)
+
+            HStack {
+                Spacer()
+                Button("Reset") {
+                    model.setDatabaseSidebarFontSize(12)
+                    model.setDatabaseSidebarTextColor(.primary)
+                    model.setDatabaseSidebarMonospaceFont(false)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+    }
+
+    private var playlistAppearanceCard: some View {
+        sectionCard(title: "Playlist Style") {
+            Text("Controls the editable track table in the main window.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+
+            HStack {
+                Text("Font Size")
+                Spacer()
+                Picker("Font Size", selection: Binding(
+                    get: { Int(model.playlistFontSize) },
+                    set: { model.setPlaylistFontSize(CGFloat($0)) }
+                )) {
+                    ForEach(6...18, id: \.self) { size in
+                        Text("\(size)").tag(size)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+            }
+
+            HStack {
+                Text("Font Color")
+                Spacer()
+                Picker("Font Color", selection: Binding(
+                    get: { model.playlistTextColor },
+                    set: { model.setPlaylistTextColor($0) }
+                )) {
+                    ForEach(PlayerViewModel.DatabaseSidebarTextColor.allCases) { color in
+                        Text(color.title).tag(color)
+                    }
+                }
+                .labelsHidden()
+                .pickerStyle(.menu)
+            }
+
+            Toggle(isOn: Binding(
+                    get: { model.playlistMonospaceFont },
+                    set: { model.setPlaylistMonospaceFont($0) }
+                )) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Monospace Font")
+                    Text("Use system fixed-width font in Playlist.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .toggleStyle(.checkbox)
+
+            HStack {
+                Spacer()
+                Button("Reset") {
+                    model.setPlaylistFontSize(12)
+                    model.setPlaylistTextColor(.primary)
+                    model.setPlaylistMonospaceFont(false)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .trailing)
         }
     }
 
     private var libraryPage: some View {
         VStack(alignment: .leading, spacing: 16) {
-            sectionCard(title: "Library Paths", accessory: {
+            sectionCard(title: "Library Paths") {
                 if let progress = model.libraryOperationProgress {
-                    Group {
-                        if progress.total == 0 {
-                            ProgressView()
-                        } else {
-                            ProgressView(value: progress.fraction)
-                        }
-                    }
-                    .progressViewStyle(.linear)
-                    .frame(width: 100)
-                    .accessibilityLabel("Library operation progress")
+                    libraryOperationProgressBar(progress)
+                        .transition(.move(edge: .top).combined(with: .opacity))
                 }
-            }) {
+
                 if model.libraryScanRoots.isEmpty {
                     Text("No scan roots configured.")
                         .font(.system(size: 12))
@@ -416,16 +521,20 @@ struct OptionsView: View {
                         }
                     }
                 }
+            }
+            .animation(.easeInOut(duration: 0.2), value: model.libraryOperationProgress != nil)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Toggle("Deep Scan", isOn: $model.forceLibraryScan)
-                        .toggleStyle(.checkbox)
-                        .disabled(model.libraryScanInProgress)
-                    Text("Unzip, read metadata for all files.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+            sectionCard(title: "Scanner Options") {
+                Toggle(isOn: $model.forceLibraryScan) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Deep Scan")
+                        Text("Unzip, read metadata for all files.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
                 }
-
+                    .toggleStyle(.checkbox)
+                    .disabled(model.libraryScanInProgress)
             }
 
         }
@@ -437,7 +546,7 @@ struct OptionsView: View {
                 HStack(alignment: .center, spacing: 12) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Entries")
-                        Text("\(model.databaseEntryCount) indexed tracks • \(model.unlinkedDatabaseEntryCount) unlinked")
+                        Text("\(model.databaseEntryCount) indexed tracks • \(model.unlinkedDatabaseEntryCount) unlinked tracks")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
@@ -452,19 +561,19 @@ struct OptionsView: View {
 
                 HStack(alignment: .center, spacing: 12) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Dead Links")
+                        Text("Unlinked Sources")
                         Text(model.deadLinkSummaryText)
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Clean Links") {
+                    Button("Clean Unlinked") {
                         model.deleteDeadLinks()
                     }
                     .disabled(model.isDeletingDeadLinks || model.libraryScanInProgress || model.deadLinkCount == 0)
                 }
 
-                Text("The database retains file data even when files move on disk to speed up scans.")
+                Text("The database retains file data even when files move on disk to speed up scans. One unlinked source can retain many tracks, so source and track counts need not match.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
@@ -490,6 +599,10 @@ struct OptionsView: View {
                         .foregroundStyle(.secondary)
                 }
             }
+        }
+        .onAppear {
+            model.refreshArchiveCacheSummary()
+            model.refreshDeadLinkSummary()
         }
     }
 
@@ -527,13 +640,16 @@ struct OptionsView: View {
 
     private var equalizerCard: some View {
         sectionCard(title: "Equalizer") {
-            Toggle("Enable Equalizer", isOn: $model.equalizerEnabled)
+            Toggle(isOn: $model.equalizerEnabled) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Enable Equalizer")
+                        .foregroundStyle(.white)
+                    Text("Ten parametric bands apply to every playback format.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
                 .toggleStyle(.checkbox)
-                .foregroundStyle(.white)
-
-            Text("Ten parametric bands apply to every playback format.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
 
             VStack(spacing: 10) {
                 ForEach(Array(AudioEqualizer.bandFrequencies.indices), id: \.self) { index in
@@ -567,11 +683,13 @@ struct OptionsView: View {
 
     private var appVolumeCard: some View {
         sectionCard(title: "Volume") {
+            Text("Applies to CocoaSpice playback only. Volume keys control macOS system volume.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+
             HStack(spacing: 8) {
                 Text("App Volume")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 72, alignment: .trailing)
+                    .frame(width: 76, alignment: .leading)
                 Slider(
                     value: Binding(
                         get: { Double(model.appVolume) },
@@ -585,10 +703,6 @@ struct OptionsView: View {
                     .foregroundStyle(.secondary)
                     .frame(width: 34, alignment: .trailing)
             }
-
-            Text("Applies to CocoaSpice playback only. Volume keys control macOS system volume.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
         }
     }
 
@@ -597,6 +711,31 @@ struct OptionsView: View {
             get: { Color(nsColor: model[keyPath: keyPath]) },
             set: { model[keyPath: keyPath] = NSColor($0) }
         )
+    }
+
+    private func spectrumColorRow(_ label: String, selection: Binding<Color>) -> some View {
+        HStack {
+            Text(label)
+            Spacer()
+            ColorPicker(label, selection: selection, supportsOpacity: false)
+                .labelsHidden()
+                .accessibilityLabel("\(label) spectrum color")
+        }
+    }
+
+    @ViewBuilder
+    private func libraryOperationProgressBar(_ progress: LibraryScanProgress) -> some View {
+        if progress.total == 0 {
+            ProgressView()
+                .progressViewStyle(.linear)
+                .frame(maxWidth: .infinity)
+                .accessibilityLabel("Library operation progress")
+        } else {
+            ProgressView(value: progress.fraction)
+                .progressViewStyle(.linear)
+                .frame(maxWidth: .infinity)
+                .accessibilityLabel("Library operation progress")
+        }
     }
 
     @ViewBuilder
@@ -617,6 +756,7 @@ struct OptionsView: View {
                 Spacer(minLength: 12)
                 accessory()
             }
+            Divider()
             content()
         }
         .padding(16)
