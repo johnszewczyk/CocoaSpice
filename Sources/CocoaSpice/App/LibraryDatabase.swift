@@ -400,6 +400,28 @@ final class LibraryDatabase: @unchecked Sendable {
         }
     }
 
+    /// Starts an archive refresh with no surviving member rows. Archive tools
+    /// are allowed to normalize member paths differently after a repack (for
+    /// example, adding a leading `./`), so replacing members one-by-one can
+    /// otherwise leave obsolete tracks and metadata visible in the library.
+    func resetArchiveMembers(rootID: Int64, path: String) throws {
+        try execute("BEGIN TRANSACTION;")
+        do {
+            try execute(
+                "DELETE FROM tracks WHERE root_id = ? AND path = ? AND archive_entry IS NOT NULL;",
+                bindings: [.int(rootID), .text(path)]
+            )
+            try execute(
+                "DELETE FROM scan_items WHERE root_id = ? AND path = ? AND archive_entry <> '';",
+                bindings: [.int(rootID), .text(path)]
+            )
+            try execute("COMMIT;")
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
+    }
+
     func persistScanResults(
         _ results: [ScanPipelineResult]
     ) throws {

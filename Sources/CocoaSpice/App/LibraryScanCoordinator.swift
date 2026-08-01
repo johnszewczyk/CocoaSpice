@@ -236,12 +236,30 @@ private actor ScanIssueReporter {
 
 private actor ScanResultPersistence {
     private let database: LibraryDatabase
+    private var refreshedArchiveSources = Set<LibraryIndexedSource>()
 
     init(database: LibraryDatabase) {
         self.database = database
     }
 
     func persist(_ results: [ScanPipelineResult]) throws {
+        // An archive can be emitted across many bounded SQLite batches. Clear
+        // its old members exactly once, before the first fresh member batch,
+        // rather than relying on member-path equality during a repack.
+        let archiveSources = Set(results.compactMap { result -> LibraryIndexedSource? in
+            guard case .success(let candidate, _) = result,
+                  candidate.identity.archiveEntry != nil else {
+                return nil
+            }
+            return LibraryIndexedSource(
+                rootID: candidate.identity.rootID,
+                path: candidate.identity.path,
+                archiveEntry: nil
+            )
+        })
+        for source in archiveSources where refreshedArchiveSources.insert(source).inserted {
+            try database.resetArchiveMembers(rootID: source.rootID, path: source.path)
+        }
         try database.persistScanResults(results)
     }
 }

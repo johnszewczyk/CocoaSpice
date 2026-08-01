@@ -1539,6 +1539,44 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     ))
 }
 
+@Test func archiveRefreshReplacesMembersWhosePathsWereNormalizedByRepacking() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("cocoaspice-archive-member-refresh-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    try database.addRoot(path: directory.path)
+    let root = try #require(database.loadRoots().first)
+    let archivePath = directory.appendingPathComponent("Example.tar.zst").path
+    let route = ScanRoute(
+        pluginID: "gme",
+        formatExtension: "vgz",
+        supportsArchiveMembers: true,
+        supportsMultiTrack: false
+    )
+
+    func result(entry: String, size: Int64) -> ScanPipelineResult {
+        let candidate = ScanCandidate(
+            identity: ScanItemIdentity(rootID: root.id, path: archivePath, archiveEntry: entry),
+            fingerprint: ScanFingerprint(fileSize: size, modifiedAt: .now),
+            sourceURL: URL(fileURLWithPath: archivePath),
+            route: route
+        )
+        return .success(candidate, ScanInspection(
+            route: route,
+            tracks: [ScanTrackMetadata(trackIndex: 0, trackCount: 1, metadata: nil)]
+        ))
+    }
+
+    try database.persistScanResults([result(entry: "01 - Title Screen.vgz", size: 16_212)])
+    try database.resetArchiveMembers(rootID: root.id, path: archivePath)
+    try database.persistScanResults([result(entry: "./01 - Title Screen.vgz", size: 16_733)])
+
+    #expect(try database.trackCount() == 1)
+    let inventory = try database.loadScanInventory(rootID: root.id)
+    #expect(inventory.count == 1)
+    #expect(inventory[0].identity.archiveEntry == "./01 - Title Screen.vgz")
+}
+
 @Test func libraryGameActivationUsesPersistedIndexedBuckets() async throws {
     let directory = FileManager.default.temporaryDirectory
         .appendingPathComponent("cocoaspice-browser-bucket-\(UUID().uuidString)", isDirectory: true)
