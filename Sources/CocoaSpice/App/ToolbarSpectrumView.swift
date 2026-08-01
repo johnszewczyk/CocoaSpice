@@ -19,7 +19,14 @@ final class ToolbarSpectrumModel {
     private var capHoldRemaining = Array(repeating: 0.0, count: SpectrumBandCount.defaultValue)
     private var lastAnimationUptime: TimeInterval?
     private var displayTimer: Timer?
-    var isVisible = true
+    private(set) var isAnimating = false
+    var isVisible = false {
+        didSet {
+            if !isVisible {
+                setAnimating(false)
+            }
+        }
+    }
 
     func update(with newLevels: [Float]) {
         guard newLevels.count == bandCount else {
@@ -43,7 +50,7 @@ final class ToolbarSpectrumModel {
     }
 
     private func startDisplayTimer() {
-        guard displayTimer == nil else { return }
+        guard isVisible, isAnimating, displayTimer == nil else { return }
         lastAnimationUptime = ProcessInfo.processInfo.systemUptime
         let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 45.0, repeats: true) { [weak self] _ in
             // The timer is registered only on the main run loop below.
@@ -58,16 +65,22 @@ final class ToolbarSpectrumModel {
     // Audio probes only set frequency targets. This timer exists
     // solely to animate a small number of bar heights between those targets.
     func setAnimating(_ isAnimating: Bool) {
-        if isAnimating {
+        self.isAnimating = isAnimating && isVisible
+        if self.isAnimating {
             startDisplayTimer()
             return
         }
         displayTimer?.invalidate()
         displayTimer = nil
+        lastAnimationUptime = nil
         reset()
     }
 
     private func stepAnimation() {
+        guard isVisible, isAnimating else {
+            setAnimating(false)
+            return
+        }
         let now = ProcessInfo.processInfo.systemUptime
         let elapsed = lastAnimationUptime.map { max(1.0 / 60.0, now - $0) } ?? (1.0 / 30.0)
         lastAnimationUptime = now

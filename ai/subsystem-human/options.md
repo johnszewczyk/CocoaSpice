@@ -33,7 +33,7 @@
 
 ## Interface
 
-- Spectrum analyzer: off by default because it can use significant CPU while playing, especially at 20 or 40 bands. Its leading Enable checkbox includes this explanation. Choose 10, 20, or 40 full-range bands and Spectrum Base, Peak, and Cap colors; Reset at the bottom restores the default colors.
+- Spectrum analyzer: off by default because it can use significant CPU while playing, especially at 20 or 40 bands. Its display timer runs only while the enabled analyzer is actively playing and stops when playback stops or the analyzer is hidden. Its leading Enable checkbox includes this explanation. Choose 10, 20, or 40 full-range bands and Spectrum Base, Peak, and Cap colors; Reset at the bottom restores the default colors.
 - Spectrum analyzer: 10/20/40 means 1/2/4 bands per octave from 20 Hz through 20.48 kHz.
 - Spectrum analyzer: `Enable Spectrum` can disable spectrum analysis and its toolbar display while playback continues.
 - Random playback: the main toolbar cycles between Off, Library random, and current Playlist-view random modes.

@@ -2100,6 +2100,16 @@ private actor ScanURLRecorder {
     #expect(SpectrumBandCount.clamped(999) == 40)
 }
 
+@Test @MainActor func spectrumStopsAnimatingWhenHidden() {
+    let model = ToolbarSpectrumModel()
+    model.isVisible = true
+    model.setAnimating(true)
+    #expect(model.isAnimating)
+
+    model.isVisible = false
+    #expect(!model.isAnimating)
+}
+
 @Test func playbackBackendRoutesVGMFamilyToLibVGM() {
     #expect(GMEFormatSupport.playbackBackend(forPathExtension: "spc") == .gme)
     #expect(GMEFormatSupport.playbackBackend(forPathExtension: "nsf") == .gme)
