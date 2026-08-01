@@ -12,7 +12,7 @@ This is not ordinary “repeat the file” behavior. Long Play uses the decoder�
 
 ## Built for a real game-music library
 
-- **Persistent scanned Database** — indexes files, archive members, metadata, durations, and subsongs; unchanged sources are reused on later scans.
+- **Persistent scanned Database** — indexes files, archive members, metadata, durations, and subsongs; unchanged sources are reused on later scans, while a changed archive replaces its complete stored member set.
 - **Archive-native browsing** — scan and play supported members from ZIP, 7z, RSN, TAR+Zstandard (`.tar.zst`, `.tzst`), including dependency sets where a format needs sibling libraries.
 - **One intake path** — supported types work consistently for scanning, Finder drag and drop, direct opening, folders, archives, and playlist construction.
 - **Modern native player** — streamed low-latency PCM output, seek, media keys, repeat, library/playlist random play, AAC export, shared ten-band EQ, app-level volume, and a full-range 10/20/40-band spectrum display.
@@ -53,7 +53,7 @@ For the live, implementation-level inventory, see [Supported Formats](ai/subsyst
 | `.zip`, `.7z`, `.rsn` | Scanned and opened when playable members are present. |
 | `.tar.zst`, `.tzst` | Listed and extracted through an explicit Zstandard/TAR pipeline for reliable archive handling. |
 
-Containers are sources, not tracks: CocoaSpice indexes and queues their supported members while retaining each member’s archive provenance.
+Containers are sources, not tracks: CocoaSpice indexes and queues their supported members while retaining each member’s archive provenance. A normal incremental scan reuses unchanged archives; when an archive is edited or repacked, CocoaSpice refreshes its current member set so renamed or removed members do not remain in the Database.
 
 ## Decoder, emulator, and codec credits
 
