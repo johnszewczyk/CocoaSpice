@@ -2825,12 +2825,20 @@ final class PlayerViewModel {
         let task = Task { [weak self] in
             let loaded = await Task.detached(priority: .utility) {
                 let items = (try? LibraryDatabase.loadFileSidebarItems(databaseURL: databaseURL)) ?? []
-                return (items, DatabaseFileSidebarTree.Index(items: items))
+                return (
+                    items,
+                    DatabaseFileSidebarTree.Index(items: items),
+                    DatabaseFileSidebarTree.SearchIndex(items: items)
+                )
             }.value
             guard !Task.isCancelled,
                   let self,
                   self.databaseFileSidebarLoadTaskOwner.isCurrent(generation) else { return }
-            self.databaseFileSidebar.replaceFileItems(loaded.0, treeIndex: loaded.1)
+            self.databaseFileSidebar.replaceFileItems(
+                loaded.0,
+                treeIndex: loaded.1,
+                searchIndex: loaded.2
+            )
             self.hasLoadedDatabaseFileSidebar = true
             self.isLoadingDatabaseFileSidebar = false
             self.applyDatabaseFileSidebarSearch()
@@ -3032,6 +3040,7 @@ final class PlayerViewModel {
         guard hasLoadedDatabaseFileSidebar else { return }
         let query = sidebarSearchQuery
         let items = databaseFileItems
+        let searchIndex = databaseFileSidebar.searchIndex
         guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             databaseFileSidebarSearchTaskOwner.cancel()
             databaseFileSidebar.applySearchResult(query: query, items: items, treeIndex: nil)
@@ -3045,11 +3054,14 @@ final class PlayerViewModel {
                 returning: (items: [DatabaseFileItem], treeIndex: DatabaseFileSidebarTree.Index)?.self
             ) { group in
                 group.addTask(priority: .utility) {
-                    guard let filtered = DatabaseFileSidebarTree.filter(
+                    guard let filtered = (searchIndex?.filter(
+                        query: query,
+                        isCancelled: { Task.isCancelled }
+                    ) ?? DatabaseFileSidebarTree.filter(
                         items,
                         query: query,
                         isCancelled: { Task.isCancelled }
-                    ),
+                    )),
                     let treeIndex = DatabaseFileSidebarTree.Index(
                         items: filtered,
                         isCancelled: { Task.isCancelled }

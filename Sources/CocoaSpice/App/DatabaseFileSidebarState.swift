@@ -9,6 +9,7 @@ final class DatabaseFileSidebarState {
     private(set) var visibleFileItems: [DatabaseFileItem] = []
     private var treeIndex: DatabaseFileSidebarTree.Index?
     private var filteredTreeIndex: DatabaseFileSidebarTree.Index?
+    @ObservationIgnored private(set) var searchIndex: DatabaseFileSidebarTree.SearchIndex?
     private(set) var contentRevision = 0
     var selectedFileID: String?
     var selectedFileIDs: Set<String> = []
@@ -16,16 +17,29 @@ final class DatabaseFileSidebarState {
     var expandedFolderIDs: Set<String> = []
 
     func replaceFileItems(_ items: [DatabaseFileItem]) {
-        installFileItems(items, treeIndex: nil)
+        installFileItems(items, treeIndex: nil, searchIndex: nil)
     }
 
     func replaceFileItems(_ items: [DatabaseFileItem], treeIndex: DatabaseFileSidebarTree.Index) {
-        installFileItems(items, treeIndex: treeIndex)
+        installFileItems(items, treeIndex: treeIndex, searchIndex: nil)
     }
 
-    private func installFileItems(_ items: [DatabaseFileItem], treeIndex: DatabaseFileSidebarTree.Index?) {
+    func replaceFileItems(
+        _ items: [DatabaseFileItem],
+        treeIndex: DatabaseFileSidebarTree.Index,
+        searchIndex: DatabaseFileSidebarTree.SearchIndex
+    ) {
+        installFileItems(items, treeIndex: treeIndex, searchIndex: searchIndex)
+    }
+
+    private func installFileItems(
+        _ items: [DatabaseFileItem],
+        treeIndex: DatabaseFileSidebarTree.Index?,
+        searchIndex: DatabaseFileSidebarTree.SearchIndex?
+    ) {
         fileItems = items
         self.treeIndex = treeIndex
+        self.searchIndex = searchIndex
         filteredTreeIndex = nil
         searchText = ""
         visibleFileItems = items
@@ -42,6 +56,7 @@ final class DatabaseFileSidebarState {
         visibleFileItems = []
         treeIndex = nil
         filteredTreeIndex = nil
+        searchIndex = nil
         searchText = ""
         expandedFolderIDs = []
         contentRevision &+= 1
@@ -131,6 +146,43 @@ enum DatabaseFileSidebarTree {
             }
         }
         return isCancelled() ? nil : matches
+    }
+
+    /// A compact, normalized view of source paths. It is made once with the
+    /// background Files-sidebar load, keeping query-time work to string
+    /// containment checks rather than URL parsing and case folding.
+    struct SearchIndex: Sendable {
+        private struct Entry: Sendable {
+            let item: DatabaseFileItem
+            let searchableText: String
+        }
+
+        private let entries: [Entry]
+
+        init(items: [DatabaseFileItem]) {
+            entries = items.map { item in
+                Entry(
+                    item: item,
+                    searchableText: "\(DatabaseFileSidebarTree.filename(in: item.path)) \(item.folderPath) \(item.path)".lowercased()
+                )
+            }
+        }
+
+        func filter(query: String, isCancelled: @Sendable () -> Bool) -> [DatabaseFileItem]? {
+            let terms = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
+            guard !terms.isEmpty else { return entries.map(\.item) }
+            var matches: [DatabaseFileItem] = []
+            matches.reserveCapacity(min(entries.count, 256))
+            for (index, entry) in entries.enumerated() {
+                if index.isMultiple(of: 256), isCancelled() {
+                    return nil
+                }
+                if terms.allSatisfy(entry.searchableText.contains) {
+                    matches.append(entry.item)
+                }
+            }
+            return isCancelled() ? nil : matches
+        }
     }
 
     /// Built once with the database read result, off the main actor. Folder

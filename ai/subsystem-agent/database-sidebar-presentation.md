@@ -14,7 +14,7 @@
 - Files-folder disclosure is handled by an unmodified direct click on its triangle or by repeating a plain click on the selected folder title. The initial folder selection expands it; repeating that click toggles it without changing the playlist. Return and double-click still activate the selected folder's descendant leaves.
 - Duplicate game titles are disambiguated in the visible label with system text only when needed.
 - Sidebar filtering runs in memory over loaded rows rather than issuing live recursive filesystem work. The native field keeps AppKit's uncommitted text while it waits 250 ms for a first query character and 100 ms for follow-up input, so unrelated SwiftUI refreshes never replace a fast typist's visible input with a stale query.
-- Files filtering and its matching tree index run in a cancellable utility task. New input invalidates older work before it can publish; the main actor only swaps in a complete result.
+- Files filtering and its matching tree index run in a cancellable utility task. A compact normalized source-path key is built with the Files load, so query workers avoid repeated URL parsing and case folding. New input invalidates older work before it can publish; the main actor only swaps in a complete result.
 - A committed query filters only the active Games or Files mode. The inactive sidebar retains the query until it is selected, avoiding a second large in-memory filter for every search update.
 - Game selection status text is standardized as `name • N tracks`.
 - Library scan-root status text is standardized as enabled state, display order, indexed track count, and last completed scan time or error.

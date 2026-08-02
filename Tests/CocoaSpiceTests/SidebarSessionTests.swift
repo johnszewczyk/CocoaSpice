@@ -130,6 +130,32 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(DatabaseFileSidebarTree.filter(items, query: "Act", isCancelled: { true }) == nil)
 }
 
+@Test func databaseFileSidebarSearchIndexMatchesNormalizedFilter() {
+    let items = [
+        DatabaseFileItem(
+            rootID: 1,
+            rootPath: "/music/Library",
+            folderPath: "/music/Library/NES",
+            path: "/music/Library/NES/Actraiser.nsf",
+            isArchive: false,
+            trackCount: 18
+        ),
+        DatabaseFileItem(
+            rootID: 1,
+            rootPath: "/music/Library",
+            folderPath: "/music/Library/SNES",
+            path: "/music/Library/SNES/Chrono Trigger.spc",
+            isArchive: false,
+            trackCount: 64
+        )
+    ]
+    let index = DatabaseFileSidebarTree.SearchIndex(items: items)
+
+    #expect(index.filter(query: "act nes", isCancelled: { false }) == DatabaseFileSidebarTree.filter(items, query: "act nes"))
+    #expect(index.filter(query: "chrono", isCancelled: { false }) == DatabaseFileSidebarTree.filter(items, query: "chrono"))
+    #expect(index.filter(query: "act", isCancelled: { true }) == nil)
+}
+
 @MainActor
 @Test func databaseFileSidebarKeepsLargeRootsCollapsedAfterLoading() {
     let sidebar = DatabaseFileSidebarState()
