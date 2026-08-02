@@ -34,7 +34,7 @@
 - Keep row-status text and scan-root readouts centralized so wording changes do not drift across call sites.
 - Files mode uses a native tree interaction: triangle click, a repeat click on a selected folder, and Space toggle only that folder. Double-click and Return activate the selected file or folder rather than changing disclosure.
 - Files disclosure geometry uses a persisted point gap from Sidebar Options. The triangle glyph follows Sidebar Style font size while the user-selected triangle-to-label space stays exact.
-- Database sidebar tables and the playlist both use the same native rounded macOS selection treatment; do not add a custom selection overlay.
+- Database sidebar tables retain the native rounded macOS selection treatment. The playlist uses the same capsule silhouette through a non-interactive overlay so a single selection can glide between rows; do not apply that overlay to the sidebar.
 - Files-mode labels omit archive track counts. The optional extension-hiding preference is presentation-only and must not alter database paths, drag payloads, or playback URLs.
 
 ## Files
