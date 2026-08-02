@@ -31,6 +31,9 @@ struct PlaybackDecoderModule: Sendable {
     /// from the playback materialization contract.
     let scanArchiveMaterialization: ArchiveMaterializationPolicy
     let scanInspectionConcurrency: Int
+    /// Long Play is for decoder families that can deliberately continue or
+    /// loop. Finite Core Audio containers must retain their native duration.
+    let supportsLongPlay: Bool
 
     init(
         pluginID: String,
@@ -40,7 +43,8 @@ struct PlaybackDecoderModule: Sendable {
         requiresTrackEnumeration: Bool,
         archiveMaterialization: ArchiveMaterializationPolicy,
         scanArchiveMaterialization: ArchiveMaterializationPolicy? = nil,
-        scanInspectionConcurrency: Int = 1
+        scanInspectionConcurrency: Int = 1,
+        supportsLongPlay: Bool = false
     ) {
         self.pluginID = pluginID
         self.displayName = displayName
@@ -50,6 +54,7 @@ struct PlaybackDecoderModule: Sendable {
         self.archiveMaterialization = archiveMaterialization
         self.scanArchiveMaterialization = scanArchiveMaterialization ?? archiveMaterialization
         self.scanInspectionConcurrency = max(1, scanInspectionConcurrency)
+        self.supportsLongPlay = supportsLongPlay
     }
 
     var scanDescriptor: ScanPluginDescriptor {
@@ -133,18 +138,20 @@ enum PlaybackFormatRegistry {
             pluginID: "gme", displayName: "Game Music Emu", backend: .gme,
             supportedExtensions: ["spc"],
             requiresTrackEnumeration: false, archiveMaterialization: .selectedEntry,
-            scanInspectionConcurrency: libGMEScanInspectionConcurrency
+            scanInspectionConcurrency: libGMEScanInspectionConcurrency,
+            supportsLongPlay: true
         ),
         PlaybackDecoderModule(
             pluginID: "gme-multitrack", displayName: "Game Music Emu", backend: .gme,
             supportedExtensions: libGMEMultiTrackSupportedExtensions,
             requiresTrackEnumeration: true, archiveMaterialization: .selectedEntry,
-            scanInspectionConcurrency: libGMEScanInspectionConcurrency
+            scanInspectionConcurrency: libGMEScanInspectionConcurrency,
+            supportsLongPlay: true
         ),
         PlaybackDecoderModule(
             pluginID: "openmpt", displayName: "libopenmpt", backend: .openMPT,
-            supportedExtensions: openMPTSupportedExtensions,
-            requiresTrackEnumeration: false, archiveMaterialization: .selectedEntry
+            supportedExtensions: openMPTSupportedExtensions, requiresTrackEnumeration: false,
+            archiveMaterialization: .selectedEntry, supportsLongPlay: true
         ),
         PlaybackDecoderModule(
             pluginID: "standard-audio", displayName: "Core Audio", backend: .standardAudio,
@@ -153,58 +160,58 @@ enum PlaybackFormatRegistry {
         ),
         PlaybackDecoderModule(
             pluginID: "libvgm", displayName: "libVGM", backend: .libvgm,
-            supportedExtensions: libVGMSupportedExtensions,
-            requiresTrackEnumeration: true, archiveMaterialization: .selectedEntry
+            supportedExtensions: libVGMSupportedExtensions, requiresTrackEnumeration: true,
+            archiveMaterialization: .selectedEntry, supportsLongPlay: true
         ),
         PlaybackDecoderModule(
             pluginID: "highly-complete", displayName: "Highly Complete", backend: .highlyComplete,
-            supportedExtensions: highlyCompleteSupportedExtensions,
-            requiresTrackEnumeration: true, archiveMaterialization: .completeSet
+            supportedExtensions: highlyCompleteSupportedExtensions, requiresTrackEnumeration: true,
+            archiveMaterialization: .completeSet, supportsLongPlay: true
         ),
         PlaybackDecoderModule(
             pluginID: "highly-theoretical", displayName: "Highly Theoretical", backend: .highlyTheoretical,
             supportedExtensions: highlyTheoreticalSupportedExtensions,
             requiresTrackEnumeration: false, archiveMaterialization: .completeSet,
-            scanArchiveMaterialization: .selectedEntry
+            scanArchiveMaterialization: .selectedEntry, supportsLongPlay: true
         ),
         PlaybackDecoderModule(
             pluginID: "lazyusf", displayName: "LazyUSF", backend: .lazyUSF,
             supportedExtensions: lazyUSFSupportedExtensions,
             requiresTrackEnumeration: false, archiveMaterialization: .completeSetWithLazyUSFAliases,
-            scanArchiveMaterialization: .selectedEntry
+            scanArchiveMaterialization: .selectedEntry, supportsLongPlay: true
         ),
         PlaybackDecoderModule(
             pluginID: "twosf", displayName: "2SF", backend: .twoSF,
             supportedExtensions: twoSFSupportedExtensions,
             requiresTrackEnumeration: false, archiveMaterialization: .completeSet,
-            scanArchiveMaterialization: .selectedEntry
+            scanArchiveMaterialization: .selectedEntry, supportsLongPlay: true
         ),
         PlaybackDecoderModule(
             pluginID: "vgmstream-hd-bank", displayName: "vgmstream", backend: .vgmstream,
-            supportedExtensions: ["hd", "hbd", "iecs"],
-            requiresTrackEnumeration: true, archiveMaterialization: .completeSet
+            supportedExtensions: ["hd", "hbd", "iecs"], requiresTrackEnumeration: true,
+            archiveMaterialization: .completeSet, supportsLongPlay: true
         ),
         PlaybackDecoderModule(
             pluginID: "vgmstream-txtp", displayName: "vgmstream", backend: .vgmstream,
-            supportedExtensions: ["txtp"],
-            requiresTrackEnumeration: true, archiveMaterialization: .completeSet
+            supportedExtensions: ["txtp"], requiresTrackEnumeration: true,
+            archiveMaterialization: .completeSet, supportsLongPlay: true
         ),
         PlaybackDecoderModule(
             pluginID: "vgmstream", displayName: "vgmstream", backend: .vgmstream,
-            supportedExtensions: vgmstreamSupportedExtensions,
-            requiresTrackEnumeration: true, archiveMaterialization: .selectedEntry
+            supportedExtensions: vgmstreamSupportedExtensions, requiresTrackEnumeration: true,
+            archiveMaterialization: .selectedEntry, supportsLongPlay: true
         ),
         PlaybackDecoderModule(
             pluginID: "play-psf1", displayName: "Play! PSF", backend: .playPSF,
             supportedExtensions: psfSupportedExtensions,
             requiresTrackEnumeration: false, archiveMaterialization: .completeSet,
-            scanArchiveMaterialization: .selectedEntry
+            scanArchiveMaterialization: .selectedEntry, supportsLongPlay: true
         ),
         PlaybackDecoderModule(
             pluginID: "play-psf2", displayName: "Play! PSF2", backend: .playPSF,
             supportedExtensions: psf2SupportedExtensions,
             requiresTrackEnumeration: false, archiveMaterialization: .completeSet,
-            scanArchiveMaterialization: .selectedEntry
+            scanArchiveMaterialization: .selectedEntry, supportsLongPlay: true
         )
     ]
 
@@ -276,6 +283,10 @@ enum PlaybackFormatRegistry {
 
     static func requiresTrackEnumeration(forPathExtension extensionName: String) -> Bool {
         module(forPathExtension: extensionName)?.requiresTrackEnumeration ?? false
+    }
+
+    static func supportsLongPlay(pathExtension: String) -> Bool {
+        module(forPathExtension: pathExtension)?.supportsLongPlay ?? false
     }
 
     private static func normalize(_ pathExtension: String) -> String {

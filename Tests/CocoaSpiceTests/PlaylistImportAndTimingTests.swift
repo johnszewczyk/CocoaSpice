@@ -154,10 +154,13 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
 }
 
 @MainActor
-@Test func longPlaySupportsAnyCurrentPlayableFormat() {
+@Test func longPlaySupportsLoopingCurrentPlayableFormats() {
     let model = PlayerViewModel()
     model.currentTrack = TrackItem(url: URL(fileURLWithPath: "/tmp/test.nsf"))
     #expect(model.currentTrackSupportsLongPlay)
+
+    model.currentTrack = TrackItem(url: URL(fileURLWithPath: "/tmp/test.flac"))
+    #expect(!model.currentTrackSupportsLongPlay)
 }
 
 @Test func playbackPlanHasOnlyDefaultAndLongPlayModes() {
@@ -221,7 +224,33 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(plan.totalSeconds == 90)
 }
 
-@Test func longPlayPlanIsUniformForEveryRegisteredDecoderExtension() {
+@Test func longPlayLeavesFiniteCoreAudioDurationUntouched() {
+    let metadata = TrackMetadata(
+        game: "",
+        song: "",
+        system: "",
+        author: "",
+        comment: "",
+        introLengthMs: 0,
+        loopLengthMs: 0,
+        playLengthMs: 90_000,
+        fadeLengthMs: 0
+    )
+
+    let plan = PlaybackTimingPolicy.playbackPlan(
+        metadata: metadata,
+        trackPathExtension: "flac",
+        longPlayEnabled: true,
+        manualPreFadeSeconds: 240,
+        fadeSeconds: 6
+    )
+
+    #expect(!plan.isLongPlay)
+    #expect(!plan.usesNativeEnding)
+    #expect(plan.totalSeconds == 96)
+}
+
+@Test func longPlayPlanAppliesOnlyToLoopCapableDecoderExtensions() {
     for module in GMEFormatSupport.modules {
         for extensionName in module.supportedExtensions {
             let plan = PlaybackTimingPolicy.playbackPlan(
@@ -231,11 +260,15 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
                 manualPreFadeSeconds: 240,
                 fadeSeconds: 6
             )
-            #expect(plan.isLongPlay, "Long Play was not enabled for \(extensionName)")
-            #expect(!plan.usesNativeEnding, "Native ending was not suppressed for \(extensionName)")
-            #expect(plan.preFadeSeconds == 240)
-            #expect(plan.fadeSeconds == 6)
-            #expect(plan.totalSeconds == 246)
+            #expect(plan.isLongPlay == module.supportsLongPlay, "Unexpected Long Play policy for \(extensionName)")
+            if module.supportsLongPlay {
+                #expect(!plan.usesNativeEnding, "Native ending was not suppressed for \(extensionName)")
+                #expect(plan.preFadeSeconds == 240)
+                #expect(plan.fadeSeconds == 6)
+                #expect(plan.totalSeconds == 246)
+            } else {
+                #expect(plan.usesNativeEnding, "Finite audio must retain its native ending for \(extensionName)")
+            }
         }
     }
 

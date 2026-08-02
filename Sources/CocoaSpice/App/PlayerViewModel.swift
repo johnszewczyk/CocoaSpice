@@ -2214,7 +2214,7 @@ final class PlayerViewModel {
 
     var currentTrackSupportsLongPlay: Bool {
         guard let extensionName = currentTrack?.playablePathExtension else { return true }
-        return PlaybackFormatRegistry.admits(pathExtension: extensionName)
+        return PlaybackFormatRegistry.supportsLongPlay(pathExtension: extensionName)
     }
 
     var effectivePreFadeSeconds: Int {

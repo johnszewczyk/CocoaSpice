@@ -16,8 +16,9 @@
 - User-facing timing now has only two modes:
   file or plugin default playback,
   or one shared Long Play target duration.
-- Long Play uses one shared manual play-time value for every supported format.
-- Every decoder module admitted by `GMEFormatSupport` automatically participates in Long Play. The shared plan disables native completion, applies the manual pre-fade duration and common fade, and marks the decoder session as Long Play.
+- Long Play uses one shared manual play-time value for decoder modules that explicitly declare loop/continue capability in `PlaybackFormatRegistry`.
+- Finite Core Audio containers, including AIFF, WAV, FLAC, MP3, and M4A/AAC, never participate in Long Play. They retain their metadata/native duration and status-bar total even while the global Long Play preference is on.
+- The shared plan disables native completion, applies the manual pre-fade duration and common fade, and marks the decoder session as Long Play only for a capability-enabled module.
 - Backends whose native cores otherwise stop at their declared duration must honor the Long Play session flag. PlayStation PSF and PlayStation 2 PSF2 continue beyond their tag length, while vgmstream reopens XA and other streams in forced-loop/play-forever mode; CocoaSpice still owns the finite manual stop and fade.
 - With Long Play disabled, playback prefers file or decoder default end behavior.
 - `fadeSeconds` remains model-driven timing state and is currently `6` seconds by default.
