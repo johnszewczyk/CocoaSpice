@@ -5,7 +5,7 @@
 ## Library
 
 - Scan roots: add and manage folders used by the database.
-- Library Paths: Add Path, Reset Paths, Scan All, and Test Links are the library-wide controls. Reset Paths asks for confirmation before removing every configured path; retained indexed data remains available if a path is added again. Test Links marks missing indexed sources dead while retaining their metadata for rediscovery.
+- Library Paths: All / None, Add Path, Reset Paths, Scan All, and Test Links are the library-wide controls. All / None switches every configured path on or off together. Reset Paths asks for confirmation before removing every configured path; retained indexed data remains available if a path is added again. Test Links marks missing indexed sources dead while retaining their metadata for rediscovery.
 - Scanner Options: Deep Scan is the sole scanner setting. It makes Scan and Scan All unzip and read metadata for every discovered file, including unchanged archives.
 - Stop Scan: stops the active scan without removing indexed library entries already written.
 - Data: is a separate Options sidebar page with Database and Cache panels.
@@ -13,7 +13,7 @@
 - Cache: shows the managed archive-cache size and file count. Clear Cache stops playback and removes cached archive material; it is unavailable while a library scan is running.
 - Scanning: Library Paths slides a full-width progress bar below its heading while a scan or link test is active; it hides when the operation completes.
 - Test Links checks only whether each unique indexed source path exists, then marks confirmed-missing sources unlinked and hides them while retaining their tracks, metadata, and scan inventory. It does not detect changed files or archives, open archives, or read metadata; use Scan or Scan All to refresh changed content. Rediscovery restores an unlinked source; only Clean Unlinked or Reset Database permanently discards it.
-- Library paths are automatically sorted by path. Each compact row has enablement, its green/yellow/red result icon, an abbreviated path with the full path on hover, and glyph actions for Scan, Log, and Delete. The row Scan action works even when that path is unchecked, without enabling it for the Database or Scan All. Scan reuses prior results for unchanged successful files unless Deep Scan is checked; failed or changed files are attempted again automatically.
+- Library paths are automatically sorted by path. Each compact row has enablement, its green/yellow/red result icon, an abbreviated path with the full path on hover, and glyph actions for Scan, Log, and Delete. Enablement changes immediately, then coalesce into one background persistence/sidebar refresh so several checkboxes can be changed without waiting. The row Scan action works even when that path is unchecked, without enabling it for the Database or Scan All. Scan reuses prior results for unchanged successful files unless Deep Scan is checked; failed or changed files are attempted again automatically.
 - Scan requests queue behind an active scan instead of interrupting it. Stop clears the active scan and all pending scans. Test Links is unavailable while scanning.
 - Logs use a stable `Scan Log` window title and a header line for scan date, duration, success/total, and issue count; the body is the error list.
 - A green check means a complete non-empty scan, yellow means some files did not process completely (or Test Links changed the path), and red means the scan found no playable files.

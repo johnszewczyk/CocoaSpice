@@ -60,6 +60,26 @@ extension LibraryDatabase {
         )
     }
 
+    /// Persists a burst of checkbox changes as one short transaction. The
+    /// caller owns the in-memory UI state, so this must not load roots or
+    /// trigger sidebar work itself.
+    func setRootEnabledStates(_ enabledStates: [Int64: Bool]) throws {
+        guard !enabledStates.isEmpty else { return }
+        try execute("BEGIN TRANSACTION;")
+        do {
+            for (id, isEnabled) in enabledStates {
+                try execute(
+                    "UPDATE library_roots SET is_enabled = ? WHERE id = ?;",
+                    bindings: [.int(isEnabled ? 1 : 0), .int(id)]
+                )
+            }
+            try execute("COMMIT;")
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
+    }
+
     func detachRoot(id: Int64) throws {
         try execute(
             "UPDATE library_roots SET is_attached = 0, is_enabled = 0 WHERE id = ?;",

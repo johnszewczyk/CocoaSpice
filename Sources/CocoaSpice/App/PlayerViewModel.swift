@@ -354,6 +354,7 @@ final class PlayerViewModel {
     private var deadLinkCleanupTask: Task<Void, Never>?
     private let databaseSidebarLoadTaskOwner = LatestTaskOwner()
     private let databaseFileSidebarLoadTaskOwner = LatestTaskOwner()
+    private let libraryRootEnableTaskOwner = LatestTaskOwner()
     private var hasLoadedDatabaseGameSidebar = false
     private(set) var isLoadingDatabaseFileSidebar = false
     private var hasLoadedDatabaseFileSidebar = false
@@ -553,11 +554,28 @@ final class PlayerViewModel {
         return "\(enabledRoots.count) library paths configured"
     }
 
+    var areAllLibraryScanRootsEnabled: Bool {
+        !libraryScanRoots.isEmpty && libraryScanRoots.allSatisfy(\.isEnabled)
+    }
+
     func setLibraryScanRootEnabled(_ id: Int64, isEnabled: Bool) {
-        try? libraryDatabase?.setRootEnabled(id: id, isEnabled: isEnabled)
-        reloadLibraryScanRoots()
-        reloadDatabaseGameItems()
+        guard let index = libraryScanRoots.firstIndex(where: { $0.id == id }),
+              libraryScanRoots[index].isEnabled != isEnabled else {
+            return
+        }
+        libraryScanRoots[index].isEnabled = isEnabled
         syncActiveRootToLibraryScanRoots()
+        persistLibraryRootEnabledStatesAfterInteraction()
+    }
+
+    func toggleAllLibraryScanRootsEnabled() {
+        guard !libraryScanRoots.isEmpty else { return }
+        let isEnabled = !areAllLibraryScanRootsEnabled
+        for index in libraryScanRoots.indices {
+            libraryScanRoots[index].isEnabled = isEnabled
+        }
+        syncActiveRootToLibraryScanRoots()
+        persistLibraryRootEnabledStatesAfterInteraction()
     }
 
     func removeLibraryScanRoot(_ id: Int64) {
@@ -2680,6 +2698,51 @@ final class PlayerViewModel {
         } catch {
             libraryScanStatus = "Could not load scan roots: \(error.localizedDescription)"
         }
+    }
+
+    /// Checkbox changes stay local until input settles. Rebuilding the Games
+    /// sidebar for every individual root made a simple sequence of checks
+    /// feel like a library recalculation and blocked further interaction.
+    private func persistLibraryRootEnabledStatesAfterInteraction() {
+        guard let databaseURL = libraryDatabase?.databaseURL else { return }
+        let enabledStates = Dictionary(
+            uniqueKeysWithValues: libraryScanRoots.map { ($0.id, $0.isEnabled) }
+        )
+        let generation = libraryRootEnableTaskOwner.begin()
+        let task = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            guard !Task.isCancelled,
+                  let self,
+                  self.libraryRootEnableTaskOwner.isCurrent(generation) else {
+                return
+            }
+
+            let errorDescription = await Task.detached(priority: .utility) { () -> String? in
+                do {
+                    try LibraryDatabase(databaseURL: databaseURL).setRootEnabledStates(enabledStates)
+                    return nil
+                } catch {
+                    return error.localizedDescription
+                }
+            }.value
+
+            guard !Task.isCancelled,
+                  self.libraryRootEnableTaskOwner.isCurrent(generation) else {
+                return
+            }
+            if let errorDescription {
+                self.libraryScanStatus = "Could not update path state: \(errorDescription)"
+                self.reloadLibraryScanRoots()
+                self.libraryRootEnableTaskOwner.finish(generation: generation)
+                return
+            }
+
+            self.reloadLibraryScanRoots()
+            self.reloadDatabaseGameItems()
+            self.syncActiveRootToLibraryScanRoots()
+            self.libraryRootEnableTaskOwner.finish(generation: generation)
+        }
+        libraryRootEnableTaskOwner.install(task, generation: generation)
     }
 
     private func reloadDatabaseGameItems() {

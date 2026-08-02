@@ -517,6 +517,10 @@ struct OptionsView: View {
                 }
 
                 HStack(spacing: 8) {
+                    libraryActionButton("All / None") {
+                        model.toggleAllLibraryScanRootsEnabled()
+                    }
+                    .disabled(model.libraryScanInProgress || model.libraryScanRoots.isEmpty)
                     libraryActionButton("Add Path") {
                         model.chooseLibraryScanRoots()
                     }

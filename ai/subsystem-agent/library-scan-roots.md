@@ -11,6 +11,7 @@
 - `LibraryOperationsState` owns observable scan-root, scan/link-test progress (including clamping and aggregate-operation selection), database-cleanup, cache-cleanup, and sidebar-loading state, plus the active library-maintenance task and generation guard. `LibraryScanController` owns active scan queue execution, cancellation, live logs, and coordinator callbacks. `PlayerViewModel` forwards the state and exposes the UI-facing scan commands.
 - Scan roots are configured from Options.
 - Scan roots persist in SQLite.
+- Path-enable interactions update the in-memory Options rows immediately. Their complete enabled-state snapshot is coalesced for 150 ms, then persisted as one utility-priority SQLite transaction before one sidebar refresh. This keeps consecutive checkbox changes interactive and makes All / None one database write.
 - Adding a scan root starts a scan automatically.
 - Scan progress counts source files and archives; a successful archive can produce many playable member rows.
 - Root addition, recursive discovery, scan planning, archive inspection, and SQLite scan persistence run in a utility task with a dedicated database connection. The main actor receives only throttled status/progress publication, including an indeterminate preparing bar before discovery determines a total.
