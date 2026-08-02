@@ -158,7 +158,7 @@ extension LibraryDatabase {
         WHERE r.is_enabled = 1
           AND NOT EXISTS (SELECT 1 FROM dead_sources d WHERE d.root_id = t.root_id AND d.path = t.path)
         GROUP BY t.root_id, r.path, t.folder_path, t.path
-        ORDER BY lower(r.path) ASC, lower(t.folder_path) ASC, lower(t.path) ASC;
+        ;
         """
 
         var statement: OpaquePointer?

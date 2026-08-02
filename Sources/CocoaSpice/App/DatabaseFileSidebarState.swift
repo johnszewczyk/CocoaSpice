@@ -11,6 +11,7 @@ final class DatabaseFileSidebarState {
     }
     private(set) var fileItems: [DatabaseFileItem] = []
     private(set) var visibleFileItems: [DatabaseFileItem] = []
+    private var treeIndex: DatabaseFileSidebarTree.Index?
     private(set) var contentRevision = 0
     var selectedFileID: String?
     var selectedFileIDs: Set<String> = []
@@ -18,7 +19,16 @@ final class DatabaseFileSidebarState {
     var expandedFolderIDs: Set<String> = []
 
     func replaceFileItems(_ items: [DatabaseFileItem]) {
+        installFileItems(items, treeIndex: nil)
+    }
+
+    func replaceFileItems(_ items: [DatabaseFileItem], treeIndex: DatabaseFileSidebarTree.Index) {
+        installFileItems(items, treeIndex: treeIndex)
+    }
+
+    private func installFileItems(_ items: [DatabaseFileItem], treeIndex: DatabaseFileSidebarTree.Index?) {
         fileItems = items
+        self.treeIndex = treeIndex
         expandedFolderIDs.formIntersection(Set(DatabaseFileSidebarTree.rootFolderIDs(for: items)))
         if let selectedFileID,
            !items.contains(where: { $0.id == selectedFileID }) {
@@ -30,6 +40,7 @@ final class DatabaseFileSidebarState {
     func clear() {
         fileItems = []
         visibleFileItems = []
+        treeIndex = nil
         expandedFolderIDs = []
         contentRevision &+= 1
         clearSelection()
@@ -51,6 +62,14 @@ final class DatabaseFileSidebarState {
 
     func expandFolder(_ folderID: String) {
         expandedFolderIDs.insert(folderID)
+    }
+
+    func rows() -> [DatabaseFileSidebarTree.Row] {
+        guard searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+              let treeIndex else {
+            return DatabaseFileSidebarTree.rows(items: visibleFileItems, expandedFolderIDs: expandedFolderIDs)
+        }
+        return treeIndex.rows(expandedFolderIDs: expandedFolderIDs)
     }
 
     private func refreshVisibleItems() {
@@ -84,6 +103,111 @@ enum DatabaseFileSidebarTree {
         return items.filter { item in
             let haystack = "\(item.filename) \(item.folderPath) \(item.path)".lowercased()
             return terms.allSatisfy(haystack.contains)
+        }
+    }
+
+    /// Built once with the database read result, off the main actor. Folder
+    /// disclosure then walks only the visible branch instead of rebuilding a
+    /// complete path graph from every stored source file on each reload.
+    struct Index: Sendable {
+        private struct Folder: Sendable {
+            let rootID: Int64
+            let path: String
+            let title: String
+            let childFolderIDs: [String]
+            let directFiles: [DatabaseFileItem]
+        }
+
+        private struct FolderBuilder {
+            let rootID: Int64
+            let path: String
+            let title: String
+            var childFolderIDs: Set<String> = []
+            var directFiles: [DatabaseFileItem] = []
+        }
+
+        private let rootFolderIDs: [String]
+        private let folders: [String: Folder]
+
+        init(items: [DatabaseFileItem]) {
+            var builders: [String: FolderBuilder] = [:]
+            var rootIDs: Set<String> = []
+
+            func title(for path: String) -> String {
+                let title = URL(fileURLWithPath: path, isDirectory: true).lastPathComponent
+                return title.isEmpty ? path : title
+            }
+
+            func ensureFolder(rootID: Int64, path: String) {
+                let id = DatabaseFileSidebarTree.folderID(rootID: rootID, path: path)
+                guard builders[id] == nil else { return }
+                builders[id] = FolderBuilder(rootID: rootID, path: path, title: title(for: path))
+            }
+
+            for item in items {
+                let rootID = item.rootID
+                ensureFolder(rootID: rootID, path: item.rootPath)
+                rootIDs.insert(DatabaseFileSidebarTree.folderID(rootID: rootID, path: item.rootPath))
+
+                var folderPath = item.folderPath
+                ensureFolder(rootID: rootID, path: folderPath)
+                while folderPath != item.rootPath,
+                      folderPath.hasPrefix(item.rootPath + "/") {
+                    let parentPath = URL(fileURLWithPath: folderPath, isDirectory: true)
+                        .deletingLastPathComponent()
+                        .path
+                    ensureFolder(rootID: rootID, path: parentPath)
+                    let parentID = DatabaseFileSidebarTree.folderID(rootID: rootID, path: parentPath)
+                    let childID = DatabaseFileSidebarTree.folderID(rootID: rootID, path: folderPath)
+                    builders[parentID]?.childFolderIDs.insert(childID)
+                    folderPath = parentPath
+                }
+
+                let folderID = DatabaseFileSidebarTree.folderID(rootID: rootID, path: item.folderPath)
+                builders[folderID]?.directFiles.append(item)
+            }
+
+            self.folders = builders.mapValues { builder in
+                Folder(
+                    rootID: builder.rootID,
+                    path: builder.path,
+                    title: builder.title,
+                    childFolderIDs: builder.childFolderIDs.sorted { lhs, rhs in
+                        let lhsTitle = builders[lhs]?.title ?? lhs
+                        let rhsTitle = builders[rhs]?.title ?? rhs
+                        return lhsTitle.localizedCaseInsensitiveCompare(rhsTitle) == .orderedAscending
+                    },
+                    directFiles: builder.directFiles.sorted(by: DatabaseFileSidebarTree.fileOrder)
+                )
+            }
+            self.rootFolderIDs = rootIDs.sorted { lhs, rhs in
+                let lhsPath = builders[lhs]?.path ?? lhs
+                let rhsPath = builders[rhs]?.path ?? rhs
+                return lhsPath.localizedCaseInsensitiveCompare(rhsPath) == .orderedAscending
+            }
+        }
+
+        func rows(expandedFolderIDs: Set<String>) -> [Row] {
+            var rows: [Row] = []
+
+            func appendFolder(_ id: String, depth: Int) {
+                guard let folder = folders[id] else { return }
+                let isExpanded = expandedFolderIDs.contains(id)
+                rows.append(.folder(id: id, title: folder.title, depth: depth, isExpanded: isExpanded))
+                guard isExpanded else { return }
+
+                for childID in folder.childFolderIDs {
+                    appendFolder(childID, depth: depth + 1)
+                }
+                for file in folder.directFiles {
+                    rows.append(.file(file, depth: depth + 1))
+                }
+            }
+
+            for rootID in rootFolderIDs {
+                appendFolder(rootID, depth: 0)
+            }
+            return rows
         }
     }
 

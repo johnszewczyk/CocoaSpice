@@ -810,10 +810,7 @@ private struct DatabaseFileListView: NSViewRepresentable {
             lastDisclosureGap = sidebarDisclosureGap
             lastHideFileExtensions = hideFileExtensions
             if treeChanged {
-                cachedRows = DatabaseFileSidebarTree.rows(
-                    items: model.visibleDatabaseFileItems,
-                    expandedFolderIDs: expandedFolderIDs
-                )
+                cachedRows = model.databaseFileSidebar.rows()
                 lastContentRevision = contentRevision
                 lastExpandedFolderIDs = expandedFolderIDs
             }

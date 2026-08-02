@@ -2822,13 +2822,14 @@ final class PlayerViewModel {
         let generation = databaseFileSidebarLoadTaskOwner.begin()
         isLoadingDatabaseFileSidebar = true
         let task = Task { [weak self] in
-            let items = await Task.detached(priority: .utility) {
-                (try? LibraryDatabase.loadFileSidebarItems(databaseURL: databaseURL)) ?? []
+            let loaded = await Task.detached(priority: .utility) {
+                let items = (try? LibraryDatabase.loadFileSidebarItems(databaseURL: databaseURL)) ?? []
+                return (items, DatabaseFileSidebarTree.Index(items: items))
             }.value
             guard !Task.isCancelled,
                   let self,
                   self.databaseFileSidebarLoadTaskOwner.isCurrent(generation) else { return }
-            self.databaseFileSidebar.replaceFileItems(items)
+            self.databaseFileSidebar.replaceFileItems(loaded.0, treeIndex: loaded.1)
             self.hasLoadedDatabaseFileSidebar = true
             self.isLoadingDatabaseFileSidebar = false
             self.databaseFileSidebarLoadTaskOwner.finish(generation: generation)

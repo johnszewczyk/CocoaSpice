@@ -24,6 +24,7 @@
 - Startup loads only the sidebar mode that was last selected, on its own background connection. A persisted Files view begins its Files request immediately; Games remains deferred until Games is selected, and vice versa. A large Files listing must never wait behind the Games query or delay first-window creation.
 - The Games query uses the persistent covering `tracks_game_sidebar_index` (`browser_game`, `browser_system`, `root_id`, `path`) so testing unlinked sources does not require a table-row lookup for every indexed track. Existing libraries build that index on the background sidebar task, not in synchronous schema migration.
 - File roots begin collapsed after a Files refresh. This keeps flattened native-table construction proportional to the folders the user opens instead of eagerly building every source-file row.
+- The Files sidebar builds its reusable folder graph alongside the background SQLite read. Once published, a disclosure reload walks only expanded branches; it must never rebuild the full graph on the main actor.
 
 ## Rules
 

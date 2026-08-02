@@ -43,6 +43,54 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(expandedRows.contains { $0.file == item })
 }
 
+@Test func databaseFileSidebarIndexMatchesTreeRowsForExpansionStates() {
+    let rootPath = "/music/Library"
+    let items = [
+        DatabaseFileItem(
+            rootID: 1,
+            rootPath: rootPath,
+            folderPath: "/music/Library/Neo Geo CD/KOF 96",
+            path: "/music/Library/Neo Geo CD/KOF 96/KOF96.tar.zst",
+            isArchive: true,
+            trackCount: 26
+        ),
+        DatabaseFileItem(
+            rootID: 1,
+            rootPath: rootPath,
+            folderPath: "/music/Library/NES",
+            path: "/music/Library/NES/Actraiser.nsf",
+            isArchive: false,
+            trackCount: 18
+        )
+    ]
+    let rootID = DatabaseFileSidebarTree.folderID(rootID: 1, path: rootPath)
+    let consoleID = DatabaseFileSidebarTree.folderID(rootID: 1, path: "/music/Library/Neo Geo CD")
+    let gameID = DatabaseFileSidebarTree.folderID(rootID: 1, path: "/music/Library/Neo Geo CD/KOF 96")
+    let expanded = Set([rootID, consoleID, gameID])
+    let index = DatabaseFileSidebarTree.Index(items: items)
+
+    #expect(index.rows(expandedFolderIDs: []) == DatabaseFileSidebarTree.rows(items: items, expandedFolderIDs: []))
+    #expect(index.rows(expandedFolderIDs: expanded) == DatabaseFileSidebarTree.rows(items: items, expandedFolderIDs: expanded))
+}
+
+@MainActor
+@Test func databaseFileSidebarPublishesPrebuiltIndex() {
+    let rootPath = "/music/Library"
+    let item = DatabaseFileItem(
+        rootID: 1,
+        rootPath: rootPath,
+        folderPath: rootPath,
+        path: "/music/Library/Actraiser.nsf",
+        isArchive: false,
+        trackCount: 18
+    )
+    let sidebar = DatabaseFileSidebarState()
+    sidebar.replaceFileItems([item], treeIndex: DatabaseFileSidebarTree.Index(items: [item]))
+
+    let rootID = DatabaseFileSidebarTree.folderID(rootID: 1, path: rootPath)
+    #expect(sidebar.rows() == [.folder(id: rootID, title: "Library", depth: 0, isExpanded: false)])
+}
+
 @MainActor
 @Test func databaseFileSidebarKeepsLargeRootsCollapsedAfterLoading() {
     let sidebar = DatabaseFileSidebarState()
