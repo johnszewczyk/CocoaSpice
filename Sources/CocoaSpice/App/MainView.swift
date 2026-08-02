@@ -739,6 +739,7 @@ private struct DatabaseFileListView: NSViewRepresentable {
         var hideFileExtensions: Bool
         private weak var tableView: DatabaseSidebarNativeTableView?
         private var reloadScheduled = false
+        private var isSynchronizingTableSelection = false
         private var cachedRows: [DatabaseFileSidebarTree.Row] = []
         private var lastContentRevision = -1
         private var lastExpandedFolderIDs: Set<String> = []
@@ -826,6 +827,8 @@ private struct DatabaseFileListView: NSViewRepresentable {
             DispatchQueue.main.async { [weak self, weak tableView] in
                 guard let self, let tableView else { return }
                 self.reloadScheduled = false
+                self.isSynchronizingTableSelection = true
+                defer { self.isSynchronizingTableSelection = false }
                 tableView.reloadData()
                 self.syncSelection(in: tableView, refreshHighlight: true)
             }
@@ -908,6 +911,11 @@ private struct DatabaseFileListView: NSViewRepresentable {
 
         func tableViewSelectionDidChange(_ notification: Notification) {
             guard let tableView else { return }
+            // Reloading a collapsed tree can generate a synthetic selection
+            // notification for the retained folder row. Only an actual user
+            // selection should auto-expand a folder; otherwise a second click
+            // can never leave the selected folder folded.
+            guard !isSynchronizingTableSelection else { return }
             let rows = tableView.selectedRowIndexes.filter { $0 >= 0 && $0 < cachedRows.count }
             let items = rows.compactMap { cachedRows[$0].file }
             let folders = rows.compactMap { row -> DatabaseFileSidebarFolder? in
@@ -920,9 +928,9 @@ private struct DatabaseFileListView: NSViewRepresentable {
                 primaryFileID: items.last?.id,
                 folders: folders
             )
-            // Files mode uses selection as its normal disclosure gesture. A
-            // subsequent plain click is intercepted by `handleFolderClick`
-            // and collapses the already-selected folder instead.
+            // Files mode uses the initial user selection as its normal
+            // disclosure gesture. A subsequent plain click is intercepted by
+            // `handleFolderClick` and toggles the selected folder.
             if items.isEmpty, folders.count == 1, let folder = folders.first {
                 model.expandDatabaseFileFolder(folder.id)
             }
