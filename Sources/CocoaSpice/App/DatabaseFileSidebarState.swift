@@ -111,8 +111,6 @@ enum DatabaseFileSidebarTree {
     /// complete path graph from every stored source file on each reload.
     struct Index: Sendable {
         private struct Folder: Sendable {
-            let rootID: Int64
-            let path: String
             let title: String
             let childFolderIDs: [String]
             let directFiles: [DatabaseFileItem]
@@ -168,16 +166,20 @@ enum DatabaseFileSidebarTree {
             }
 
             self.folders = builders.mapValues { builder in
-                Folder(
-                    rootID: builder.rootID,
-                    path: builder.path,
+                let sortedFiles = builder.directFiles
+                    .map { (item: $0, filename: DatabaseFileSidebarTree.filename(in: $0.path)) }
+                    .sorted {
+                        $0.filename.localizedCaseInsensitiveCompare($1.filename) == .orderedAscending
+                    }
+                    .map(\.item)
+                return Folder(
                     title: builder.title,
                     childFolderIDs: builder.childFolderIDs.sorted { lhs, rhs in
                         let lhsTitle = builders[lhs]?.title ?? lhs
                         let rhsTitle = builders[rhs]?.title ?? rhs
                         return lhsTitle.localizedCaseInsensitiveCompare(rhsTitle) == .orderedAscending
                     },
-                    directFiles: builder.directFiles.sorted(by: DatabaseFileSidebarTree.fileOrder)
+                    directFiles: sortedFiles
                 )
             }
             self.rootFolderIDs = rootIDs.sorted { lhs, rhs in
@@ -271,5 +273,10 @@ enum DatabaseFileSidebarTree {
 
     private static func fileOrder(_ lhs: DatabaseFileItem, _ rhs: DatabaseFileItem) -> Bool {
         lhs.filename.localizedCaseInsensitiveCompare(rhs.filename) == .orderedAscending
+    }
+
+    private static func filename(in path: String) -> String {
+        guard let separator = path.lastIndex(of: "/") else { return path }
+        return String(path[path.index(after: separator)...])
     }
 }
