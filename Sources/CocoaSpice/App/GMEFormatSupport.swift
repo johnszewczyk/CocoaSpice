@@ -126,7 +126,7 @@ enum PlaybackFormatRegistry {
     // plus 3DO's AIFC and GENH rips. Keep this list explicit so archive discovery and
     // deep scanning agree about what the backend can actually open.
     static let vgmstreamSupportedExtensions: Set<String> = [
-        "aa3", "adx", "ads", "aifc", "at3", "aus", "bnk", "fsb", "genh", "int", "mib", "msf", "mtaf", "ogg", "rws", "ss2", "stream", "svag", "vag", "xa"
+        "aa3", "adx", "ads", "aifc", "at3", "aus", "bnk", "dvi", "fsb", "genh", "int", "mib", "msf", "mtaf", "ogg", "rws", "ss2", "stream", "svag", "vag", "xa"
     ]
     static let psfSupportedExtensions: Set<String> = ["psf", "minipsf"]
     static let psf2SupportedExtensions: Set<String> = ["psf2", "minipsf2"]

@@ -273,6 +273,53 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     })
 }
 
+@Test func joshWSaturnSOTNDVIScansAndDecodesThroughVGMStream() async throws {
+    let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/JoshW/Sega Saturn/Akumajou Dracula X - Gekka no Yasoukyoku (1998-06-25)(KCE Tokyo)(KCE Nagoya)(Konami)[SAT].tar.zst")
+    guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }
+
+    #expect(GMEFormatSupport.playbackBackend(forPathExtension: "dvi") == .vgmstream)
+    #expect(ScanCoreHandlers.registry.route(for: "dvi", archiveMember: true)?.pluginID == "vgmstream")
+    let entries = try ZipArchiveSupport.listPlayableEntries(
+        in: archiveURL,
+        supportedExtensions: SPCFileScanner.supportedExtensions
+    )
+    #expect(entries.count == 45)
+    let entry = try #require(entries.first { $0.entryPath == "./02 Prologue.dvi" })
+
+    let decoder = try VGMStreamDecoder(
+        track: TrackItem(archiveURL: archiveURL, entryPath: entry.entryPath),
+        sampleRate: 44_100
+    )
+    let metadata = try decoder.metadata()
+    let chunks = try (0..<4).map { _ in try decoder.decode(frameCount: 2_048) }
+
+    #expect(metadata.system == "Sega Saturn")
+    #expect(chunks.allSatisfy { $0.frameCount == 2_048 })
+    #expect(chunks.contains { chunk in
+        chunk.left.contains(where: { abs($0) > 0.0001 }) || chunk.right.contains(where: { abs($0) > 0.0001 })
+    })
+
+    let values = try archiveURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+    let candidate = ScanCandidate(
+        identity: ScanItemIdentity(rootID: 1, path: archiveURL.path, archiveEntry: nil),
+        fingerprint: ScanFingerprint(
+            fileSize: Int64(values.fileSize ?? 0),
+            modifiedAt: values.contentModificationDate ?? .distantPast
+        ),
+        sourceURL: archiveURL,
+        route: nil
+    )
+    let accumulator = try await ScanPipelineExecutor().process(
+        plan: ScanPlan(mode: .newScan, candidates: [candidate]),
+        persist: { _ in }
+    )
+    let summary = await accumulator.summary
+    #expect(summary.completed == 45)
+    #expect(summary.successful == 45)
+    #expect(summary.failed == 0)
+    #expect(summary.unsupported == 0)
+}
+
 @Test func joshWPCResidentEvilTXTPUsesCompleteArchiveMaterialization() throws {
     let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/JoshW/PC/Resident Evil 3 (2020-04-03)(Capcom)[PC].tar.zst")
     guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }

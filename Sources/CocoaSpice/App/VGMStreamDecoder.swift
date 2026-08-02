@@ -97,6 +97,7 @@ final class VGMStreamDecoder: AudioTrackDecoder {
         case "aifc", "genh", "stream": "3DO"
         case "aa3", "at3": "PlayStation 3 / PSP"
         case "bnk": "Game Audio"
+        case "dvi": "Sega Saturn"
         case "msf": "PlayStation 3"
         case "ogg", "rws": "Game Audio"
         default: "PlayStation 2"

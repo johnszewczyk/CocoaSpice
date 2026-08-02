@@ -11,6 +11,7 @@ CocoaSpice supports the following formats for library scanning, drag and drop, p
 | Sega music logs | `.gym`, `.s98`, `.vgm`, `.vgz` |
 | Game Boy Advance PSF | `.gsf`, `.minigsf` |
 | Sega Saturn SSF | `.ssf`, `.minissf` |
+| Sega Saturn Konami DVI | `.dvi` |
 | Nintendo 64 USF | `.usf`, `.miniusf` |
 | Nintendo DS PSF | `.2sf`, `.mini2sf` |
 | PlayStation PSF | `.psf`, `.minipsf` |
