@@ -92,6 +92,45 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
 }
 
 @MainActor
+@Test func databaseFileSidebarPublishesBackgroundSearchResult() {
+    let rootPath = "/music/Library"
+    let matching = DatabaseFileItem(
+        rootID: 1,
+        rootPath: rootPath,
+        folderPath: rootPath,
+        path: "/music/Library/Actraiser.nsf",
+        isArchive: false,
+        trackCount: 18
+    )
+    let sidebar = DatabaseFileSidebarState()
+    sidebar.replaceFileItems([matching], treeIndex: DatabaseFileSidebarTree.Index(items: [matching]))
+    sidebar.applySearchResult(
+        query: "Act",
+        items: [matching],
+        treeIndex: DatabaseFileSidebarTree.Index(items: [matching])
+    )
+
+    let rootID = DatabaseFileSidebarTree.folderID(rootID: 1, path: rootPath)
+    #expect(sidebar.rows() == [
+        .folder(id: rootID, title: "Library", depth: 0, isExpanded: false)
+    ])
+}
+
+@Test func databaseFileSidebarFilterCancelsWithoutPublishingPartialResults() {
+    let items = [
+        DatabaseFileItem(
+            rootID: 1,
+            rootPath: "/music/Library",
+            folderPath: "/music/Library",
+            path: "/music/Library/Actraiser.nsf",
+            isArchive: false,
+            trackCount: 18
+        )
+    ]
+    #expect(DatabaseFileSidebarTree.filter(items, query: "Act", isCancelled: { true }) == nil)
+}
+
+@MainActor
 @Test func databaseFileSidebarKeepsLargeRootsCollapsedAfterLoading() {
     let sidebar = DatabaseFileSidebarState()
     let item = DatabaseFileItem(

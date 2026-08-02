@@ -13,7 +13,8 @@
 - Games and Files use one shared dense native-table chrome for table configuration, keyboard/Return activation, row menus, scroll host, text-cell geometry, colors, and visible-row reload. Files render folder disclosure and depth as `▾`/`▸` plus four-space text indentation in the row label; do not add a separate disclosure-button layout.
 - Files-folder disclosure is handled by an unmodified direct click on its triangle or by repeating a plain click on the selected folder title. The initial folder selection expands it; repeating that click toggles it without changing the playlist. Return and double-click still activate the selected folder's descendant leaves.
 - Duplicate game titles are disambiguated in the visible label with system text only when needed.
-- Sidebar filtering runs in memory over loaded rows rather than issuing live recursive filesystem work. The native field keeps AppKit's uncommitted text while it debounces filter-state publication by 100 ms, so unrelated SwiftUI refreshes never replace a fast typist's visible input with a stale query.
+- Sidebar filtering runs in memory over loaded rows rather than issuing live recursive filesystem work. The native field keeps AppKit's uncommitted text while it waits 250 ms for a first query character and 100 ms for follow-up input, so unrelated SwiftUI refreshes never replace a fast typist's visible input with a stale query.
+- Files filtering and its matching tree index run in a cancellable utility task. New input invalidates older work before it can publish; the main actor only swaps in a complete result.
 - A committed query filters only the active Games or Files mode. The inactive sidebar retains the query until it is selected, avoiding a second large in-memory filter for every search update.
 - Game selection status text is standardized as `name • N tracks`.
 - Library scan-root status text is standardized as enabled state, display order, indexed track count, and last completed scan time or error.
@@ -29,7 +30,7 @@
 ## Rules
 
 - Keep dense-list presentation behavior separate from queue mutation and playback control.
-- Keep the native input responsive; debounce sidebar filtering by 100 ms rather than rebuilding rows for every keypress.
+- Keep the native input responsive; debounce a first sidebar character by 250 ms and follow-up input by 100 ms rather than rebuilding rows for every keypress.
 - Keep sidebar search focused on game leaves; it does not become a separate system search mode.
 - Do not regroup or re-signature the complete sidebar during ordinary table redraws or scrolling.
 - Keep row-status text and scan-root readouts centralized so wording changes do not drift across call sites.

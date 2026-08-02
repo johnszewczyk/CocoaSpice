@@ -4,14 +4,11 @@ import Observation
 @MainActor
 @Observable
 final class DatabaseFileSidebarState {
-    var searchText = "" {
-        didSet {
-            refreshVisibleItems()
-        }
-    }
+    private(set) var searchText = ""
     private(set) var fileItems: [DatabaseFileItem] = []
     private(set) var visibleFileItems: [DatabaseFileItem] = []
     private var treeIndex: DatabaseFileSidebarTree.Index?
+    private var filteredTreeIndex: DatabaseFileSidebarTree.Index?
     private(set) var contentRevision = 0
     var selectedFileID: String?
     var selectedFileIDs: Set<String> = []
@@ -29,18 +26,23 @@ final class DatabaseFileSidebarState {
     private func installFileItems(_ items: [DatabaseFileItem], treeIndex: DatabaseFileSidebarTree.Index?) {
         fileItems = items
         self.treeIndex = treeIndex
+        filteredTreeIndex = nil
+        searchText = ""
+        visibleFileItems = items
         expandedFolderIDs.formIntersection(Set(DatabaseFileSidebarTree.rootFolderIDs(for: items)))
         if let selectedFileID,
            !items.contains(where: { $0.id == selectedFileID }) {
             clearSelection()
         }
-        refreshVisibleItems()
+        contentRevision &+= 1
     }
 
     func clear() {
         fileItems = []
         visibleFileItems = []
         treeIndex = nil
+        filteredTreeIndex = nil
+        searchText = ""
         expandedFolderIDs = []
         contentRevision &+= 1
         clearSelection()
@@ -67,13 +69,22 @@ final class DatabaseFileSidebarState {
     func rows() -> [DatabaseFileSidebarTree.Row] {
         guard searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let treeIndex else {
+            if let filteredTreeIndex {
+                return filteredTreeIndex.rows(expandedFolderIDs: expandedFolderIDs)
+            }
             return DatabaseFileSidebarTree.rows(items: visibleFileItems, expandedFolderIDs: expandedFolderIDs)
         }
         return treeIndex.rows(expandedFolderIDs: expandedFolderIDs)
     }
 
-    private func refreshVisibleItems() {
-        visibleFileItems = DatabaseFileSidebarTree.filter(fileItems, query: searchText)
+    func applySearchResult(
+        query: String,
+        items: [DatabaseFileItem],
+        treeIndex: DatabaseFileSidebarTree.Index?
+    ) {
+        searchText = query
+        visibleFileItems = items
+        filteredTreeIndex = treeIndex
         contentRevision &+= 1
     }
 }
@@ -98,12 +109,28 @@ enum DatabaseFileSidebarTree {
     }
 
     static func filter(_ items: [DatabaseFileItem], query: String) -> [DatabaseFileItem] {
+        filter(items, query: query, isCancelled: { false }) ?? []
+    }
+
+    static func filter(
+        _ items: [DatabaseFileItem],
+        query: String,
+        isCancelled: @Sendable () -> Bool
+    ) -> [DatabaseFileItem]? {
         let terms = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
         guard !terms.isEmpty else { return items }
-        return items.filter { item in
+        var matches: [DatabaseFileItem] = []
+        matches.reserveCapacity(min(items.count, 256))
+        for (index, item) in items.enumerated() {
+            if index.isMultiple(of: 256), isCancelled() {
+                return nil
+            }
             let haystack = "\(item.filename) \(item.folderPath) \(item.path)".lowercased()
-            return terms.allSatisfy(haystack.contains)
+            if terms.allSatisfy(haystack.contains) {
+                matches.append(item)
+            }
         }
+        return isCancelled() ? nil : matches
     }
 
     /// Built once with the database read result, off the main actor. Folder
@@ -128,6 +155,10 @@ enum DatabaseFileSidebarTree {
         private let folders: [String: Folder]
 
         init(items: [DatabaseFileItem]) {
+            self.init(items: items, isCancelled: { false })!
+        }
+
+        init?(items: [DatabaseFileItem], isCancelled: @Sendable () -> Bool) {
             var builders: [String: FolderBuilder] = [:]
             var rootIDs: Set<String> = []
 
@@ -142,7 +173,10 @@ enum DatabaseFileSidebarTree {
                 builders[id] = FolderBuilder(rootID: rootID, path: path, title: title(for: path))
             }
 
-            for item in items {
+            for (index, item) in items.enumerated() {
+                if index.isMultiple(of: 256), isCancelled() {
+                    return nil
+                }
                 let rootID = item.rootID
                 ensureFolder(rootID: rootID, path: item.rootPath)
                 rootIDs.insert(DatabaseFileSidebarTree.folderID(rootID: rootID, path: item.rootPath))
@@ -165,14 +199,20 @@ enum DatabaseFileSidebarTree {
                 builders[folderID]?.directFiles.append(item)
             }
 
-            self.folders = builders.mapValues { builder in
+            var folders: [String: Folder] = [:]
+            folders.reserveCapacity(builders.count)
+            for (index, entry) in builders.enumerated() {
+                if index.isMultiple(of: 64), isCancelled() {
+                    return nil
+                }
+                let (id, builder) = entry
                 let sortedFiles = builder.directFiles
                     .map { (item: $0, filename: DatabaseFileSidebarTree.filename(in: $0.path)) }
                     .sorted {
                         $0.filename.localizedCaseInsensitiveCompare($1.filename) == .orderedAscending
                     }
                     .map(\.item)
-                return Folder(
+                folders[id] = Folder(
                     title: builder.title,
                     childFolderIDs: builder.childFolderIDs.sorted { lhs, rhs in
                         let lhsTitle = builders[lhs]?.title ?? lhs
@@ -182,6 +222,8 @@ enum DatabaseFileSidebarTree {
                     directFiles: sortedFiles
                 )
             }
+            guard !isCancelled() else { return nil }
+            self.folders = folders
             self.rootFolderIDs = rootIDs.sorted { lhs, rhs in
                 let lhsPath = builders[lhs]?.path ?? lhs
                 let rhsPath = builders[rhs]?.path ?? rhs

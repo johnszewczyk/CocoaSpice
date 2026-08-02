@@ -13,7 +13,7 @@
 
 ## Search
 
-- Search: accepts typing immediately, then filters the loaded database list after a short 100 ms pause.
+- Search: accepts typing immediately, waits 250 ms before a new first-character query, then filters follow-up typing after 100 ms.
 - Search: uses the same sidebar list rather than a separate results surface.
 - Search: matches game titles; console headings organize the results but are not an additional search field.
 - Files search: matches the stored filename and path while preserving the folder hierarchy needed to reach matching source files.

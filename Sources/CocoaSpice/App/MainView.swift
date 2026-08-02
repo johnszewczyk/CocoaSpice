@@ -96,7 +96,8 @@ struct MainView: View {
                 NativeSearchField(
                     text: $model.sidebarSearchText,
                     placeholder: model.sidebarBrowserMode == .games ? "Search Database" : "Search Files",
-                    debounceInterval: 0.1
+                    debounceInterval: 0.1,
+                    initialDebounceInterval: 0.25
                 )
                 .padding(.horizontal, 8)
                 .padding(.top, 0)

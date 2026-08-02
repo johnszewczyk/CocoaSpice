@@ -354,6 +354,7 @@ final class PlayerViewModel {
     private var deadLinkCleanupTask: Task<Void, Never>?
     private let databaseSidebarLoadTaskOwner = LatestTaskOwner()
     private let databaseFileSidebarLoadTaskOwner = LatestTaskOwner()
+    private let databaseFileSidebarSearchTaskOwner = LatestTaskOwner()
     private let libraryRootEnableTaskOwner = LatestTaskOwner()
     private var hasLoadedDatabaseGameSidebar = false
     private(set) var isLoadingDatabaseFileSidebar = false
@@ -2832,6 +2833,7 @@ final class PlayerViewModel {
             self.databaseFileSidebar.replaceFileItems(loaded.0, treeIndex: loaded.1)
             self.hasLoadedDatabaseFileSidebar = true
             self.isLoadingDatabaseFileSidebar = false
+            self.applyDatabaseFileSidebarSearch()
             self.databaseFileSidebarLoadTaskOwner.finish(generation: generation)
         }
         databaseFileSidebarLoadTaskOwner.install(task, generation: generation)
@@ -3013,6 +3015,7 @@ final class PlayerViewModel {
     private func applySidebarSearch() {
         switch sidebarBrowserMode {
         case .games:
+            databaseFileSidebarSearchTaskOwner.cancel()
             databaseSidebar.searchText = sidebarSearchQuery
             if sidebarSystemMode {
                 let hasQuery = !sidebarSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -3021,8 +3024,58 @@ final class PlayerViewModel {
                     : []
             }
         case .files:
-            databaseFileSidebar.searchText = sidebarSearchQuery
+            applyDatabaseFileSidebarSearch()
         }
+    }
+
+    private func applyDatabaseFileSidebarSearch() {
+        guard hasLoadedDatabaseFileSidebar else { return }
+        let query = sidebarSearchQuery
+        let items = databaseFileItems
+        guard !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            databaseFileSidebarSearchTaskOwner.cancel()
+            databaseFileSidebar.applySearchResult(query: query, items: items, treeIndex: nil)
+            return
+        }
+
+        let generation = databaseFileSidebarSearchTaskOwner.begin()
+        let task = Task { [weak self] in
+            let result = await withTaskGroup(
+                of: (items: [DatabaseFileItem], treeIndex: DatabaseFileSidebarTree.Index)?.self,
+                returning: (items: [DatabaseFileItem], treeIndex: DatabaseFileSidebarTree.Index)?.self
+            ) { group in
+                group.addTask(priority: .utility) {
+                    guard let filtered = DatabaseFileSidebarTree.filter(
+                        items,
+                        query: query,
+                        isCancelled: { Task.isCancelled }
+                    ),
+                    let treeIndex = DatabaseFileSidebarTree.Index(
+                        items: filtered,
+                        isCancelled: { Task.isCancelled }
+                    ),
+                    !Task.isCancelled else {
+                        return nil
+                    }
+                    return (items: filtered, treeIndex: treeIndex)
+                }
+                let result = await group.next() ?? nil
+                group.cancelAll()
+                return result
+            }
+            guard !Task.isCancelled,
+                  let self,
+                  let result,
+                  self.databaseFileSidebarSearchTaskOwner.isCurrent(generation),
+                  self.sidebarSearchQuery == query else { return }
+            self.databaseFileSidebar.applySearchResult(
+                query: query,
+                items: result.items,
+                treeIndex: result.treeIndex
+            )
+            self.databaseFileSidebarSearchTaskOwner.finish(generation: generation)
+        }
+        databaseFileSidebarSearchTaskOwner.install(task, generation: generation)
     }
 
     private func restorePlaylistColumnState(_ state: RestoredPlaylistColumnState) {

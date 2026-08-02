@@ -5,6 +5,7 @@ struct NativeSearchField: NSViewRepresentable {
     @Binding var text: String
     var placeholder: String
     var debounceInterval: TimeInterval = 0.1
+    var initialDebounceInterval: TimeInterval = 0.25
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -66,16 +67,20 @@ struct NativeSearchField: NSViewRepresentable {
         func controlTextDidChange(_ notification: Notification) {
             guard let field = notification.object as? NSSearchField else { return }
             let value = field.stringValue
+            let priorInput = pendingText ?? lastCommittedText
+            let startsNewQuery = priorInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                && !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             debounceWorkItem?.cancel()
             pendingText = value
             let workItem = DispatchWorkItem { [weak self] in
                 self?.parent.text = value
             }
             debounceWorkItem = workItem
-            if parent.debounceInterval <= 0 {
+            let interval = startsNewQuery ? parent.initialDebounceInterval : parent.debounceInterval
+            if interval <= 0 {
                 workItem.perform()
             } else {
-                DispatchQueue.main.asyncAfter(deadline: .now() + parent.debounceInterval, execute: workItem)
+                DispatchQueue.main.asyncAfter(deadline: .now() + interval, execute: workItem)
             }
         }
     }
