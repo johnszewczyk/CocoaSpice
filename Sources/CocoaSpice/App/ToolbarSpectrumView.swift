@@ -29,6 +29,11 @@ final class ToolbarSpectrumModel {
     }
 
     func update(with newLevels: [Float]) {
+        // The audio callback may have one in-flight result after playback is
+        // paused or the preference is turned off. Do not publish it into the
+        // observable model: an invisible or stopped analyzer must have no
+        // reason to invalidate its titlebar view.
+        guard isVisible, isAnimating else { return }
         guard newLevels.count == bandCount else {
             reset()
             return
@@ -65,8 +70,11 @@ final class ToolbarSpectrumModel {
     // Audio probes only set frequency targets. This timer exists
     // solely to animate a small number of bar heights between those targets.
     func setAnimating(_ isAnimating: Bool) {
-        self.isAnimating = isAnimating && isVisible
-        if self.isAnimating {
+        let shouldAnimate = isAnimating && isVisible
+        guard self.isAnimating != shouldAnimate else { return }
+
+        self.isAnimating = shouldAnimate
+        if shouldAnimate {
             startDisplayTimer()
             return
         }

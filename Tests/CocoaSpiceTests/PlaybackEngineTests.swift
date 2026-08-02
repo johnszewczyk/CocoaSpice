@@ -29,6 +29,23 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(!model.isAnimating)
 }
 
+@Test @MainActor func spectrumIgnoresInFlightLevelsWhenStoppedOrHidden() {
+    let model = ToolbarSpectrumModel()
+    let levels = Array(repeating: Float(0.75), count: model.bandCount)
+
+    model.update(with: levels)
+    #expect(model.targetLevels.allSatisfy { $0 == 0 })
+
+    model.isVisible = true
+    model.setAnimating(true)
+    model.update(with: levels)
+    #expect(model.targetLevels.allSatisfy { $0 == 0.75 })
+
+    model.setAnimating(false)
+    model.update(with: levels)
+    #expect(model.targetLevels.allSatisfy { $0 == 0 })
+}
+
 @Test func playbackBackendRoutesVGMFamilyToLibVGM() {
     #expect(GMEFormatSupport.playbackBackend(forPathExtension: "spc") == .gme)
     #expect(GMEFormatSupport.playbackBackend(forPathExtension: "nsf") == .gme)

@@ -9,7 +9,12 @@ struct MainView: View {
     var body: some View {
         liveMainView
         .frame(minWidth: 320, minHeight: 240)
-        .background(WindowToolbarSpectrumAccessory(model: model.toolbarSpectrum))
+        .background(
+            WindowToolbarSpectrumAccessory(
+                model: model.toolbarSpectrum,
+                isVisible: model.spectrumEnabled
+            )
+        )
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button {
@@ -205,6 +210,7 @@ struct MainView: View {
 
 private struct WindowToolbarSpectrumAccessory: NSViewRepresentable {
     let model: ToolbarSpectrumModel
+    let isVisible: Bool
 
     func makeCoordinator() -> Coordinator {
         Coordinator(model: model)
@@ -218,8 +224,7 @@ private struct WindowToolbarSpectrumAccessory: NSViewRepresentable {
 
     func updateNSView(_ nsView: AccessoryProbeView, context: Context) {
         context.coordinator.model = model
-        context.coordinator.installIfNeeded(from: nsView)
-        context.coordinator.updateAccessoryView()
+        context.coordinator.updateAccessoryView(isVisible: isVisible, from: nsView)
     }
 
     final class Coordinator: NSObject {
@@ -235,6 +240,7 @@ private struct WindowToolbarSpectrumAccessory: NSViewRepresentable {
 
         @MainActor
         func installIfNeeded(from view: NSView) {
+            guard model.isVisible else { return }
             guard let window = view.window else { return }
             if self.window !== window {
                 removeSpectrumView()
@@ -258,23 +264,14 @@ private struct WindowToolbarSpectrumAccessory: NSViewRepresentable {
         }
 
         @MainActor
-        func updateAccessoryView() {
-            guard model.isVisible else {
+        func updateAccessoryView(isVisible: Bool, from view: NSView? = nil) {
+            guard isVisible else {
                 removeSpectrumView()
                 return
             }
-            if hostingView == nil, let window, let container = resolveTitlebarContainerView(for: window) {
-                let hostingView = NSHostingView(rootView: ToolbarSpectrumView(model: model))
-                hostingView.translatesAutoresizingMaskIntoConstraints = false
-                container.addSubview(hostingView)
-                NSLayoutConstraint.activate([
-                    hostingView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -14),
-                    hostingView.centerYAnchor.constraint(equalTo: container.centerYAnchor)
-                ])
-                self.hostingView = hostingView
-                self.titlebarContainerView = container
+            if let view {
+                installIfNeeded(from: view)
             }
-            hostingView?.rootView = ToolbarSpectrumView(model: model)
         }
 
         @MainActor
@@ -301,8 +298,10 @@ private final class AccessoryProbeView: NSView {
         super.viewDidMoveToWindow()
         Task { @MainActor [weak self] in
             guard let self else { return }
-            coordinator?.installIfNeeded(from: self)
-            coordinator?.updateAccessoryView()
+            coordinator?.updateAccessoryView(
+                isVisible: coordinator?.model.isVisible ?? false,
+                from: self
+            )
         }
     }
 }

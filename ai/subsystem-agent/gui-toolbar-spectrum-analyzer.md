@@ -14,8 +14,8 @@
 - The analyzer is fed from the live mixed playback output through `AVAudioEngine.mainMixerNode`.
 - The analyzer uses a ten-octave, logarithmic full-range layout from `20 Hz` through `20.48 kHz`. The selectable 10/20/40 layouts mean 1/2/4 bands per octave; each higher-detail layout splits the preceding range at its logarithmic midpoint.
 - A 4,096-point real FFT samples the mixed output at 10 Hz. A Hann window limits leakage, and FFT-bin energy is integrated proportionally by each bin's overlap with a fractional-octave interval. Do not assign whole bins to one band: narrow low-frequency 40-band intervals can otherwise be empty between bins.
-- The display draws at 45 FPS only while playback is active. Bars use the latest measured target directly; peak caps have a short hold and fall independently. The display stops and clears when playback stops so an idle window does not continuously redraw.
-- The persisted `Enable Spectrum` preference gates analyzer processing at the audio-tap boundary; disabling it stops spectrum analysis and clears the display without stopping playback.
+- The display draws at 45 FPS only while playback is active. Bars use the latest measured target directly; peak caps have a short hold and fall independently. The display timer and level publication are dormant when stopped or disabled, while the titlebar host exists only when the spectrum is enabled; an idle window does not redraw the analyzer.
+- The persisted `Enable Spectrum` preference gates analyzer processing at the audio-tap boundary; disabling it stops spectrum analysis, removes the titlebar host, and clears the display without stopping playback.
 - Rising bars are raw and immediate.
 - Peak caps are separate from the bars and use a short hold plus exponential fall.
 - Options exposes three user-facing color controls:
