@@ -38,8 +38,8 @@ extension LibraryDatabase {
         let nextOrder = try loadRoots().count
         try execute(
             """
-            INSERT INTO library_roots (path, is_enabled, display_order, created_at)
-            VALUES (?, 1, ?, ?)
+            INSERT INTO library_roots (path, is_enabled, display_order, created_at, game_sidebar_buckets_dirty)
+            VALUES (?, 1, ?, ?, 0)
             ON CONFLICT(path) DO UPDATE SET
                 is_enabled = 1,
                 is_attached = 1,
@@ -90,17 +90,15 @@ extension LibraryDatabase {
     }
 
     func markScanCompleted(rootID: Int64) throws {
+        try rebuildGameSidebarBucketsIfDirty(rootID: rootID)
         try execute(
             """
             UPDATE library_roots
             SET last_scan_completed_at = ?,
                 last_scan_track_count = (
-                    SELECT COUNT(*) FROM tracks t
-                    WHERE t.root_id = ?
-                      AND NOT EXISTS (
-                          SELECT 1 FROM dead_sources d
-                          WHERE d.root_id = t.root_id AND d.path = t.path
-                      )
+                    SELECT COALESCE(SUM(track_count), 0)
+                    FROM game_sidebar_buckets
+                    WHERE root_id = ?
                 ),
                 last_scan_error = NULL
             WHERE id = ?;

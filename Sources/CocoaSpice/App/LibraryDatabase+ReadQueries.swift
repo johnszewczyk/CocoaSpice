@@ -45,18 +45,6 @@ extension LibraryDatabase {
         return try loadGameItems(handle: handle)
     }
 
-    /// Builds the covering index used by the Games sidebar. It is deliberately
-    /// not part of the synchronous schema migration: creating it for a large
-    /// existing collection belongs on the sidebar's utility task, never on the
-    /// first-window path.
-    static func prepareGameSidebarIndex(databaseURL: URL) throws {
-        let database = try LibraryDatabase(databaseURL: databaseURL)
-        try database.execute("""
-        CREATE INDEX IF NOT EXISTS tracks_game_sidebar_index
-        ON tracks(browser_game, browser_system, root_id, path);
-        """)
-    }
-
     /// File rows are intentionally loaded only when Files mode is shown. A
     /// large collection can have hundreds of thousands of source rows, which
     /// must not delay the initial application window.
@@ -67,6 +55,62 @@ extension LibraryDatabase {
     }
 
     private static func loadGameItems(handle: OpaquePointer) throws -> [DatabaseGameItem] {
+        if try gameSidebarBucketsAreCurrent(handle: handle) {
+            return try loadGameItemsFromBuckets(handle: handle)
+        }
+        return try loadGameItemsFromTracks(handle: handle)
+    }
+
+    /// An interrupted scan or first-run migration can leave one root's
+    /// projection dirty. Preserve exact sidebar results until the existing
+    /// utility prewarm repairs it, rather than showing a stale game list.
+    private static func gameSidebarBucketsAreCurrent(handle: OpaquePointer) throws -> Bool {
+        let sql = "SELECT NOT EXISTS (SELECT 1 FROM library_roots WHERE is_enabled = 1 AND game_sidebar_buckets_dirty = 1);"
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw databaseError(handle: handle)
+        }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            throw databaseError(handle: handle)
+        }
+        return sqlite3_column_int(statement, 0) != 0
+    }
+
+    private static func loadGameItemsFromBuckets(handle: OpaquePointer) throws -> [DatabaseGameItem] {
+        let sql = """
+        SELECT
+            b.browser_game AS game_name,
+            b.browser_system AS system_name,
+            SUM(b.track_count)
+        FROM game_sidebar_buckets b
+        INNER JOIN library_roots r ON r.id = b.root_id
+        WHERE r.is_enabled = 1
+        GROUP BY game_name, system_name
+        ORDER BY lower(game_name) ASC, game_name ASC, lower(system_name) ASC, system_name ASC;
+        """
+
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw databaseError(handle: handle)
+        }
+        defer { sqlite3_finalize(statement) }
+
+        var items: [DatabaseGameItem] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            let rawName = sqliteString(statement, index: 0).trimmingCharacters(in: .whitespacesAndNewlines)
+            let systemName = sqliteString(statement, index: 1).trimmingCharacters(in: .whitespacesAndNewlines)
+            let name = rawName.isEmpty ? "Unknown Game" : rawName
+            let displayName = ZipArchiveSupport.canHandle(URL(fileURLWithPath: name))
+                ? URL(fileURLWithPath: name).lastPathComponent
+                : nil
+            let count = Int(sqlite3_column_int(statement, 2))
+            items.append(DatabaseGameItem(name: name, systemName: systemName, trackCount: count, displayName: displayName))
+        }
+        return DatabaseSidebarPresentation.disambiguateGameItems(items)
+    }
+
+    private static func loadGameItemsFromTracks(handle: OpaquePointer) throws -> [DatabaseGameItem] {
         let sql = """
         SELECT
             t.browser_game AS game_name,

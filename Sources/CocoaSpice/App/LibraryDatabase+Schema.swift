@@ -83,6 +83,19 @@ extension LibraryDatabase {
         if version < 13 {
             try pruneStaleArchiveMembers()
         }
+        if version < 14 {
+            try execute("ALTER TABLE library_roots ADD COLUMN game_sidebar_buckets_dirty INTEGER NOT NULL DEFAULT 1;")
+            try execute("""
+            CREATE TABLE IF NOT EXISTS game_sidebar_buckets (
+                root_id INTEGER NOT NULL,
+                browser_game TEXT NOT NULL,
+                browser_system TEXT NOT NULL,
+                track_count INTEGER NOT NULL,
+                PRIMARY KEY(root_id, browser_game, browser_system),
+                FOREIGN KEY(root_id) REFERENCES library_roots(id) ON DELETE CASCADE
+            );
+            """)
+        }
         guard version < Self.schemaVersion else { return }
         try setUserVersion(Self.schemaVersion)
     }

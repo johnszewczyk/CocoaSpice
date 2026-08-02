@@ -2721,9 +2721,9 @@ final class PlayerViewModel {
         isLoadingDatabaseSidebar = true
         let task = Task { [weak self] in
             let content = await Task.detached(priority: .utility) {
-                // On an older large library this creates a compact covering
-                // index once, on this utility task. The first window and main
-                // actor remain free while SQLite builds it.
+                // Prewarm the durable Games projection on this utility task.
+                // The first window and main actor remain free while an older
+                // library upgrades or repairs an interrupted projection write.
                 try? LibraryDatabase.prepareGameSidebarIndex(databaseURL: databaseURL)
                 return (try? LibraryDatabase.loadGameSidebarItems(databaseURL: databaseURL)) ?? []
             }.value
