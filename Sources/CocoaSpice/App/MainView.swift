@@ -323,6 +323,9 @@ private enum DatabaseSidebarTableChrome {
         tableView.rowHeight = rowHeight
         tableView.intercellSpacing = NSSize(width: 0, height: 0)
         tableView.focusRingType = .none
+        // Match the playlist's chrome. The automatic/source-list style keeps
+        // drawing its own selection behind the shared capsule overlay.
+        tableView.style = .fullWidth
         tableView.selectionHighlightStyle = .none
         tableView.usesAutomaticRowHeights = false
         tableView.allowsEmptySelection = true
@@ -516,7 +519,7 @@ private struct DatabaseGameListView: NSViewRepresentable {
             }
 
             guard needsContentReload else {
-                syncSelection(in: tableView)
+                syncSelection(in: tableView, refreshHighlight: false)
                 return
             }
 
@@ -527,26 +530,31 @@ private struct DatabaseGameListView: NSViewRepresentable {
                 guard let self, let tableView else { return }
                 self.reloadScheduled = false
                 tableView.reloadData()
-                self.syncSelection(in: tableView)
+                self.syncSelection(in: tableView, refreshHighlight: true)
             }
         }
 
-        private func syncSelection(in tableView: NSTableView) {
+        private func syncSelection(in tableView: NSTableView, refreshHighlight: Bool) {
             let rows = IndexSet(cachedSidebarRows.enumerated().compactMap { index, row in
                 row.game.flatMap { model.selectedDatabaseGameIDs.contains($0.id) ? index : nil }
             })
+            var selectionChanged = false
 
             if !rows.isEmpty {
                 if tableView.selectedRowIndexes != rows {
                     tableView.selectRowIndexes(rows, byExtendingSelection: false)
+                    selectionChanged = true
                 }
                 if let row = rows.last {
                     tableView.scrollRowToVisible(row)
                 }
             } else if tableView.selectedRow != -1 {
                 tableView.deselectAll(nil)
+                selectionChanged = true
             }
-            DatabaseSidebarTableChrome.updateSelectionHighlight(in: tableView, animated: false)
+            if refreshHighlight || selectionChanged {
+                DatabaseSidebarTableChrome.updateSelectionHighlight(in: tableView, animated: false)
+            }
         }
 
         func numberOfRows(in tableView: NSTableView) -> Int {
@@ -811,7 +819,7 @@ private struct DatabaseFileListView: NSViewRepresentable {
             }
 
             guard needsContentReload else {
-                syncSelection(in: tableView)
+                syncSelection(in: tableView, refreshHighlight: false)
                 return
             }
             guard !reloadScheduled else { return }
@@ -820,11 +828,11 @@ private struct DatabaseFileListView: NSViewRepresentable {
                 guard let self, let tableView else { return }
                 self.reloadScheduled = false
                 tableView.reloadData()
-                self.syncSelection(in: tableView)
+                self.syncSelection(in: tableView, refreshHighlight: true)
             }
         }
 
-        private func syncSelection(in tableView: NSTableView) {
+        private func syncSelection(in tableView: NSTableView, refreshHighlight: Bool) {
             let rows = IndexSet(cachedRows.enumerated().compactMap { index, row in
                 switch row {
                 case .file(let item, _):
@@ -833,17 +841,22 @@ private struct DatabaseFileListView: NSViewRepresentable {
                     model.selectedDatabaseFileFolders.contains(where: { $0.id == id }) ? index : nil
                 }
             })
+            var selectionChanged = false
             if !rows.isEmpty {
                 if tableView.selectedRowIndexes != rows {
                     tableView.selectRowIndexes(rows, byExtendingSelection: false)
+                    selectionChanged = true
                 }
                 if let row = rows.last {
                     tableView.scrollRowToVisible(row)
                 }
             } else if tableView.selectedRow != -1 {
                 tableView.deselectAll(nil)
+                selectionChanged = true
             }
-            DatabaseSidebarTableChrome.updateSelectionHighlight(in: tableView, animated: false)
+            if refreshHighlight || selectionChanged {
+                DatabaseSidebarTableChrome.updateSelectionHighlight(in: tableView, animated: false)
+            }
         }
 
         func numberOfRows(in tableView: NSTableView) -> Int {

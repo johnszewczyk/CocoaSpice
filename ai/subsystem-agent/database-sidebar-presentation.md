@@ -34,7 +34,7 @@
 - Keep row-status text and scan-root readouts centralized so wording changes do not drift across call sites.
 - Files mode uses a native tree interaction: triangle click, a repeat click on a selected folder, and Space toggle only that folder. Double-click and Return activate the selected file or folder rather than changing disclosure.
 - Files disclosure geometry uses a persisted point gap from Sidebar Options. The triangle glyph follows Sidebar Style font size while the user-selected triangle-to-label space stays exact.
-- Database sidebar tables and the playlist use one non-interactive capsule-selection overlay. A single selection glides between rows with the standard ease-in/ease-out curve; multi-selections update as individual capsules. The overlay must remain below row content and never alter native selection semantics.
+- Database sidebar tables and the playlist use one non-interactive capsule-selection overlay on full-width table chrome. A single selection glides between rows with the standard ease-in/ease-out curve; multi-selections update as individual capsules. A user-driven sidebar selection must not be immediately re-synced before that transition begins. The overlay must remain below row content and never alter native selection semantics.
 - Files-mode labels omit archive track counts. The optional extension-hiding preference is presentation-only and must not alter database paths, drag payloads, or playback URLs.
 
 ## Files
