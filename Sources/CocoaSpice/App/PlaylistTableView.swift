@@ -43,7 +43,7 @@ struct PlaylistTableView: NSViewRepresentable {
             coordinator?.autoSizeColumn(at: columnIndex)
         }
 
-        let selectionHighlightView = PlaylistSelectionHighlightView(frame: tableView.bounds)
+        let selectionHighlightView = AnimatedCapsuleSelectionHighlightView(frame: tableView.bounds)
         selectionHighlightView.autoresizingMask = [.width, .height]
         tableView.addSubview(selectionHighlightView, positioned: .below, relativeTo: nil)
 
@@ -168,7 +168,7 @@ struct PlaylistTableView: NSViewRepresentable {
 
         @Bindable var model: PlayerViewModel
         private weak var tableView: NSTableView?
-        private weak var selectionHighlightView: PlaylistSelectionHighlightView?
+        private weak var selectionHighlightView: AnimatedCapsuleSelectionHighlightView?
         private var suppressSelectionSync = false
         private var lastAppliedMetadataLoadToken = -1
         private var lastPlaylistContentRevision = -1
@@ -193,7 +193,7 @@ struct PlaylistTableView: NSViewRepresentable {
 
         func attach(
             tableView: NSTableView,
-            selectionHighlightView: PlaylistSelectionHighlightView? = nil
+            selectionHighlightView: AnimatedCapsuleSelectionHighlightView? = nil
         ) {
             self.tableView = tableView
             self.selectionHighlightView = selectionHighlightView
@@ -1105,7 +1105,7 @@ extension PlaylistTableView.Coordinator: @preconcurrency NSTableViewDataSource, 
 }
 
 @MainActor
-final class PlaylistSelectionHighlightView: NSView {
+final class AnimatedCapsuleSelectionHighlightView: NSView {
     private let primarySelectionLayer = CAShapeLayer()
     private let multipleSelectionLayer = CAShapeLayer()
     private let horizontalInset: CGFloat = 4

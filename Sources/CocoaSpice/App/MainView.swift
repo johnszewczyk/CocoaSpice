@@ -323,7 +323,7 @@ private enum DatabaseSidebarTableChrome {
         tableView.rowHeight = rowHeight
         tableView.intercellSpacing = NSSize(width: 0, height: 0)
         tableView.focusRingType = .none
-        tableView.selectionHighlightStyle = .regular
+        tableView.selectionHighlightStyle = .none
         tableView.usesAutomaticRowHeights = false
         tableView.allowsEmptySelection = true
         tableView.allowsMultipleSelection = true
@@ -342,6 +342,11 @@ private enum DatabaseSidebarTableChrome {
         let column = NSTableColumn(identifier: .init(columnIdentifier))
         column.resizingMask = .autoresizingMask
         tableView.addTableColumn(column)
+
+        let selectionHighlightView = AnimatedCapsuleSelectionHighlightView(frame: tableView.bounds)
+        selectionHighlightView.autoresizingMask = [.width, .height]
+        tableView.addSubview(selectionHighlightView, positioned: .below, relativeTo: nil)
+        tableView.selectionHighlightView = selectionHighlightView
 
         let scrollView = NSScrollView(frame: .zero)
         scrollView.drawsBackground = false
@@ -385,6 +390,18 @@ private enum DatabaseSidebarTableChrome {
         tableView.reloadData(
             forRowIndexes: IndexSet(integersIn: 0..<tableView.numberOfRows),
             columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)
+        )
+    }
+
+    static func updateSelectionHighlight(in tableView: NSTableView, animated: Bool) {
+        let selectedRows = tableView.selectedRowIndexes.filter {
+            $0 >= 0 && $0 < tableView.numberOfRows
+        }
+        let rowRects = selectedRows.map(tableView.rect(ofRow:))
+        (tableView as? DatabaseSidebarNativeTableView)?.selectionHighlightView?.update(
+            selectionRects: rowRects,
+            primaryRect: selectedRows.count == 1 ? rowRects.first : nil,
+            animated: animated
         )
     }
 }
@@ -529,6 +546,7 @@ private struct DatabaseGameListView: NSViewRepresentable {
             } else if tableView.selectedRow != -1 {
                 tableView.deselectAll(nil)
             }
+            DatabaseSidebarTableChrome.updateSelectionHighlight(in: tableView, animated: false)
         }
 
         func numberOfRows(in tableView: NSTableView) -> Int {
@@ -579,6 +597,7 @@ private struct DatabaseGameListView: NSViewRepresentable {
             let primaryID = items.last?.id
             model.selectDatabaseGames(ids: ids, primaryID: primaryID)
             reloadVisibleRows()
+            DatabaseSidebarTableChrome.updateSelectionHighlight(in: tableView, animated: true)
         }
 
         @objc func handleDoubleAction(_ sender: Any?) {
@@ -824,6 +843,7 @@ private struct DatabaseFileListView: NSViewRepresentable {
             } else if tableView.selectedRow != -1 {
                 tableView.deselectAll(nil)
             }
+            DatabaseSidebarTableChrome.updateSelectionHighlight(in: tableView, animated: false)
         }
 
         func numberOfRows(in tableView: NSTableView) -> Int {
@@ -898,6 +918,7 @@ private struct DatabaseFileListView: NSViewRepresentable {
                 model.activateDatabaseFile(archive, replace: true)
             }
             reloadVisibleRows()
+            DatabaseSidebarTableChrome.updateSelectionHighlight(in: tableView, animated: true)
         }
 
         @objc func handleDoubleAction(_ sender: Any?) {
@@ -1135,6 +1156,7 @@ private final class DatabaseFileSidebarCellView: NSTableCellView {
 
 @MainActor
 private final class DatabaseSidebarNativeTableView: NSTableView {
+    weak var selectionHighlightView: AnimatedCapsuleSelectionHighlightView?
     var activationHandler: (() -> Void)?
     var spaceHandler: (() -> Void)?
     var rowMenuProvider: ((Int) -> NSMenu?)?
