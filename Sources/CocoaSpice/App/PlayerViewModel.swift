@@ -2357,7 +2357,10 @@ final class PlayerViewModel {
         playbackTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                let playback = self.playback
+                // Do not create the full audio graph merely to poll idle UI
+                // state at launch. Playback initializes on the first actual
+                // request, then this timer observes its live session.
+                guard let playback = self.playbackStorage else { return }
                 self.playbackDiagnostics = playback.diagnosticsSnapshot()
                 let snapshot = await playback.statusSnapshot()
                 if !self.isSeeking {

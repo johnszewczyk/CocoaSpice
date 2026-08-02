@@ -12,6 +12,7 @@ struct RemoteTransportNowPlaying: Equatable, Sendable {
 @MainActor
 final class RemoteTransportController {
     private var isConfigured = false
+    private var lastPublishedNowPlaying: RemoteTransportNowPlaying?
 
     func configure(
         previous: @escaping @MainActor () -> Void,
@@ -58,6 +59,9 @@ final class RemoteTransportController {
     }
 
     func updateNowPlaying(_ nowPlaying: RemoteTransportNowPlaying) {
+        guard nowPlaying != lastPublishedNowPlaying else { return }
+        lastPublishedNowPlaying = nowPlaying
+
         var info: [String: Any] = [:]
         info[MPMediaItemPropertyTitle] = nowPlaying.title
         info[MPMediaItemPropertyAlbumTitle] = nowPlaying.albumTitle

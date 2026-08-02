@@ -24,6 +24,7 @@
 - Stale rapid-playback requests do not perform decoder/output teardown; the latest request performs at most one pre-load stop.
 - Playback requests update the playing-track state without rewriting the playlist browsing cursor. Previous, next, repeat, random, and completion advance therefore leave arrow-key selection alone.
 - Playback-state changes are published by the audio engine so transport UI and Media Session state do not depend solely on polling.
+- Now Playing is published only when its title, album, elapsed time, duration, or playback state changes; unchanged idle state is never resent to MediaRemote. The periodic status timer must not construct an audio graph before the first playback request.
 - Repeat mode is persisted and applies at automatic completion: Off stops, Playlist returns to the first queued track, and Song restarts the current track.
 - Random playback scope is app state above decoder routing: Off preserves sequential queue navigation, Library selects from the indexed library pool, and Playlist selects from the filtered visible playlist. The toolbar cycles these states and persists the choice.
 
