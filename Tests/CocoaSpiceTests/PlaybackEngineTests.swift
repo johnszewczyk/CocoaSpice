@@ -197,6 +197,17 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     ) == 44_100)
 }
 
+@Test func frameAccountingPreservesTheAudiblePositionAcrossABufferReset() {
+    // Long Play reconfiguration clears the PCM ring. The new generation's
+    // counter begins at zero, while its session anchor remains the last
+    // audible frame from the preceding generation.
+    let audibleFrameBeforeReconfigure: Int64 = 137_812
+    #expect(PlaybackFrameAccounting.positionFrames(
+        sessionStartFrame: audibleFrameBeforeReconfigure,
+        framesSupplied: 0
+    ) == audibleFrameBeforeReconfigure)
+}
+
 @Test func nativeCompletionWaitsForBufferedFramesToDrain() {
     #expect(!PlaybackCompletionPolicy.shouldFinish(
         reachedDecoderEnd: true,

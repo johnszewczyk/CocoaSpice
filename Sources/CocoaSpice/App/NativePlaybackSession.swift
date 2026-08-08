@@ -11,6 +11,10 @@ final class NativePlaybackSession: @unchecked Sendable {
     private var stream: PlaybackStreamSession?
     private var currentTrack: TrackItem?
     private var generation = 0
+    /// The ring buffer resets at each graph/decoder rebuild. Keep the musical
+    /// timeline separately so a Long Play change cannot publish `0:00` and
+    /// make the following change seek back to the beginning.
+    private var sessionStartFrame: Int64 = 0
     private var finishedGeneration: Int?
     private var completionHandler: (@Sendable (Int) -> Void)?
     private let outputHeartbeat = PlaybackOutputHeartbeat()
@@ -117,6 +121,7 @@ final class NativePlaybackSession: @unchecked Sendable {
             try stream.seek(to: seconds)
 
             generation += 1
+            sessionStartFrame = Int64(max(0, (seconds * sampleRate).rounded()))
             finishedGeneration = nil
             self.stream = stream
             currentTrack = track
@@ -167,6 +172,7 @@ final class NativePlaybackSession: @unchecked Sendable {
             outputHeartbeat.reset(expectingRenderRequests: false)
             output.prepareForRestart()
             generation += 1
+            sessionStartFrame = Int64(max(0, (seconds * sampleRate).rounded()))
             finishedGeneration = nil
             try stream.seek(to: seconds)
             if !wasPlaying {
@@ -194,6 +200,7 @@ final class NativePlaybackSession: @unchecked Sendable {
             finishedGeneration = nil
             stream = nil
             currentTrack = nil
+            sessionStartFrame = 0
             output.stop()
             outputHeartbeat.reset(expectingRenderRequests: false)
         }
@@ -206,7 +213,7 @@ final class NativePlaybackSession: @unchecked Sendable {
                 currentTrackID: currentTrack?.id,
                 isPlaying: snapshot.transportState == .playing,
                 elapsedSeconds: PlaybackFrameAccounting.positionSeconds(
-                    sessionStartFrame: 0,
+                    sessionStartFrame: sessionStartFrame,
                     framesSupplied: snapshot.framesSupplied,
                     sampleRate: Int(sampleRate)
                 ),
@@ -274,6 +281,10 @@ final class NativePlaybackSession: @unchecked Sendable {
         refillQueue.async {
             guard let stream = self.stream else { return }
             let wasPlaying = self.output.snapshot.transportState == .playing
+            let resumeFrame = PlaybackFrameAccounting.positionFrames(
+                sessionStartFrame: self.sessionStartFrame,
+                framesSupplied: self.output.ringBuffer.framesRead
+            )
 
             do {
                 // An AVAudioEngine configuration change (usually sleep/wake or
@@ -293,6 +304,7 @@ final class NativePlaybackSession: @unchecked Sendable {
                 self.refillTimer = nil
                 self.output.prepareForRestart()
                 self.generation += 1
+                self.sessionStartFrame = resumeFrame
                 self.finishedGeneration = nil
                 stream.setSuspended(false)
                 self.output.markTrackLoaded(generation: self.generation)
