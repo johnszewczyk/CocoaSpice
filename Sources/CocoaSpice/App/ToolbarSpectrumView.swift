@@ -58,7 +58,7 @@ final class ToolbarSpectrumModel {
     private func startDisplayTimer() {
         guard isVisible, isAnimating, displayTimer == nil else { return }
         lastAnimationUptime = ProcessInfo.processInfo.systemUptime
-        let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 45.0, repeats: true) { [weak self] _ in
+        let timer = Timer.scheduledTimer(withTimeInterval: 1.0 / 60.0, repeats: true) { [weak self] _ in
             // The timer is registered only on the main run loop below.
             MainActor.assumeIsolated {
                 self?.stepAnimation()

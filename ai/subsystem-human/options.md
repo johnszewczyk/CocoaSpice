@@ -36,7 +36,7 @@
 
 ## Interface
 
-- Spectrum analyzer: off by default. It analyzes audio 10 times per second and redraws the compact toolbar widget at 45 FPS only while enabled and playing; it stops completely when hidden or stopped. Choose 10, 20, or 40 full-range bands and Spectrum Base, Peak, and Cap colors; Reset restores the default colors.
+- Spectrum analyzer: off by default. It analyzes audio 10 times per second and redraws the compact toolbar widget at 60 FPS only while enabled and playing; it stops completely when hidden or stopped. Choose 10, 20, or 40 full-range bands and Spectrum Base, Peak, and Cap colors; Reset restores the default colors.
 - Spectrum analyzer: 10/20/40 means 1/2/4 bands per octave from 20 Hz through 20.48 kHz.
 - Spectrum analyzer: `Enable Spectrum` can disable spectrum analysis and its toolbar display while playback continues.
 - Random playback: the main toolbar cycles between Off, Library random, and current Playlist-view random modes.
@@ -45,7 +45,7 @@
 - Database sidebar: set 6–18pt font size, primary/secondary/tertiary color, and system fixed-width text.
 - Playlist: set 6–18pt font size, primary/secondary/tertiary color, and system fixed-width text for every track-table text column.
 - Each appearance card Reset restores its own default primary 12pt appearance.
-- Sidebar Options: Group by Console sorts the Database game list into consoles using metadata and parent-folder information. Files Disclosure Gap sets the point spacing between folder triangles and names in Files view. Hide File Extensions changes only Files-view labels, never filenames stored by the database or passed to playback.
+- Sidebar Options: Group by Console sorts the Database game list into consoles using metadata and parent-folder information. Files Disclosure Gap sets 0–16 pt spacing between folder triangles and names in Files view. Hide File Extensions changes only Files-view labels, never filenames stored by the database or passed to playback.
 - Every Options panel places a horizontal rule below its heading. Checkbox options use a leading checkbox with any explanatory text aligned beneath its label.
 
 ## Window

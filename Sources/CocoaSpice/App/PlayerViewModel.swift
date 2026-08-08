@@ -1496,7 +1496,7 @@ final class PlayerViewModel {
     }
 
     func setDatabaseSidebarDisclosureGapPoints(_ gap: CGFloat) {
-        databaseSidebarDisclosureGapPoints = min(max(gap, 0), 48)
+        databaseSidebarDisclosureGapPoints = min(max(gap, 0), 16)
         savePreferencesNow()
     }
 
@@ -3011,11 +3011,11 @@ final class PlayerViewModel {
         }
         interfaceMonospaceFont = preferences.databaseSidebarMonospaceFont || preferences.playlistMonospaceFont
         if let storedSidebarDisclosureGapPoints = preferences.databaseSidebarDisclosureGapPoints {
-            databaseSidebarDisclosureGapPoints = min(max(CGFloat(storedSidebarDisclosureGapPoints), 0), 48)
+            databaseSidebarDisclosureGapPoints = min(max(CGFloat(storedSidebarDisclosureGapPoints), 0), 16)
         } else if let legacyEmGap = preferences.databaseSidebarDisclosureGap {
             // The brief pre-release implementation stored a font-relative value.
             // Preserve its visual distance once, then persist future edits in points.
-            databaseSidebarDisclosureGapPoints = min(max(CGFloat(legacyEmGap) * databaseSidebarFontSize, 0), 48)
+            databaseSidebarDisclosureGapPoints = min(max(CGFloat(legacyEmGap) * databaseSidebarFontSize, 0), 16)
         }
         databaseSidebarHidesFileExtensions = preferences.databaseSidebarHidesFileExtensions
         sidebarSystemMode = preferences.sidebarSystemMode

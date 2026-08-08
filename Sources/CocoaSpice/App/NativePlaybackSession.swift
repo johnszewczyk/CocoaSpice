@@ -48,7 +48,7 @@ final class NativePlaybackSession: @unchecked Sendable {
             if enabled {
                 let handler = spectrumHandler
                 // A 4,410-frame tap supplies a 4,096-point FFT window at
-                // roughly 10 Hz; the display model draws its targets at 45 FPS.
+                // roughly 10 Hz; the display model draws its targets at 60 FPS.
                 output.setSpectrumTap(bufferSize: 4_410) { buffer, time in
                     handler?(buffer, time)
                 }

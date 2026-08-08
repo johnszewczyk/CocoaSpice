@@ -283,7 +283,7 @@ struct OptionsView: View {
                     Toggle(isOn: $model.spectrumEnabled) {
                         VStack(alignment: .leading, spacing: 4) {
                             Text("Enable Spectrum")
-                            Text("Uses a 4,096-point FFT at 10 analyses per second, plus a 45 FPS direct bar/peak display. 10/20/40 means 1/2/4 bands per octave from 20 Hz–20.48 kHz. It can consume significant CPU while playing, especially at 20 or 40 bands, so Spectrum is off by default.")
+                            Text("Uses a 4,096-point FFT at 10 analyses per second, plus a 60 FPS direct bar/peak display. 10/20/40 means 1/2/4 bands per octave from 20 Hz–20.48 kHz. Spectrum is off by default.")
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
                         }
@@ -363,7 +363,7 @@ struct OptionsView: View {
                                 get: { Double(model.databaseSidebarDisclosureGapPoints) },
                                 set: { model.setDatabaseSidebarDisclosureGapPoints(CGFloat($0)) }
                             ),
-                            in: 0...48,
+                            in: 0...16,
                             step: 1
                         )
                         .frame(width: 140)
