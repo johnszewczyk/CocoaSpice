@@ -12,7 +12,7 @@ The app vendors the GPL-2.0-or-later `2sf2wav` core and builds it as `lib2sf.a` 
 
 ## Invariants
 
-- `GMEFormatSupport` is the sole extension-admission and decoder-routing table; the `twosf` scanner descriptor inherits it.
+- `PlaybackFormatRegistry` is the sole extension-admission and decoder-routing table; the `twosf` scanner descriptor inherits it.
 - `TwoSFBridgeGate` serializes every bridge call, including tag inspection, because the DS core is not concurrent-safe.
 - `length` and `fade` tags become `TrackMetadata` timing fields. `Nintendo DS` is always the system fallback.
 - Archive dependency paths must remain relative to the extracted set; malformed or missing libraries fail only their own scan or playback item.

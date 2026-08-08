@@ -3,101 +3,87 @@ import SQLite3
 extension LibraryDatabase {
     func migrateSchemaIfNeeded() throws {
         let version = try userVersion()
-        if version < 4 {
-            try execute("DROP TABLE IF EXISTS track_metadata;")
-            try execute("DROP TABLE IF EXISTS tracks;")
+        guard version != Self.schemaVersion else { return }
+
+        try execute("PRAGMA foreign_keys = OFF;")
+        try execute("BEGIN TRANSACTION;")
+        do {
+            try dropAllApplicationTables()
+            try createLibraryRootTable()
             try createTrackTables()
-        }
-        if version < 5 {
             try createScanTables()
+            try createDeadSourceTable()
+            try createGameSidebarBucketTable()
+            try setUserVersion(Self.schemaVersion)
+            try execute("COMMIT;")
+            try execute("PRAGMA foreign_keys = ON;")
+        } catch {
+            try? execute("ROLLBACK;")
+            try? execute("PRAGMA foreign_keys = ON;")
+            throw error
         }
-        if version >= 4, version < 6 {
-            try migrateTracksToRootScopedIdentity()
+    }
+
+    private func dropAllApplicationTables() throws {
+        var statement: OpaquePointer?
+        let sql = "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%';"
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw databaseError()
         }
-        if version < 7 {
-            try execute("ALTER TABLE library_roots ADD COLUMN is_attached INTEGER NOT NULL DEFAULT 1;")
+        defer { sqlite3_finalize(statement) }
+
+        var tableNames: [String] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            tableNames.append(sqliteString(statement, index: 0))
         }
-        if version >= 5, version < 8 {
-            try execute("ALTER TABLE scan_items ADD COLUMN content_signature TEXT;")
+        for tableName in tableNames {
+            let identifier = tableName.replacingOccurrences(of: "\"", with: "\"\"")
+            try execute("DROP TABLE \"\(identifier)\";")
         }
-        if version >= 6, version < 9 {
-            try execute("ALTER TABLE tracks ADD COLUMN browser_game TEXT NOT NULL DEFAULT '';")
-            try execute("ALTER TABLE tracks ADD COLUMN browser_system TEXT NOT NULL DEFAULT '';")
-        }
-        if version >= 4, version < 9 {
-            try execute("""
-            UPDATE tracks
-            SET
-                browser_game = COALESCE(
-                    NULLIF(TRIM((SELECT game FROM track_metadata WHERE track_id = tracks.id)), ''),
-                    COALESCE(archive_path, folder_path)
-                ),
-                browser_system = COALESCE(
-                    TRIM((SELECT system FROM track_metadata WHERE track_id = tracks.id)),
-                    ''
-                );
-            """)
-        }
-        if version < 9 {
-            try execute("CREATE INDEX IF NOT EXISTS tracks_browser_bucket_index ON tracks(browser_game, browser_system, root_id);")
-        }
-        if version < 10 {
-            try execute("CREATE INDEX IF NOT EXISTS tracks_file_tree_index ON tracks(root_id, folder_path, path);")
-        }
-        if version < 11 {
-            // Legacy filename-only placeholders are not complete library rows.
-            // Remove their inventory too, so the next incremental scan replaces
-            // them with normal archive/member metadata.
-            try execute("""
-            DELETE FROM scan_items
-            WHERE EXISTS (
-                SELECT 1
-                FROM tracks t
-                INNER JOIN track_metadata m ON m.track_id = t.id
-                WHERE t.root_id = scan_items.root_id
-                  AND t.path = scan_items.path
-                  AND m.comment = '__cocoaspice_fast_scan__'
-            );
-            """)
-            try execute("""
-            DELETE FROM tracks
-            WHERE id IN (
-                SELECT track_id
-                FROM track_metadata
-                WHERE comment = '__cocoaspice_fast_scan__'
-            );
-            """)
-        }
-        if version < 12 {
-            try execute("""
-            CREATE TABLE IF NOT EXISTS dead_sources (
-                root_id INTEGER NOT NULL,
-                path TEXT NOT NULL,
-                marked_at REAL NOT NULL,
-                PRIMARY KEY(root_id, path),
-                FOREIGN KEY(root_id) REFERENCES library_roots(id) ON DELETE CASCADE
-            );
-            """)
-            try execute("CREATE INDEX IF NOT EXISTS dead_sources_path_index ON dead_sources(path);")
-        }
-        if version < 13 {
-            try pruneStaleArchiveMembers()
-        }
-        if version < 14 {
-            try execute("ALTER TABLE library_roots ADD COLUMN game_sidebar_buckets_dirty INTEGER NOT NULL DEFAULT 1;")
-            try execute("""
-            CREATE TABLE IF NOT EXISTS game_sidebar_buckets (
-                root_id INTEGER NOT NULL,
-                browser_game TEXT NOT NULL,
-                browser_system TEXT NOT NULL,
-                track_count INTEGER NOT NULL,
-                PRIMARY KEY(root_id, browser_game, browser_system),
-                FOREIGN KEY(root_id) REFERENCES library_roots(id) ON DELETE CASCADE
-            );
-            """)
-        }
-        guard version < Self.schemaVersion else { return }
-        try setUserVersion(Self.schemaVersion)
+    }
+
+    private func createLibraryRootTable() throws {
+        try execute("""
+        CREATE TABLE library_roots (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            path TEXT NOT NULL UNIQUE,
+            is_enabled INTEGER NOT NULL DEFAULT 1,
+            display_order INTEGER NOT NULL DEFAULT 0,
+            created_at REAL NOT NULL,
+            last_scan_started_at REAL,
+            last_scan_completed_at REAL,
+            last_scan_track_count INTEGER NOT NULL DEFAULT 0,
+            last_scan_error TEXT,
+            is_attached INTEGER NOT NULL DEFAULT 1,
+            game_sidebar_buckets_dirty INTEGER NOT NULL DEFAULT 1
+        );
+        """)
+    }
+
+    private func createDeadSourceTable() throws {
+        try execute("""
+        CREATE TABLE dead_sources (
+            root_id INTEGER NOT NULL,
+            path TEXT NOT NULL,
+            marked_at REAL NOT NULL,
+            PRIMARY KEY(root_id, path),
+            FOREIGN KEY(root_id) REFERENCES library_roots(id) ON DELETE CASCADE
+        );
+        """)
+        try execute("CREATE INDEX dead_sources_path_index ON dead_sources(path);")
+    }
+
+    private func createGameSidebarBucketTable() throws {
+        try execute("""
+        CREATE TABLE game_sidebar_buckets (
+            root_id INTEGER NOT NULL,
+            browser_game TEXT NOT NULL,
+            browser_system TEXT NOT NULL,
+            track_count INTEGER NOT NULL,
+            PRIMARY KEY(root_id, browser_game, browser_system),
+            FOREIGN KEY(root_id) REFERENCES library_roots(id) ON DELETE CASCADE
+        );
+        """)
     }
 
     /// Repairs rows written before archive refresh replaced a source's entire
@@ -182,6 +168,9 @@ extension LibraryDatabase {
             FOREIGN KEY(track_id) REFERENCES tracks(id) ON DELETE CASCADE
         );
         """)
+        try execute("CREATE INDEX tracks_browser_bucket_index ON tracks(browser_game, browser_system, root_id);")
+        try execute("CREATE INDEX tracks_file_tree_index ON tracks(root_id, folder_path, path);")
+        try execute("CREATE INDEX tracks_game_sidebar_index ON tracks(browser_game, browser_system, root_id, path);")
     }
 
     private func createScanTables() throws {
@@ -207,24 +196,6 @@ extension LibraryDatabase {
         );
         """)
         try execute("CREATE INDEX IF NOT EXISTS scan_items_state_index ON scan_items(root_id, state);")
-    }
-
-    private func migrateTracksToRootScopedIdentity() throws {
-        try execute("ALTER TABLE track_metadata RENAME TO track_metadata_legacy;")
-        try execute("ALTER TABLE tracks RENAME TO tracks_legacy;")
-        try createTrackTables()
-        try execute("""
-        INSERT INTO tracks (id, root_id, folder_path, path, filename, extension, track_index, track_count, file_size, modified_at, discovered_at, archive_path, archive_entry)
-        SELECT id, root_id, folder_path, path, filename, extension, track_index, track_count, file_size, modified_at, discovered_at, archive_path, archive_entry
-        FROM tracks_legacy;
-        """)
-        try execute("""
-        INSERT INTO track_metadata (track_id, title, game, author, system, comment, intro_length_ms, loop_length_ms, play_length_ms, fade_length_ms, metadata_scanned_at)
-        SELECT track_id, title, game, author, system, comment, intro_length_ms, loop_length_ms, play_length_ms, fade_length_ms, metadata_scanned_at
-        FROM track_metadata_legacy;
-        """)
-        try execute("DROP TABLE track_metadata_legacy;")
-        try execute("DROP TABLE tracks_legacy;")
     }
 
     private func userVersion() throws -> Int {

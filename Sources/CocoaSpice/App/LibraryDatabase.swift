@@ -2,7 +2,7 @@ import Foundation
 import SQLite3
 
 final class LibraryDatabase: @unchecked Sendable {
-    static let schemaVersion = 14
+    static let schemaVersion = 15
     let db: OpaquePointer?
     private let dbURL: URL
 
@@ -12,18 +12,6 @@ final class LibraryDatabase: @unchecked Sendable {
         let supportURL = try Self.applicationSupportDirectory()
         try FileManager.default.createDirectory(at: supportURL, withIntermediateDirectories: true)
         let dbURL = supportURL.appendingPathComponent("Library.sqlite", isDirectory: false)
-        let legacyURL = supportURL
-            .deletingLastPathComponent()
-            .appendingPathComponent("SPCBoy", isDirectory: true)
-            .appendingPathComponent("Library.sqlite", isDirectory: false)
-        if FileManager.default.fileExists(atPath: legacyURL.path),
-           !Self.databaseHasRoots(at: dbURL),
-           Self.databaseHasRoots(at: legacyURL) {
-            if FileManager.default.fileExists(atPath: dbURL.path) {
-                try FileManager.default.removeItem(at: dbURL)
-            }
-            try FileManager.default.moveItem(at: legacyURL, to: dbURL)
-        }
         try self.init(databaseURL: dbURL)
     }
 
@@ -49,19 +37,6 @@ final class LibraryDatabase: @unchecked Sendable {
         // still hold a statement. Wait for that ordinary contention instead
         // of misreporting a healthy member as a persistence failure.
         sqlite3_busy_timeout(handle, 5_000)
-        try execute("""
-        CREATE TABLE IF NOT EXISTS library_roots (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            path TEXT NOT NULL UNIQUE,
-            is_enabled INTEGER NOT NULL DEFAULT 1,
-            display_order INTEGER NOT NULL DEFAULT 0,
-            created_at REAL NOT NULL,
-            last_scan_started_at REAL,
-            last_scan_completed_at REAL,
-            last_scan_track_count INTEGER NOT NULL DEFAULT 0,
-            last_scan_error TEXT
-        );
-        """)
         try migrateSchemaIfNeeded()
     }
 
@@ -616,23 +591,6 @@ final class LibraryDatabase: @unchecked Sendable {
         )
     }
 
-    private static func databaseHasRoots(at url: URL) -> Bool {
-        guard FileManager.default.fileExists(atPath: url.path) else { return false }
-
-        var handle: OpaquePointer?
-        guard sqlite3_open_v2(url.path, &handle, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
-            sqlite3_close(handle)
-            return false
-        }
-        defer { sqlite3_close(handle) }
-
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(handle, "SELECT 1 FROM library_roots LIMIT 1;", -1, &statement, nil) == SQLITE_OK else {
-            return false
-        }
-        defer { sqlite3_finalize(statement) }
-        return sqlite3_step(statement) == SQLITE_ROW
-    }
 }
 
 

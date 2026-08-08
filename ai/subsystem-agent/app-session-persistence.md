@@ -14,6 +14,7 @@
 - Spectrum analyzer enabled state and explicit `Base`, `Peak`, and `Cap` colors persist in `UserDefaults`.
 - Playlist state is separate from sidebar state.
 - Persisted playlist restore includes queued paths, selected track path, and current track path.
+- Launch restores at most 1,024 queued entries and performs no filesystem existence walk. Remaining entries stay in the persisted session so startup work remains bounded; a missing source fails only if the user later activates it.
 - The current database sidebar persists its last selected library folder path independently from queued playlist state.
 - Sidebar double-click behavior, `Playlist Follows Cursor`, and Sidebar System Mode persist in `UserDefaults`.
 - Sidebar and playlist monospace-font preferences persist in the shared playback preference bundle.
@@ -32,7 +33,7 @@
 - Keep selection separate from playback.
 - Keep queue state separate from browser state.
 - Prefer narrow writes for narrow UI actions; do not wire incidental table interactions to full preference saves.
-- Remove retired preference migrations once the live app no longer writes them.
+- Do not add preference migration or compatibility paths. Current CocoaSpice keys are the only persisted contract.
 
 ## Files
 

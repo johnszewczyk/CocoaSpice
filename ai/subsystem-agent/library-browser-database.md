@@ -25,7 +25,7 @@
 - Game activation loads playable leaves from the scanned database rather than rescanning the filesystem.
 - `tracks.browser_game` and `tracks.browser_system` are persisted alongside scan results and indexed as the activation lookup key. Do not rebuild the game bucket from `track_metadata` in a selection query; that turns every sidebar activation into a whole-library scan.
 - `DatabaseFileItem` groups scanned track rows by `root_id + source path`; `tracks_file_tree_index` supports the database-only Files tree. Archive members never become filesystem tree leaves: their archive source is the leaf and activation loads its indexed members through the matching root.
-- The Games browser has a separate covering `tracks_game_sidebar_index` for grouped startup reads and unlinked-source filtering. It is prepared off the main actor so adding it to a pre-existing large database cannot delay the app window.
+- The Games browser has a separate covering `tracks_game_sidebar_index` for grouped startup reads and unlinked-source filtering. The current schema creates it once before data exists; a noncurrent schema is reset instead of being migrated at launch.
 - File-path activation resolves the scanned playable leaves for that file path, so NSF containers contribute subtracks rather than the raw container file.
 - File-tree file selection stores source-file IDs. A normal folder-row selection toggles expansion and does not alter the playlist or file selection.
 - A file-tree folder double-click resolves tracks by the indexed folder path and all descendant folder paths. File activation replaces the playlist only on double-click or Return.

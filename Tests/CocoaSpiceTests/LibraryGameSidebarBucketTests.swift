@@ -92,7 +92,7 @@ private func gameBucketCount(database: LibraryDatabase, rootID: Int64) throws ->
     return Int(sqlite3_column_int(statement, 0))
 }
 
-@Test func gameSidebarBucketMigrationPrewarmsExistingVersionThirteenLibrary() throws {
+@Test func outdatedDatabaseIsRebuiltAsTheCurrentSchema() throws {
     let directory = FileManager.default.temporaryDirectory
         .appendingPathComponent("cocoaspice-game-sidebar-migration-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -103,58 +103,16 @@ private func gameBucketCount(database: LibraryDatabase, rootID: Int64) throws ->
     #expect(sqlite3_open(databaseURL.path, &handle) == SQLITE_OK)
     defer { sqlite3_close(handle) }
     try executeSQLite(handle, """
-    CREATE TABLE library_roots (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        path TEXT NOT NULL UNIQUE,
-        is_enabled INTEGER NOT NULL DEFAULT 1,
-        display_order INTEGER NOT NULL DEFAULT 0,
-        created_at REAL NOT NULL,
-        last_scan_started_at REAL,
-        last_scan_completed_at REAL,
-        last_scan_track_count INTEGER NOT NULL DEFAULT 0,
-        last_scan_error TEXT,
-        is_attached INTEGER NOT NULL DEFAULT 1
-    );
-    CREATE TABLE tracks (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        root_id INTEGER NOT NULL,
-        folder_path TEXT NOT NULL,
-        path TEXT NOT NULL,
-        filename TEXT NOT NULL,
-        extension TEXT NOT NULL,
-        browser_game TEXT NOT NULL DEFAULT '',
-        browser_system TEXT NOT NULL DEFAULT '',
-        track_index INTEGER NOT NULL DEFAULT 0,
-        track_count INTEGER NOT NULL DEFAULT 1,
-        file_size INTEGER NOT NULL,
-        modified_at REAL NOT NULL,
-        discovered_at REAL NOT NULL,
-        archive_path TEXT,
-        archive_entry TEXT,
-        UNIQUE(root_id, path, archive_entry, track_index)
-    );
-    CREATE TABLE dead_sources (
-        root_id INTEGER NOT NULL,
-        path TEXT NOT NULL,
-        marked_at REAL NOT NULL,
-        PRIMARY KEY(root_id, path)
-    );
-    INSERT INTO library_roots (id, path, is_enabled, display_order, created_at)
-    VALUES (1, '/Music', 1, 0, 0);
-    INSERT INTO tracks (root_id, folder_path, path, filename, extension, browser_game, browser_system, track_index, track_count, file_size, modified_at, discovered_at)
-    VALUES (1, '/Music/Game', '/Music/Game/theme.spc', 'theme.spc', 'spc', 'Game', 'SNES', 0, 1, 1, 0, 0);
-    PRAGMA user_version = 13;
+    CREATE TABLE obsolete_library_table (id INTEGER PRIMARY KEY, value TEXT);
+    INSERT INTO obsolete_library_table VALUES (1, 'stale');
+    PRAGMA user_version = 14;
     """)
     sqlite3_close(handle)
     handle = nil
 
     let database = try LibraryDatabase(databaseURL: databaseURL)
-    try LibraryDatabase.prepareGameSidebarIndex(databaseURL: databaseURL)
-
-    #expect(try database.loadGameItems() == [
-        DatabaseGameItem(name: "Game", systemName: "SNES", trackCount: 1)
-    ])
-    #expect(try gameBucketCount(database: database, rootID: 1) == 1)
+    #expect(try database.loadRoots().isEmpty)
+    #expect(try database.loadGameItems().isEmpty)
 }
 
 private func executeSQLite(_ database: OpaquePointer?, _ sql: String) throws {

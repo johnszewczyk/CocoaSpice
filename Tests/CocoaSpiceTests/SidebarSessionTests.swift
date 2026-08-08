@@ -21,6 +21,19 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(items[0].searchableName.contains("nes"))
 }
 
+@Test func databaseGameSearchIndexNarrowsPrefixQueriesAndRebuildsAfterBackspace() {
+    var index = DatabaseGameSearchIndex(items: [
+        DatabaseGameItem(name: "Actraiser", systemName: "SNES", trackCount: 18),
+        DatabaseGameItem(name: "ActRaiser 2", systemName: "SNES", trackCount: 20),
+        DatabaseGameItem(name: "Chrono Trigger", systemName: "SNES", trackCount: 64)
+    ])
+
+    #expect(index.items(matching: "act").map(\.name) == ["Actraiser", "ActRaiser 2"])
+    #expect(index.items(matching: "act 2").map(\.name) == ["ActRaiser 2"])
+    #expect(index.items(matching: "chrono").map(\.name) == ["Chrono Trigger"])
+    #expect(index.items(matching: "").count == 3)
+}
+
 @Test func databaseFileSidebarBuildsAnExpandableScannedTree() {
     let rootPath = "/music/Library"
     let item = DatabaseFileItem(
@@ -329,6 +342,23 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(restored?.tracks.count == AppSessionPersistence.maximumRestoredPlaylistTracks)
     #expect(restored?.deferredTrackCount == 2)
     #expect(restored?.deferredPersistedValues.count == 2)
+}
+
+@Test func restoredSessionDoesNotWalkSourcePathsDuringLaunch() {
+    let suiteName = "CocoaSpiceTests.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        Issue.record("Failed to create isolated UserDefaults suite")
+        return
+    }
+    defaults.removePersistentDomain(forName: suiteName)
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    let track = TrackItem(url: URL(fileURLWithPath: "/not-present/Theme.spc"))
+    defaults.set([track.persistedValue], forKey: AppDefaultsKey.persistedPlaylistPaths)
+
+    #expect(
+        AppSessionPersistence.restoreSessionState(defaults: defaults, supportedExtensions: ["spc"])?.tracks == [track]
+    )
 }
 
 @Test func playlistM3URoundTripsArchiveLeaf() throws {

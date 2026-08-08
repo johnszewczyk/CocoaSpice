@@ -2,18 +2,6 @@ import Foundation
 import SQLite3
 
 extension LibraryDatabase {
-    /// Prepares the durable Games-sidebar projection off the main actor before
-    /// the first sidebar read. Existing installs rebuild only roots marked
-    /// dirty by a schema upgrade or interrupted library write.
-    static func prepareGameSidebarIndex(databaseURL: URL) throws {
-        let database = try LibraryDatabase(databaseURL: databaseURL)
-        try database.execute("""
-        CREATE INDEX IF NOT EXISTS tracks_game_sidebar_index
-        ON tracks(browser_game, browser_system, root_id, path);
-        """)
-        try database.refreshDirtyGameSidebarBuckets()
-    }
-
     func refreshDirtyGameSidebarBuckets() throws {
         let sql = """
         SELECT id

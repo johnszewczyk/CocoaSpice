@@ -461,7 +461,6 @@ final class PlayerViewModel {
     }
 
     init() {
-        AppSessionPersistence.migrateLegacyPreferences()
         let restoredState = AppSessionPersistence.restoreStartupState(
             supportedExtensions: PlaybackFormatRegistry.supportedExtensions
         )
@@ -2840,11 +2839,7 @@ final class PlayerViewModel {
         isLoadingDatabaseSidebar = true
         let task = Task { [weak self] in
             let content = await Task.detached(priority: .utility) {
-                // Prewarm the durable Games projection on this utility task.
-                // The first window and main actor remain free while an older
-                // library upgrades or repairs an interrupted projection write.
-                try? LibraryDatabase.prepareGameSidebarIndex(databaseURL: databaseURL)
-                return (try? LibraryDatabase.loadGameSidebarItems(databaseURL: databaseURL)) ?? []
+                (try? LibraryDatabase.loadGameSidebarItems(databaseURL: databaseURL)) ?? []
             }.value
             guard !Task.isCancelled,
                   let self,

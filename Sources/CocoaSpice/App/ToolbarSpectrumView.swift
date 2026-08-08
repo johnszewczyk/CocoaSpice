@@ -18,6 +18,7 @@ final class ToolbarSpectrumModel {
     private var capHoldRemaining = Array(repeating: 0.0, count: SpectrumBandCount.defaultValue)
     private var lastAnimationUptime: TimeInterval?
     private var displayTimer: Timer?
+    private weak var displaySurface: NSView?
     private(set) var isAnimating = false
     var isVisible = false {
         didSet {
@@ -26,7 +27,11 @@ final class ToolbarSpectrumModel {
             }
         }
     }
-    var displayInvalidationHandler: (() -> Void)?
+
+    func attachDisplaySurface(_ surface: NSView) {
+        displaySurface = surface
+        surface.needsDisplay = true
+    }
 
     func update(with newLevels: [Float]) {
         // The audio callback may have one in-flight result after playback is
@@ -52,7 +57,7 @@ final class ToolbarSpectrumModel {
         levels = Array(repeating: 0, count: clamped)
         capLevels = Array(repeating: 0, count: clamped)
         capHoldRemaining = Array(repeating: 0, count: clamped)
-        displayInvalidationHandler?()
+        invalidateDisplaySurface()
     }
 
     private func startDisplayTimer() {
@@ -109,7 +114,7 @@ final class ToolbarSpectrumModel {
                 capLevels[index] = max(next, capLevels[index] * exp(-capDropDecayRate * elapsed))
             }
         }
-        displayInvalidationHandler?()
+        invalidateDisplaySurface()
     }
 
     func reset() {
@@ -124,7 +129,11 @@ final class ToolbarSpectrumModel {
             capLevels[index] = 0
             capHoldRemaining[index] = 0
         }
-        displayInvalidationHandler?()
+        invalidateDisplaySurface()
+    }
+
+    private func invalidateDisplaySurface() {
+        displaySurface?.needsDisplay = true
     }
 }
 
@@ -156,9 +165,7 @@ final class ToolbarSpectrumNativeView: NSView {
         self.model = model
         super.init(frame: .zero)
         wantsLayer = false
-        model.displayInvalidationHandler = { [weak self] in
-            self?.needsDisplay = true
-        }
+        model.attachDisplaySurface(self)
         setAccessibilityLabel("Spectrum Analyzer")
     }
 

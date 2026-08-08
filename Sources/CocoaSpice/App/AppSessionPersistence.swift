@@ -108,36 +108,9 @@ struct RestoredAppStartupState {
 }
 
 enum AppSessionPersistence {
-    private static let legacyPrefix = "SPCBoy."
-    /// NSTableView can virtualize rows, but restoring hundreds of thousands of
-    /// TrackItems and their session bookkeeping before the first frame cannot.
-    /// Keep a substantial queue available while ensuring launch is bounded.
-    static let maximumRestoredPlaylistTracks = 10_000
-
-    static func migrateLegacyPreferences(defaults: UserDefaults = .standard) {
-        defaults.removeObject(forKey: "CocoaSpice.fastLibraryScan")
-        defaults.removeObject(forKey: "SPCBoy.fastLibraryScan")
-        let keys = [
-            "lastRootPath", "lastSelectedFolderPath", "lastLibrarySelectedFolderPath",
-            "sidebarSearchText", "playlistSearchText", "longPlayEnabled", "manualPreFadeSeconds", "endFadeEnabled",
-            "spectrumGradientStartColor", "spectrumGradientEndColor", "spectrumPeakColor", "spectrumEnabled", "spectrumBandCount", "equalizerEnabled", "equalizerBandGains", "appVolume", "randomPlaybackScope", "repeatMode",
-            "sidebarDoubleClickAction", "playlistFollowsCursor", "lastAudioExportDirectoryPath",
-            "playlistSortColumn", "playlistSortDirection", "persistedPlaylistPaths",
-            "persistedSelectedTrackPath", "persistedCurrentTrackPath", "playlistColumnOrder",
-            "playlistColumnVisibility", "playlistColumnWidths", "databaseSidebarFontSize", "databaseSidebarTextColor", "databaseSidebarMonospaceFont", "databaseSidebarDisclosureGap", "databaseSidebarDisclosureGapPoints", "databaseSidebarHidesFileExtensions", "playlistFontSize", "playlistTextColor", "playlistMonospaceFont", "sidebarSystemMode", "sidebarBrowserMode"
-        ]
-
-        for suffix in keys {
-            let legacyKey = legacyPrefix + suffix
-            let currentKey = "CocoaSpice." + suffix
-            guard defaults.object(forKey: currentKey) == nil,
-                  let legacyValue = defaults.object(forKey: legacyKey) else {
-                continue
-            }
-            defaults.set(legacyValue, forKey: currentKey)
-            defaults.removeObject(forKey: legacyKey)
-        }
-    }
+    /// Launch restores a bounded visible queue. The untouched remainder stays
+    /// persisted for the next save without forcing a large table construction.
+    static let maximumRestoredPlaylistTracks = 1_024
 
     static func restorePlaybackPreferences(defaults: UserDefaults = .standard) -> RestoredPlaybackPreferences {
         return RestoredPlaybackPreferences(
@@ -293,7 +266,6 @@ enum AppSessionPersistence {
 
     static func restoreSessionState(
         defaults: UserDefaults = .standard,
-        fileManager: FileManager = .default,
         supportedExtensions: Set<String>
     ) -> RestoredSessionState? {
         let values = defaults.stringArray(forKey: AppDefaultsKey.persistedPlaylistPaths) ?? []
@@ -301,7 +273,6 @@ enum AppSessionPersistence {
         let deferredValues = Array(values.dropFirst(restoredValues.count))
         let tracks = restoredValues
             .compactMap(TrackItem.fromPersistedValue)
-            .filter { fileManager.fileExists(atPath: $0.url.path) }
             .filter { supportedExtensions.contains($0.playablePathExtension) }
 
         guard !tracks.isEmpty else { return nil }
@@ -319,14 +290,12 @@ enum AppSessionPersistence {
 
     static func restoreStartupState(
         defaults: UserDefaults = .standard,
-        fileManager: FileManager = .default,
         supportedExtensions: Set<String>
     ) -> RestoredAppStartupState {
         RestoredAppStartupState(
             playbackPreferences: restorePlaybackPreferences(defaults: defaults),
             sessionState: restoreSessionState(
                 defaults: defaults,
-                fileManager: fileManager,
                 supportedExtensions: supportedExtensions
             ),
             playlistColumnState: restorePlaylistColumnState(defaults: defaults),

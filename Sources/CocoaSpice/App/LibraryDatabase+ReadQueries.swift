@@ -61,9 +61,9 @@ extension LibraryDatabase {
         return try loadGameItemsFromTracks(handle: handle)
     }
 
-    /// An interrupted scan or first-run migration can leave one root's
-    /// projection dirty. Preserve exact sidebar results until the existing
-    /// utility prewarm repairs it, rather than showing a stale game list.
+    /// An interrupted or active scan can leave one root's projection dirty.
+    /// Preserve exact sidebar results through the direct query rather than
+    /// showing a stale game list.
     private static func gameSidebarBucketsAreCurrent(handle: OpaquePointer) throws -> Bool {
         let sql = "SELECT NOT EXISTS (SELECT 1 FROM library_roots WHERE is_enabled = 1 AND game_sidebar_buckets_dirty = 1);"
         var statement: OpaquePointer?
