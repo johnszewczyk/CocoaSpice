@@ -41,8 +41,33 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     defaults.removePersistentDomain(forName: suiteName)
     defer { defaults.removePersistentDomain(forName: suiteName) }
     defaults.set(0.36, forKey: AppDefaultsKey.appVolume)
+    defaults.set(true, forKey: AppDefaultsKey.monoEnabled)
 
     #expect(AppSessionPersistence.restorePlaybackPreferences(defaults: defaults).appVolume == 0.36)
+    #expect(AppSessionPersistence.restorePlaybackPreferences(defaults: defaults).monoEnabled)
+}
+
+@Test func monoRingBufferMixesStereoAndDuplicatesTheResult() throws {
+    let ringBuffer = try RealtimePCMFrameRingBuffer(capacityFrames: 8)
+    let left: [Float] = [1, 0.5, -1]
+    let right: [Float] = [-1, 0, 0.5]
+    let written = left.withUnsafeBufferPointer { leftPointer in
+        right.withUnsafeBufferPointer { rightPointer in
+            ringBuffer.writeMonoFromStereo(left: leftPointer, right: rightPointer)
+        }
+    }
+    var renderedLeft = Array(repeating: Float.zero, count: 3)
+    var renderedRight = Array(repeating: Float.zero, count: 3)
+    let read = renderedLeft.withUnsafeMutableBufferPointer { leftPointer in
+        renderedRight.withUnsafeMutableBufferPointer { rightPointer in
+            ringBuffer.read(left: leftPointer, right: rightPointer)
+        }
+    }
+
+    #expect(written == 3)
+    #expect(read == 3)
+    #expect(renderedLeft == [0, 0.25, -0.25])
+    #expect(renderedRight == renderedLeft)
 }
 
 @Test func wwiseEventBanksAreExcludedAsNonPlayableResources() throws {

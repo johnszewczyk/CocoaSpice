@@ -19,6 +19,7 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
     private var generation = 0
     private var configurationChangeObserver: NSObjectProtocol?
     private var spectrumTapInstalled = false
+    private var monoEnabled = false
 
     init(
         sampleRate: Double = 44_100,
@@ -127,6 +128,10 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
         engine.mainMixerNode.outputVolume = AudioOutputVolume.clamped(volume)
     }
 
+    func setMonoEnabled(_ enabled: Bool) {
+        monoEnabled = enabled
+    }
+
     func setConfigurationChangeHandler(_ handler: @escaping @Sendable () -> Void) {
         configurationChangeObserver = NotificationCenter.default.addObserver(
             forName: .AVAudioEngineConfigurationChange,
@@ -162,7 +167,9 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
         left: UnsafeBufferPointer<Float>,
         right: UnsafeBufferPointer<Float>
     ) -> Int {
-        ringBuffer.write(left: left, right: right)
+        monoEnabled
+            ? ringBuffer.writeMonoFromStereo(left: left, right: right)
+            : ringBuffer.write(left: left, right: right)
     }
 
     func markTrackLoaded(generation: Int) {

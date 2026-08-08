@@ -53,6 +53,7 @@
 - Database state restores from the existing database on launch and does not rescan automatically.
 - The live SQLite handle remains open for the lifetime of the model; removing the last root does not delete the open database file.
 - Database setup and scan-root persistence errors remain visible through scan status instead of being converted into an empty root list.
+- `LibraryOperationsState` presents scans and Test Links through one temporary bottom-level Scan Status panel. It owns progress and cancellation state, leaving path rows and their controls structurally unchanged while maintenance runs.
 - SQLite persistence errors include the extended SQLite result code so a filesystem write failure can be distinguished from ordinary lock contention or malformed scan metadata.
 - Each root's Log button opens a plain-text scan log. The stable native title identifies the root, and an in-window summary header carries live/completed statistics; the content is only error lines. Persisted logs and the text view are byte/row bounded, and historical issues are inserted as one batch so a failed large scan cannot stall or crash the app when Log opens.
 - `scripts/scan-pipeline.sh <root>` runs the scan pipeline from the command line; `COCOASPICE_SCAN_PERSIST=1` exercises the SQLite coordinator as well.

@@ -242,6 +242,9 @@ final class PlayerViewModel {
     var appVolume: Float = 1 {
         didSet { playbackStorage?.setAppVolume(appVolume) }
     }
+    var monoEnabled = false {
+        didSet { playbackStorage?.setMonoEnabled(monoEnabled) }
+    }
     var randomPlaybackScope: RandomPlaybackScope = .off
     var repeatMode: RepeatMode = .off
     private var randomLibraryTracks: [TrackItem] = []
@@ -393,6 +396,7 @@ final class PlayerViewModel {
         playback.setSpectrumBandCount(spectrumBandCount)
         playback.setEqualizer(enabled: equalizerEnabled, bandGains: equalizerBandGains)
         playback.setAppVolume(appVolume)
+        playback.setMonoEnabled(monoEnabled)
         playback.setPlaybackStateHandler { [weak self] snapshot in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -727,7 +731,7 @@ final class PlayerViewModel {
             self.reloadLibraryScanRoots()
             self.reloadDatabaseGameItems()
             self.refreshDeadLinkSummary()
-            self.libraryScanStatus = "Test Links • \(result.checkedCount) sources checked • \(result.missingSources.count) missing marked dead"
+            self.libraryScanStatus = "Test Links • \(result.checkedCount) sources checked • \(result.missingSources.count) unlinked sources found"
         }
         libraryOperations.installTask(task, generation: generation)
     }
@@ -797,6 +801,14 @@ final class PlayerViewModel {
     }
 
     func stopLibraryScan() {
+        if trimMissingProgress != nil {
+            libraryOperations.cancelActiveTask()
+            libraryScanInProgress = false
+            trimMissingProgress = nil
+            trimMissingCurrentPath = nil
+            libraryScanStatus = "Test Links stopped"
+            return
+        }
         libraryScanController?.stop()
     }
 
@@ -808,6 +820,10 @@ final class PlayerViewModel {
 
     var libraryOperationProgress: LibraryScanProgress? {
         libraryOperations.operationProgress
+    }
+
+    var libraryOperationIsLinkTest: Bool {
+        trimMissingProgress != nil
     }
 
     private func runModernLibraryScan(for roots: [LibraryScanRoot], mode: ScanMode) {
@@ -1379,6 +1395,7 @@ final class PlayerViewModel {
             equalizerEnabled: equalizerEnabled,
             equalizerBandGains: equalizerBandGains,
             appVolume: appVolume,
+            monoEnabled: monoEnabled,
             randomPlaybackScopeRawValue: randomPlaybackScope.rawValue,
             repeatModeRawValue: repeatMode.rawValue,
             sidebarDoubleClickActionRawValue: sidebarDoubleClickAction.rawValue,
@@ -1409,6 +1426,11 @@ final class PlayerViewModel {
 
     func setAppVolume(_ volume: Float) {
         appVolume = AudioOutputVolume.clamped(volume)
+        savePreferencesNow()
+    }
+
+    func setMonoEnabled(_ enabled: Bool) {
+        monoEnabled = enabled
         savePreferencesNow()
     }
 
@@ -2941,6 +2963,7 @@ final class PlayerViewModel {
             equalizerBandGains = storedGains.map { AudioEqualizer.clampedGain(Float($0)) }
         }
         appVolume = AudioOutputVolume.clamped(Float(preferences.appVolume))
+        monoEnabled = preferences.monoEnabled
         randomPlaybackScope = RandomPlaybackScope(rawValue: preferences.randomPlaybackScopeRawValue ?? "off") ?? .off
         repeatMode = RepeatMode(rawValue: preferences.repeatModeRawValue ?? "off") ?? .off
         if randomPlaybackScope == .library { loadRandomLibraryTracks() }

@@ -18,6 +18,7 @@ enum AppDefaultsKey {
     static let equalizerEnabled = "CocoaSpice.equalizerEnabled"
     static let equalizerBandGains = "CocoaSpice.equalizerBandGains"
     static let appVolume = "CocoaSpice.appVolume"
+    static let monoEnabled = "CocoaSpice.monoEnabled"
     static let randomPlaybackScope = "CocoaSpice.randomPlaybackScope"
     static let repeatMode = "CocoaSpice.repeatMode"
     static let sidebarDoubleClickAction = "CocoaSpice.sidebarDoubleClickAction"
@@ -57,6 +58,7 @@ struct RestoredPlaybackPreferences {
     let equalizerEnabled: Bool
     let equalizerBandGains: [Double]?
     let appVolume: Double
+    let monoEnabled: Bool
     let randomPlaybackScopeRawValue: String?
     let repeatModeRawValue: String?
     let sidebarDoubleClickActionRawValue: String?
@@ -154,6 +156,7 @@ enum AppSessionPersistence {
             equalizerEnabled: defaults.object(forKey: AppDefaultsKey.equalizerEnabled) as? Bool ?? false,
             equalizerBandGains: (defaults.array(forKey: AppDefaultsKey.equalizerBandGains) as? [NSNumber])?.map(\.doubleValue),
             appVolume: defaults.object(forKey: AppDefaultsKey.appVolume) as? Double ?? 1,
+            monoEnabled: defaults.object(forKey: AppDefaultsKey.monoEnabled) as? Bool ?? false,
             randomPlaybackScopeRawValue: defaults.string(forKey: AppDefaultsKey.randomPlaybackScope),
             repeatModeRawValue: defaults.string(forKey: AppDefaultsKey.repeatMode),
             sidebarDoubleClickActionRawValue: defaults.string(forKey: AppDefaultsKey.sidebarDoubleClickAction),
@@ -208,6 +211,7 @@ enum AppSessionPersistence {
         equalizerEnabled: Bool,
         equalizerBandGains: [Float],
         appVolume: Float,
+        monoEnabled: Bool,
         randomPlaybackScopeRawValue: String,
         repeatModeRawValue: String,
         sidebarDoubleClickActionRawValue: String,
@@ -236,6 +240,7 @@ enum AppSessionPersistence {
         defaults.set(equalizerEnabled, forKey: AppDefaultsKey.equalizerEnabled)
         defaults.set(equalizerBandGains.map(Double.init), forKey: AppDefaultsKey.equalizerBandGains)
         defaults.set(Double(AudioOutputVolume.clamped(appVolume)), forKey: AppDefaultsKey.appVolume)
+        defaults.set(monoEnabled, forKey: AppDefaultsKey.monoEnabled)
         defaults.set(randomPlaybackScopeRawValue, forKey: AppDefaultsKey.randomPlaybackScope)
         defaults.set(repeatModeRawValue, forKey: AppDefaultsKey.repeatMode)
         defaults.set(sidebarDoubleClickActionRawValue, forKey: AppDefaultsKey.sidebarDoubleClickAction)

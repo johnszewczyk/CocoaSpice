@@ -60,6 +60,24 @@ final class RealtimePCMFrameRingBuffer: @unchecked Sendable {
         ))
     }
 
+    /// Mixes left and right at equal power into one stock mono channel, then
+    /// writes that exact sample to both output channels.
+    func writeMonoFromStereo(left: UnsafeBufferPointer<Float>, right: UnsafeBufferPointer<Float>) -> Int {
+        let frameCount = min(left.count, right.count)
+        guard frameCount > 0,
+              let leftBaseAddress = left.baseAddress,
+              let rightBaseAddress = right.baseAddress else {
+            return 0
+        }
+
+        return Int(cs_audio_ring_buffer_write_mono_from_stereo(
+            rawBuffer,
+            leftBaseAddress,
+            rightBaseAddress,
+            UInt64(frameCount)
+        ))
+    }
+
     func read(
         left: UnsafeMutableBufferPointer<Float>,
         right: UnsafeMutableBufferPointer<Float>

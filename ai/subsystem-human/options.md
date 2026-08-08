@@ -11,8 +11,8 @@
 - Data: is a separate Options sidebar page with Database and Cache panels.
 - Database: reports total indexed tracks, unlinked tracks, and unlinked sources. It retains file data when files move on disk to speed up scans; Clean Unlinked permanently removes retained unlinked sources and their tracks, metadata, and scan inventory. One unlinked source can retain many tracks, especially an archive, so the source and track counts need not match. Its count and cleanup work begin only when this Data panel is opened, run in the background, and refresh the sidebar only after cleanup completes. Reset Database asks for confirmation, then removes all indexed files, metadata, scan inventory, and scan status while retaining configured library paths.
 - Cache: shows the managed archive-cache size and file count. Clear Cache stops playback and removes cached archive material; it is unavailable while a library scan is running.
-- Scanning: Library Paths slides a full-width progress bar below its heading while a scan or link test is active; it hides when the operation completes.
-- Test Links checks only whether each unique indexed source path exists, then marks confirmed-missing sources unlinked and hides them while retaining their tracks, metadata, and scan inventory. It does not detect changed files or archives, open archives, or read metadata; use Scan or Scan All to refresh changed content. Rediscovery restores an unlinked source; only Clean Unlinked or Reset Database permanently discards it.
+- Scan Status: a separate bottom Library panel slides in only while a scan or Test Links is active. It shows the current status and full-width progress bar, with the only cancel control, so library-path rows never shift while work is running.
+- Test Links checks only whether each unique indexed source path exists, then reports checked and found-unlinked source totals before hiding confirmed-missing sources while retaining their tracks, metadata, and scan inventory. It does not detect changed files or archives, open archives, or read metadata; use Scan or Scan All to refresh changed content. Rediscovery restores an unlinked source; only Clean Unlinked or Reset Database permanently discards it.
 - Library paths are automatically sorted by path. Each compact row has enablement, its green/yellow/red result icon, an abbreviated path with the full path on hover, and glyph actions for Scan, Log, and Delete. Enablement changes immediately, then coalesce into one background persistence/sidebar refresh so several checkboxes can be changed without waiting. The row Scan action works even when that path is unchecked, without enabling it for the Database or Scan All. Scan reuses prior results for unchanged successful files unless Deep Scan is checked; failed or changed files are attempted again automatically.
 - Scan requests queue behind an active scan instead of interrupting it. Stop clears the active scan and all pending scans. Test Links is unavailable while scanning.
 - Logs use a stable `Scan Log` window title and a header line for scan date, duration, success/total, and issue count; the body is the error list.
@@ -21,6 +21,7 @@
 ## Audio
 
 - Volume: its explanation appears directly below the panel heading; the App Volume slider lowers CocoaSpice playback from its standard 100% output level without adding gain. macOS volume keys continue to control system volume.
+- Mono: combines the left and right channels and duplicates that mixed signal to both speakers.
 - Equalizer: enable ten shared 31 Hz–16 kHz bands, adjust each by ±12 dB, and reset all gains to flat. The setting applies to every playback format and can also be toggled from the main toolbar.
 
 ## Playback

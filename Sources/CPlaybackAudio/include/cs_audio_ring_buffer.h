@@ -23,6 +23,13 @@ uint64_t cs_audio_ring_buffer_write_stereo(
     uint64_t frame_count
 );
 
+uint64_t cs_audio_ring_buffer_write_mono_from_stereo(
+    CSAudioRingBuffer *buffer,
+    const float *left,
+    const float *right,
+    uint64_t frame_count
+);
+
 uint64_t cs_audio_ring_buffer_read_stereo(
     CSAudioRingBuffer *buffer,
     float *left,

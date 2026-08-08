@@ -198,7 +198,25 @@ struct OptionsView: View {
     private var audioPage: some View {
         VStack(alignment: .leading, spacing: 16) {
             appVolumeCard
+            monoCard
             equalizerCard
+        }
+    }
+
+    private var monoCard: some View {
+        sectionCard(title: "Mono") {
+            Toggle(isOn: Binding(
+                get: { model.monoEnabled },
+                set: { model.setMonoEnabled($0) }
+            )) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Enable Mono")
+                    Text("Mix left and right channels, then play the same signal through both speakers.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .toggleStyle(.checkbox)
         }
     }
 
@@ -495,11 +513,6 @@ struct OptionsView: View {
     private var libraryPage: some View {
         VStack(alignment: .leading, spacing: 16) {
             sectionCard(title: "Library Paths") {
-                if let progress = model.libraryOperationProgress {
-                    libraryOperationProgressBar(progress)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                }
-
                 if model.libraryScanRoots.isEmpty {
                     Text("No scan roots configured.")
                         .font(.system(size: 12))
@@ -537,14 +550,8 @@ struct OptionsView: View {
                         model.trimMissingLibrary()
                     }
                     .disabled(model.libraryScanInProgress)
-                    if model.libraryScanInProgress {
-                        libraryActionButton(model.queuedLibraryScanCount > 0 ? "Stop + Clear Queue" : "Stop") {
-                            model.stopLibraryScan()
-                        }
-                    }
                 }
             }
-            .animation(.easeInOut(duration: 0.2), value: model.libraryOperationProgress != nil)
 
             sectionCard(title: "Scanner Options") {
                 Toggle(isOn: $model.forceLibraryScan) {
@@ -559,7 +566,26 @@ struct OptionsView: View {
                     .disabled(model.libraryScanInProgress)
             }
 
+            if let progress = model.libraryOperationProgress {
+                sectionCard(title: "Scan Status") {
+                    if let status = model.libraryScanStatus {
+                        Text(status)
+                            .font(.system(size: 12))
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    libraryOperationProgressBar(progress)
+                    Button(model.libraryOperationIsLinkTest ? "Cancel Test Links" : (model.queuedLibraryScanCount > 0 ? "Stop Scan + Clear Queue" : "Cancel Scan")) {
+                        model.stopLibraryScan()
+                    }
+                    .frame(maxWidth: .infinity)
+                    .keyboardShortcut(.cancelAction)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
         }
+        .animation(.easeInOut(duration: 0.2), value: model.libraryOperationProgress != nil)
     }
 
     private var dataPage: some View {

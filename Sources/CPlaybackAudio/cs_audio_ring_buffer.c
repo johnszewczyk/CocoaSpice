@@ -148,6 +148,44 @@ uint64_t cs_audio_ring_buffer_write_stereo(
     return frames_to_write;
 }
 
+uint64_t cs_audio_ring_buffer_write_mono_from_stereo(
+    CSAudioRingBuffer *buffer,
+    const float *left,
+    const float *right,
+    uint64_t frame_count
+) {
+    if (buffer == NULL || left == NULL || right == NULL || frame_count == 0) {
+        return 0;
+    }
+
+    uint64_t write_index = atomic_load_explicit(&buffer->write_index, memory_order_relaxed);
+    uint64_t read_index = atomic_load_explicit(&buffer->read_index, memory_order_acquire);
+    uint64_t available = buffer->capacity_frames - (write_index - read_index);
+    uint64_t frames_to_write = frame_count < available ? frame_count : available;
+    uint64_t clipped_samples = 0;
+
+    for (uint64_t offset = 0; offset < frames_to_write; offset += 1) {
+        uint64_t slot = (write_index + offset) % buffer->capacity_frames;
+        float mono_sample = (left[offset] + right[offset]) * 0.5f;
+        if (mono_sample > 1.0f || mono_sample < -1.0f) {
+            clipped_samples += 2;
+        }
+        buffer->left[slot] = mono_sample;
+        buffer->right[slot] = mono_sample;
+    }
+
+    if (clipped_samples > 0) {
+        atomic_fetch_add_explicit(&buffer->clipped_sample_count, clipped_samples, memory_order_relaxed);
+    }
+
+    atomic_store_explicit(
+        &buffer->write_index,
+        write_index + frames_to_write,
+        memory_order_release
+    );
+    return frames_to_write;
+}
+
 uint64_t cs_audio_ring_buffer_read_stereo(
     CSAudioRingBuffer *buffer,
     float *left,

@@ -17,6 +17,7 @@ final class PlaybackEngine: @unchecked Sendable {
     private var equalizerEnabled = false
     private var equalizerBandGains = AudioEqualizer.bandFrequencies.map { _ in Float.zero }
     private var appVolume: Float = 1
+    private var monoEnabled = false
     private var playbackStateHandler: (@Sendable (PlaybackStatusSnapshot) -> Void)?
     private var latestPlaybackRequest = 0
 
@@ -79,6 +80,13 @@ final class PlaybackEngine: @unchecked Sendable {
         queue.async {
             self.appVolume = AudioOutputVolume.clamped(volume)
             self.nativeSession.setAppVolume(self.appVolume)
+        }
+    }
+
+    func setMonoEnabled(_ enabled: Bool) {
+        queue.async {
+            self.monoEnabled = enabled
+            self.nativeSession.setMonoEnabled(enabled)
         }
     }
 

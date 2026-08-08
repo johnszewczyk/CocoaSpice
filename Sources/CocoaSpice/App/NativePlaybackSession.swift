@@ -66,6 +66,12 @@ final class NativePlaybackSession: @unchecked Sendable {
         }
     }
 
+    func setMonoEnabled(_ enabled: Bool) {
+        refillQueue.sync {
+            output.setMonoEnabled(enabled)
+        }
+    }
+
     private var spectrumHandler: ((AVAudioPCMBuffer, AVAudioTime?) -> Void)?
 
     func setSpectrumHandler(_ handler: ((AVAudioPCMBuffer, AVAudioTime?) -> Void)?) {
