@@ -79,12 +79,12 @@ struct OptionsView: View {
         .background(OptionsWindowConfigurator())
         .onAppear {
             longPlayTimeText = Self.formatTime(model.manualPreFadeSeconds)
-            guard !hasInitializedPresentation else { return }
-            hasInitializedPresentation = true
-            selection = .library
             DispatchQueue.main.async {
                 NSApp.windows.first(where: { $0.title == "Options" })?.makeFirstResponder(nil)
             }
+            guard !hasInitializedPresentation else { return }
+            hasInitializedPresentation = true
+            selection = .library
         }
         .onDisappear {
             model.savePreferencesNow()
