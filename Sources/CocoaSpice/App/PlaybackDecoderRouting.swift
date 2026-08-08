@@ -7,6 +7,7 @@ import CLazyUSF
 import C2SF
 import CVGMStream
 import CPlayPSF
+import CFFmpegAudio
 
 private enum HighlyCompleteBridgeGate {
     private static let lock = NSLock()
@@ -71,6 +72,8 @@ enum PlaybackDecoderFactory {
             return try OpenMPTDecoder(track: track, sampleRate: sampleRate)
         case .standardAudio:
             return try StandardAudioDecoder(track: track, sampleRate: sampleRate)
+        case .ffmpegAudio:
+            return try FFmpegAudioDecoder(track: track, sampleRate: sampleRate)
         case .libvgm:
             return try LibVGMDecoder(track: track, sampleRate: sampleRate)
         case .highlyComplete:
@@ -104,6 +107,8 @@ enum PlaybackDecoderFactory {
             return try OpenMPTFileInspector(fileURL: fileURL)
         case .standardAudio:
             return try StandardAudioFileInspector(fileURL: fileURL)
+        case .ffmpegAudio:
+            return try FFmpegAudioFileInspector(fileURL: fileURL)
         case .libvgm:
             return try LibVGMFileInspector(fileURL: fileURL)
         case .highlyComplete:

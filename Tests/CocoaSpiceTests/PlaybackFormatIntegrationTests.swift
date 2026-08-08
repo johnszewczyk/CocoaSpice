@@ -320,6 +320,52 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(summary.unsupported == 0)
 }
 
+@Test func joshWSaturnPanzerDragoonAPEScansAndDecodesThroughFFmpeg() async throws {
+    let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/JoshW/Sega Saturn/Panzer Dragoon (1995-03-10)(Team Andromeda)(Sega)[SAT].tar.zst")
+    guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }
+
+    #expect(GMEFormatSupport.playbackBackend(forPathExtension: "ape") == .ffmpegAudio)
+    #expect(ScanCoreHandlers.registry.route(for: "ape", archiveMember: true)?.pluginID == "ffmpeg-audio")
+    let entry = try #require(ZipArchiveSupport.listPlayableEntries(
+        in: archiveURL,
+        supportedExtensions: SPCFileScanner.supportedExtensions
+    ).first { $0.entryPath == "./81009_02.ape" })
+
+    let decoder = try FFmpegAudioDecoder(
+        track: TrackItem(archiveURL: archiveURL, entryPath: entry.entryPath),
+        sampleRate: 44_100
+    )
+    let metadata = try decoder.metadata()
+    let chunks = try (0..<4).map { _ in try decoder.decode(frameCount: 2_048) }
+
+    #expect(metadata.system == "Sega Saturn")
+    #expect(metadata.playLengthMs > 0)
+    #expect(chunks.allSatisfy { $0.frameCount == 2_048 })
+    #expect(chunks.contains { chunk in
+        chunk.left.contains(where: { abs($0) > 0.0001 }) || chunk.right.contains(where: { abs($0) > 0.0001 })
+    })
+
+    let values = try archiveURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+    let candidate = ScanCandidate(
+        identity: ScanItemIdentity(rootID: 1, path: archiveURL.path, archiveEntry: nil),
+        fingerprint: ScanFingerprint(
+            fileSize: Int64(values.fileSize ?? 0),
+            modifiedAt: values.contentModificationDate ?? .distantPast
+        ),
+        sourceURL: archiveURL,
+        route: nil
+    )
+    let accumulator = try await ScanPipelineExecutor().process(
+        plan: ScanPlan(mode: .newScan, candidates: [candidate]),
+        persist: { _ in }
+    )
+    let summary = await accumulator.summary
+    #expect(summary.completed == 21)
+    #expect(summary.successful == 21)
+    #expect(summary.failed == 0)
+    #expect(summary.unsupported == 0)
+}
+
 @Test func residentEvil2PSFContinuesRealPCMIntoTheSharedFadeWindow() throws {
     let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/JoshW/Sony PlayStation/Resident Evil 2 [Biohazard 2] (1998-01-21)(Capcom Production Studio 4)(Capcom)[PS1].tar.zst")
     guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }

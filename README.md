@@ -43,7 +43,7 @@ All listed playable formats are admitted by the scanner, drag and drop, playlist
 - `.txtp` manifests and PSF/SSF/USF/2SF mini files preserve the necessary archive dependency set during playback.
 - Multi-track files and embedded subsongs become separate playlist tracks.
 - `.fsb` banks and `.txtp` manifests use vgmstream. PSF library files are dependencies, not standalone tracks.
-- Doom `.mus`, APE, raw AAC, and ALAC are currently not playback formats.
+- Doom `.mus`, raw AAC, and ALAC are currently not playback formats. Monkey's Audio `.ape` is supported through FFmpeg.
 
 For the live, implementation-level inventory, see [Supported Formats](ai/subsystem-human/supported-formats.md).
 

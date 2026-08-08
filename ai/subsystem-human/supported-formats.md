@@ -12,6 +12,7 @@ CocoaSpice supports the following formats for library scanning, drag and drop, p
 | Game Boy Advance PSF | `.gsf`, `.minigsf` |
 | Sega Saturn SSF | `.ssf`, `.minissf` |
 | Sega Saturn Konami DVI | `.dvi` |
+| Sega Saturn Monkey's Audio | `.ape` |
 | Nintendo 64 USF | `.usf`, `.miniusf` |
 | Nintendo DS PSF | `.2sf`, `.mini2sf` |
 | PlayStation PSF | `.psf`, `.minipsf` |
@@ -35,7 +36,7 @@ These formats use the built-in vgmstream decoder. This includes `.stream` files 
 
 ## Not Supported for Playback
 
-Raw AAC, ALAC, APE, and Doom MUS are not currently playback formats. PSF library files are dependency resources rather than independently playable tracks.
+Raw AAC, ALAC, and Doom MUS are not currently playback formats. PSF library files are dependency resources rather than independently playable tracks.
 
 ## Notes
 

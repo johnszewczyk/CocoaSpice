@@ -4,6 +4,7 @@ enum PlaybackDecoderBackend: Hashable, Sendable {
     case gme
     case openMPT
     case standardAudio
+    case ffmpegAudio
     case libvgm
     case highlyComplete
     case highlyTheoretical
@@ -105,6 +106,7 @@ enum PlaybackFormatRegistry {
     static let standardAudioSupportedExtensions: Set<String> = [
         "aif", "aiff", "flac", "m4a", "mp3", "wav"
     ]
+    static let ffmpegAudioSupportedExtensions: Set<String> = ["ape"]
 
     static let highlyCompleteSupportedExtensions: Set<String> = [
         "gsf",
@@ -156,6 +158,11 @@ enum PlaybackFormatRegistry {
         PlaybackDecoderModule(
             pluginID: "standard-audio", displayName: "Core Audio", backend: .standardAudio,
             supportedExtensions: standardAudioSupportedExtensions,
+            requiresTrackEnumeration: false, archiveMaterialization: .selectedEntry
+        ),
+        PlaybackDecoderModule(
+            pluginID: "ffmpeg-audio", displayName: "FFmpeg", backend: .ffmpegAudio,
+            supportedExtensions: ffmpegAudioSupportedExtensions,
             requiresTrackEnumeration: false, archiveMaterialization: .selectedEntry
         ),
         PlaybackDecoderModule(

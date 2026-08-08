@@ -174,6 +174,21 @@ let package = Package(
             ]
         ),
         .target(
+            name: "CFFmpegAudio",
+            path: "Sources/CFFmpegAudio",
+            publicHeadersPath: "include",
+            cSettings: [
+                .unsafeFlags(["-I/opt/homebrew/opt/ffmpeg/include"])
+            ],
+            linkerSettings: [
+                .unsafeFlags(["-L/opt/homebrew/opt/ffmpeg/lib"]),
+                .linkedLibrary("avcodec"),
+                .linkedLibrary("avformat"),
+                .linkedLibrary("avutil"),
+                .linkedLibrary("swresample")
+            ]
+        ),
+        .target(
             name: "CPlayPSF",
             path: "Sources/CPlayPSF",
             publicHeadersPath: "include",
@@ -197,7 +212,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "CocoaSpice",
-            dependencies: ["CGME", "COpenMPT", "CLibVGM", "CHighlyComplete", "CHighlyTheoretical", "CLazyUSF", "C2SF", "CPlaybackAudio", "CVGMStream", "CPlayPSF"],
+            dependencies: ["CGME", "COpenMPT", "CLibVGM", "CHighlyComplete", "CHighlyTheoretical", "CLazyUSF", "C2SF", "CPlaybackAudio", "CVGMStream", "CFFmpegAudio", "CPlayPSF"],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("AudioToolbox"),
