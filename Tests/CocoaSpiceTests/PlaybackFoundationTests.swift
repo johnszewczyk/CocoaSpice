@@ -85,6 +85,19 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(model.playlistMonospaceFont)
 }
 
+@Test func headerlessSS2ResourcesAreClassifiedAsUnsupported() throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let rawURL = directory.appendingPathComponent("raw.ss2")
+    let sshdURL = directory.appendingPathComponent("container.ss2")
+    try Data([0x0B, 0x02, 0xF1, 0xF5]).write(to: rawURL)
+    try Data("SShd".utf8).write(to: sshdURL)
+
+    #expect(HeaderlessSS2Detector.isUnsupportedResource(rawURL))
+    #expect(!HeaderlessSS2Detector.isUnsupportedResource(sshdURL))
+}
+
 @Test func wwiseEventBanksAreExcludedAsNonPlayableResources() throws {
     let temporaryURL = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString)

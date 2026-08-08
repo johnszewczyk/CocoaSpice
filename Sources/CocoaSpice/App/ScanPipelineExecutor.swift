@@ -369,6 +369,9 @@ struct ScanPipelineExecutor: Sendable {
         if WwiseBankDetector.isEventBank(fileURL ?? candidate.sourceURL) {
             return .unsupported(candidate)
         }
+        if HeaderlessSS2Detector.isUnsupportedResource(fileURL ?? candidate.sourceURL) {
+            return .unsupported(candidate)
+        }
         let inspection = try await inspectionScheduler.withPermit {
             try await ScanOperationTimeout.run(kind: .metadataInspection, description: "inspecting \(candidate.identityDescription)") {
                 try await handler.inspect(fileURL: fileURL ?? candidate.sourceURL, route: route)

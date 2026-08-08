@@ -30,6 +30,8 @@ This is the current admission matrix for file discovery, database scanning, play
 
 Every extension absent from `PlaybackFormatRegistry.supportedExtensions` is unsupported by discovery, database scanning, playlist intake, and playback. This includes APE, raw AAC, ALAC, and Doom MUS. AAC-in-M4A playback is supported; AAC export does not by itself admit raw `.aac` input.
 
+Headerless `.ss2` payloads are known unsupported resources: the SSHD decoder requires the `SShd` header for sample-rate and channel parameters. They are retained as unsupported scan inventory rather than metadata failures.
+
 ## Implementation Rules
 
 - `PlaybackFormatRegistry` is the source of truth for extension admission, backend routing, archive dependency policy, scan concurrency, and multi-track behavior. Consumers call its admission API rather than open-coding extension membership checks.

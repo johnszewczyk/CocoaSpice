@@ -23,6 +23,20 @@ enum WwiseBankDetector {
     }
 }
 
+enum HeaderlessSS2Detector {
+    /// vgmstream's SS2 route is Sony SSHD and requires its `SShd` container
+    /// header. Raw ADPCM bytes have no sample rate or channel layout to make
+    /// a reliable standalone track, so retain them as known unsupported
+    /// resources instead of presenting a decoder-initialization failure.
+    static func isUnsupportedResource(_ fileURL: URL) -> Bool {
+        guard fileURL.pathExtension.lowercased() == "ss2",
+              let header = try? Data(contentsOf: fileURL, options: [.mappedIfSafe]).prefix(4) else {
+            return false
+        }
+        return header != Data("SShd".utf8)
+    }
+}
+
 enum CorruptAudioPayloadDetector {
     static func reason(for fileURL: URL) -> String? {
         let extensionName = fileURL.pathExtension.lowercased()
@@ -61,6 +75,9 @@ struct DecoderCoreScanHandler: ScanFormatHandler {
     func inspect(fileURL: URL, route: ScanRoute) async throws -> ScanInspection {
         if KDTSequenceDetector.isSilentHillSequenceBank(fileURL) {
             throw SPCDecoderError.library("KDT1/SdDt sequence bank; playable rendering requires the original Konami sequence driver.")
+        }
+        if HeaderlessSS2Detector.isUnsupportedResource(fileURL) {
+            throw SPCDecoderError.library("Headerless SS2 resource; standalone playback requires missing stream parameters.")
         }
         if let corruption = CorruptAudioPayloadDetector.reason(for: fileURL) {
             throw SPCDecoderError.library(corruption)
