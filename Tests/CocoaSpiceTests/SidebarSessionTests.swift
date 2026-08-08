@@ -21,6 +21,19 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(items[0].searchableName.contains("nes"))
 }
 
+@Test func displayNamesStripWholeCompressedTarSuffixes() {
+    #expect(FilenamePresentation.withoutDisplayedExtension("Cool Spot.tar.zst") == "Cool Spot")
+    #expect(FilenamePresentation.withoutDisplayedExtension("Sonic.ZOPHAR.TAR.ZST") == "Sonic.ZOPHAR")
+    #expect(FilenamePresentation.withoutDisplayedExtension("Theme.spc") == "Theme")
+
+    let archiveTrack = TrackItem(
+        archiveURL: URL(fileURLWithPath: "/music/Cool Spot.tar.zst"),
+        entryPath: "Theme.spc"
+    )
+    #expect(archiveTrack.groupDisplayName == "Cool Spot.tar.zst")
+    #expect(archiveTrack.displayName == "Theme")
+}
+
 @Test func databaseGameSearchIndexNarrowsPrefixQueriesAndRebuildsAfterBackspace() {
     var index = DatabaseGameSearchIndex(items: [
         DatabaseGameItem(name: "Actraiser", systemName: "SNES", trackCount: 18),

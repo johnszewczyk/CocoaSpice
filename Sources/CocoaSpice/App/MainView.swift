@@ -1058,9 +1058,7 @@ private struct DatabaseFileListView: NSViewRepresentable {
 
         private func displayedFilename(for item: DatabaseFileItem) -> String {
             guard hideFileExtensions else { return item.filename }
-            let filenameURL = URL(fileURLWithPath: item.filename)
-            let stem = filenameURL.deletingPathExtension().lastPathComponent
-            return stem.isEmpty ? item.filename : stem
+            return FilenamePresentation.withoutDisplayedExtension(item.filename)
         }
 
         private func fileURL(for row: DatabaseFileSidebarTree.Row) -> URL? {

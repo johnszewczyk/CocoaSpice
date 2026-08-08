@@ -508,12 +508,12 @@ struct OptionsView: View {
 
             if let progress = model.libraryOperationProgress {
                 sectionCard(title: "Scan Status") {
-                    if let status = model.libraryScanStatus {
-                        Text(status)
-                            .font(.system(size: 12))
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
+                    Text(model.libraryScanStatus ?? "Working…")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2, reservesSpace: true)
+                        .truncationMode(.tail)
+                        .frame(maxWidth: .infinity, alignment: .topLeading)
                     libraryOperationProgressBar(progress)
                     Button(model.libraryOperationIsLinkTest ? "Cancel Test Links" : (model.queuedLibraryScanCount > 0 ? "Stop Scan + Clear Queue" : "Cancel Scan")) {
                         model.stopLibraryScan()

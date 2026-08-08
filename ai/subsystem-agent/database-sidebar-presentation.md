@@ -39,6 +39,7 @@
 - Files disclosure geometry uses a persisted point gap from Sidebar Options. The triangle glyph follows Sidebar Style font size while the user-selected triangle-to-label space stays exact.
 - Database sidebar tables and the playlist use one non-interactive capsule-selection overlay on full-width table chrome. A single selection glides between rows with the standard ease-in/ease-out curve; multi-selections update as individual capsules. A user-driven sidebar selection must not be immediately re-synced before that transition begins. The overlay must remain below row content and never alter native selection semantics.
 - Files-mode labels omit archive track counts. The optional extension-hiding preference is presentation-only and must not alter database paths, drag payloads, or playback URLs.
+- Extension hiding removes an entire recognized compressed-TAR suffix (for example, `.tar.zst`) in one operation; it must never leave a misleading `.tar` label behind.
 
 ## Files
 

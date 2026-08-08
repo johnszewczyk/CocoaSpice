@@ -58,9 +58,11 @@ enum TrackSource: Hashable, Sendable {
     var displayBaseName: String {
         switch self {
         case .file(let url):
-            return url.deletingPathExtension().lastPathComponent
+            return FilenamePresentation.withoutDisplayedExtension(url.lastPathComponent)
         case .zipEntry(_, let entryPath):
-            return URL(fileURLWithPath: entryPath).deletingPathExtension().lastPathComponent
+            return FilenamePresentation.withoutDisplayedExtension(
+                URL(fileURLWithPath: entryPath).lastPathComponent
+            )
         }
     }
 
@@ -113,6 +115,21 @@ enum TrackSource: Hashable, Sendable {
             .map(String.init)
             .filter { !$0.isEmpty }
             .joined(separator: "/")
+    }
+}
+
+enum FilenamePresentation {
+    private static let compoundArchiveSuffixes = [
+        ".tar.zst", ".tar.zstd", ".tar.gz", ".tar.bz2", ".tar.xz", ".tar.lz", ".tar.lz4"
+    ]
+
+    static func withoutDisplayedExtension(_ filename: String) -> String {
+        let lowercased = filename.lowercased()
+        if let suffix = compoundArchiveSuffixes.first(where: { lowercased.hasSuffix($0) }) {
+            return String(filename.dropLast(suffix.count))
+        }
+        let stem = URL(fileURLWithPath: filename).deletingPathExtension().lastPathComponent
+        return stem.isEmpty ? filename : stem
     }
 }
 
