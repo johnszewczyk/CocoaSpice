@@ -231,7 +231,7 @@ private struct WindowToolbarSpectrumAccessory: NSViewRepresentable {
     final class Coordinator: NSObject {
         @MainActor var model: ToolbarSpectrumModel
         private weak var window: NSWindow?
-        private var hostingView: NSHostingView<ToolbarSpectrumView>?
+        private var hostingView: ToolbarSpectrumNativeView?
         private weak var titlebarContainerView: NSView?
 
         @MainActor
@@ -251,7 +251,7 @@ private struct WindowToolbarSpectrumAccessory: NSViewRepresentable {
             guard hostingView == nil else { return }
             guard let titlebarContainerView = resolveTitlebarContainerView(for: window) else { return }
 
-            let hostingView = NSHostingView(rootView: ToolbarSpectrumView(model: model))
+            let hostingView = ToolbarSpectrumNativeView(model: model)
             hostingView.translatesAutoresizingMaskIntoConstraints = false
             titlebarContainerView.addSubview(hostingView)
 
@@ -273,6 +273,7 @@ private struct WindowToolbarSpectrumAccessory: NSViewRepresentable {
             if let view {
                 installIfNeeded(from: view)
             }
+            hostingView?.invalidateIntrinsicContentSize()
         }
 
         @MainActor

@@ -1,7 +1,6 @@
 import AppKit
 import Foundation
 import Observation
-import SwiftUI
 
 @MainActor
 @Observable
@@ -27,6 +26,7 @@ final class ToolbarSpectrumModel {
             }
         }
     }
+    var displayInvalidationHandler: (() -> Void)?
 
     func update(with newLevels: [Float]) {
         // The audio callback may have one in-flight result after playback is
@@ -52,6 +52,7 @@ final class ToolbarSpectrumModel {
         levels = Array(repeating: 0, count: clamped)
         capLevels = Array(repeating: 0, count: clamped)
         capHoldRemaining = Array(repeating: 0, count: clamped)
+        displayInvalidationHandler?()
     }
 
     private func startDisplayTimer() {
@@ -108,6 +109,7 @@ final class ToolbarSpectrumModel {
                 capLevels[index] = max(next, capLevels[index] * exp(-capDropDecayRate * elapsed))
             }
         }
+        displayInvalidationHandler?()
     }
 
     func reset() {
@@ -122,6 +124,7 @@ final class ToolbarSpectrumModel {
             capLevels[index] = 0
             capHoldRemaining[index] = 0
         }
+        displayInvalidationHandler?()
     }
 }
 
@@ -134,74 +137,64 @@ enum SpectrumBandCount {
     }
 }
 
-struct ToolbarSpectrumView: View {
-    @Bindable var model: ToolbarSpectrumModel
-
+/// A fixed AppKit surface deliberately avoids a SwiftUI view graph and
+/// constraint pass for every bar on every display tick. One invalidation draws
+/// the whole widget, so 10/20/40 bars cost one small titlebar repaint.
+@MainActor
+final class ToolbarSpectrumNativeView: NSView {
+    private let model: ToolbarSpectrumModel
     private let barWidth: CGFloat = 5
     private let spacing: CGFloat = 1
+    private let horizontalPadding: CGFloat = 10
+    private let verticalPadding: CGFloat = 6
     private let meterHeight: CGFloat = 22
     private let minimumVisibleHeight: CGFloat = 2
     private let peakHeight: CGFloat = 1
     private let peakGap: CGFloat = 1
-    private let membraneColor = Color(.sRGB, red: 20.0 / 255.0, green: 20.0 / 255.0, blue: 20.0 / 255.0, opacity: 1.0)
 
-    var body: some View {
-        HStack(alignment: .bottom, spacing: spacing) {
-            ForEach(Array(model.levels.enumerated()), id: \.offset) { index, level in
-                ZStack(alignment: .bottom) {
-                    RoundedRectangle(cornerRadius: 1.5, style: .continuous)
-                        .fill(barFill)
-                        .frame(
-                            width: barWidth,
-                            height: max(minimumVisibleHeight, barRenderableHeight * CGFloat(level))
-                        )
-
-                    RoundedRectangle(cornerRadius: 1, style: .continuous)
-                        .fill(capFill)
-                        .frame(
-                            width: barWidth,
-                            height: peakHeight
-                        )
-                        .offset(y: -peakBottomOffset(for: model.capLevels[index]))
-                }
-                .frame(width: barWidth, height: meterHeight, alignment: .bottom)
-            }
+    init(model: ToolbarSpectrumModel) {
+        self.model = model
+        super.init(frame: .zero)
+        wantsLayer = false
+        model.displayInvalidationHandler = { [weak self] in
+            self?.needsDisplay = true
         }
-        .frame(height: meterHeight, alignment: .bottom)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .background(
-            Capsule(style: .continuous)
-                .fill(membraneColor)
-        )
-        .overlay {
-            Capsule(style: .continuous)
-                .stroke(Color.white.opacity(0.06), lineWidth: 0.5)
-        }
-        .fixedSize()
-        .accessibilityLabel("Spectrum Analyzer")
+        setAccessibilityLabel("Spectrum Analyzer")
     }
 
-    private var barFill: LinearGradient {
-        LinearGradient(
-            colors: [
-                Color(nsColor: model.gradientStartColor),
-                Color(nsColor: model.gradientEndColor)
-            ],
-            startPoint: .bottom,
-            endPoint: .top
+    required init?(coder: NSCoder) { nil }
+
+    override var intrinsicContentSize: NSSize {
+        NSSize(
+            width: horizontalPadding * 2 + CGFloat(model.bandCount) * barWidth + CGFloat(max(0, model.bandCount - 1)) * spacing,
+            height: verticalPadding * 2 + meterHeight
         )
     }
 
-    private var capFill: Color {
-        Color(nsColor: model.peakColor).opacity(0.95)
-    }
+    override func draw(_ dirtyRect: NSRect) {
+        let bounds = self.bounds
+        NSColor(calibratedWhite: 20.0 / 255.0, alpha: 1).setFill()
+        NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
+        NSColor.white.withAlphaComponent(0.06).setStroke()
+        let outline = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.25, dy: 0.25), xRadius: bounds.height / 2, yRadius: bounds.height / 2)
+        outline.lineWidth = 0.5
+        outline.stroke()
 
-    private var barRenderableHeight: CGFloat {
-        meterHeight - peakGap - peakHeight
-    }
+        let baseY = verticalPadding
+        let usableHeight = meterHeight - peakGap - peakHeight
+        let gradient = NSGradient(starting: model.gradientStartColor, ending: model.gradientEndColor)
+        for index in model.levels.indices {
+            let x = horizontalPadding + CGFloat(index) * (barWidth + spacing)
+            let level = CGFloat(min(max(model.levels[index], 0), 1))
+            let barHeight = max(minimumVisibleHeight, usableHeight * level)
+            let barRect = NSRect(x: x, y: baseY, width: barWidth, height: barHeight)
+            let barPath = NSBezierPath(roundedRect: barRect, xRadius: 1.5, yRadius: 1.5)
+            gradient?.draw(in: barPath, angle: 90)
 
-    private func peakBottomOffset(for level: Double) -> CGFloat {
-        (barRenderableHeight * CGFloat(min(max(level, 0), 1))) + peakGap
+            let capLevel = CGFloat(min(max(model.capLevels[index], 0), 1))
+            let capRect = NSRect(x: x, y: baseY + usableHeight * capLevel + peakGap, width: barWidth, height: peakHeight)
+            model.peakColor.withAlphaComponent(0.95).setFill()
+            NSBezierPath(roundedRect: capRect, xRadius: 1, yRadius: 1).fill()
+        }
     }
 }
