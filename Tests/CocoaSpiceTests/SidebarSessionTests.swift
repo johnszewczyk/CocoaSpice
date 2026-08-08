@@ -112,8 +112,36 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
 
     let rootID = DatabaseFileSidebarTree.folderID(rootID: 1, path: rootPath)
     #expect(sidebar.rows() == [
-        .folder(id: rootID, title: "Library", depth: 0, isExpanded: false)
+        .folder(id: rootID, title: "Library", depth: 0, isExpanded: true),
+        .file(matching, depth: 1)
     ])
+}
+
+@MainActor
+@Test func databaseFileSidebarRestoresDisclosureStateAfterSearchClears() {
+    let rootPath = "/music/Library"
+    let item = DatabaseFileItem(
+        rootID: 1,
+        rootPath: rootPath,
+        folderPath: "/music/Library/NES",
+        path: "/music/Library/NES/Actraiser.nsf",
+        isArchive: false,
+        trackCount: 18
+    )
+    let rootID = DatabaseFileSidebarTree.folderID(rootID: 1, path: rootPath)
+    let consoleID = DatabaseFileSidebarTree.folderID(rootID: 1, path: "/music/Library/NES")
+    let sidebar = DatabaseFileSidebarState()
+    sidebar.replaceFileItems([item], treeIndex: DatabaseFileSidebarTree.Index(items: [item]))
+    sidebar.expandedFolderIDs = [rootID]
+    sidebar.applySearchResult(
+        query: "Act",
+        items: [item],
+        treeIndex: DatabaseFileSidebarTree.Index(items: [item])
+    )
+    #expect(sidebar.expandedFolderIDs == [rootID, consoleID])
+
+    sidebar.applySearchResult(query: "", items: [item], treeIndex: nil)
+    #expect(sidebar.expandedFolderIDs == [rootID])
 }
 
 @Test func databaseFileSidebarFilterCancelsWithoutPublishingPartialResults() {

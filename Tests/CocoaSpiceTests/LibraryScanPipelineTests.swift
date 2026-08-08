@@ -538,7 +538,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(Set(inspectedURLs.map(\.lastPathComponent)) == Set(entries))
 }
 
-@Test func deepScanPreservesCompleteArchiveMaterializationForDependencyFormats() async throws {
+@Test func deepScanUsesSelectedInspectionForDependencyFormats() async throws {
     let archiveURL = URL(fileURLWithPath: "/music/album.7z")
     let fingerprint = ScanFingerprint(fileSize: 1_000, modifiedAt: Date(timeIntervalSince1970: 1))
     let route = ScanRoute(
@@ -577,10 +577,10 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     let results = await executor.process(candidate)
     let calls = await provider.calls()
 
-    #expect(results.count == 1)
+    #expect(results.count == 2)
     #expect(calls.selectedEntry == 0)
-    #expect(calls.selectedBatch == 0)
-    #expect(calls.completeArchive == 1)
+    #expect(calls.selectedBatch == 1)
+    #expect(calls.completeArchive == 0)
 }
 
 @Test func scanPipelineProcessesFirstJoshWSPCArchive() async throws {

@@ -15,6 +15,7 @@ final class DatabaseFileSidebarState {
     var selectedFileIDs: Set<String> = []
     var selectedFolders: Set<DatabaseFileSidebarFolder> = []
     var expandedFolderIDs: Set<String> = []
+    private var expandedFolderIDsBeforeSearch: Set<String>?
 
     func replaceFileItems(_ items: [DatabaseFileItem]) {
         installFileItems(items, treeIndex: nil, searchIndex: nil)
@@ -43,6 +44,7 @@ final class DatabaseFileSidebarState {
         filteredTreeIndex = nil
         searchText = ""
         visibleFileItems = items
+        expandedFolderIDsBeforeSearch = nil
         expandedFolderIDs.formIntersection(Set(DatabaseFileSidebarTree.rootFolderIDs(for: items)))
         if let selectedFileID,
            !items.contains(where: { $0.id == selectedFileID }) {
@@ -59,6 +61,7 @@ final class DatabaseFileSidebarState {
         searchIndex = nil
         searchText = ""
         expandedFolderIDs = []
+        expandedFolderIDsBeforeSearch = nil
         contentRevision &+= 1
         clearSelection()
     }
@@ -97,9 +100,23 @@ final class DatabaseFileSidebarState {
         items: [DatabaseFileItem],
         treeIndex: DatabaseFileSidebarTree.Index?
     ) {
+        let wasSearching = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let isSearching = !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if isSearching, !wasSearching {
+            expandedFolderIDsBeforeSearch = expandedFolderIDs
+        }
         searchText = query
         visibleFileItems = items
         filteredTreeIndex = treeIndex
+        if isSearching, let treeIndex {
+            // Search is a result view, not a second folder-navigation mode:
+            // every matching ancestor is open so results are immediately
+            // visible. Manual disclosure state returns when search clears.
+            expandedFolderIDs = treeIndex.allFolderIDs
+        } else if !isSearching, let expandedFolderIDsBeforeSearch {
+            self.expandedFolderIDs = expandedFolderIDsBeforeSearch
+            self.expandedFolderIDsBeforeSearch = nil
+        }
         contentRevision &+= 1
     }
 }
@@ -205,6 +222,8 @@ enum DatabaseFileSidebarTree {
 
         private let rootFolderIDs: [String]
         private let folders: [String: Folder]
+
+        var allFolderIDs: Set<String> { Set(folders.keys) }
 
         init(items: [DatabaseFileItem]) {
             self.init(items: items, isCancelled: { false })!
