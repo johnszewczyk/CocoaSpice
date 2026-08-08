@@ -120,6 +120,27 @@ final class PlaybackEngine: @unchecked Sendable {
         }
     }
 
+    /// A timing-mode change can require reopening a decoder to change its
+    /// native loop policy. Preserve the rendered position rather than restart
+    /// the track from zero.
+    func reconfigureCurrentTrack(plan: PlaybackPlan) async throws -> TrackMetadata {
+        try await enqueue {
+            guard let track = self.currentTrack else {
+                throw NSError(domain: "PlaybackEngine", code: 1, userInfo: [NSLocalizedDescriptionKey: "No track is loaded."])
+            }
+            let snapshot = self.currentSnapshot()
+            let metadata = try self.loadTrack(
+                track: track,
+                plan: plan,
+                resumeAt: snapshot.elapsedSeconds,
+                autoplay: snapshot.isPlaying
+            )
+            self.isPlaying = snapshot.isPlaying
+            self.publishPlaybackState()
+            return metadata
+        }
+    }
+
     private func isLatestPlaybackRequest(_ requestID: Int) -> Bool {
         requestLock.lock()
         defer { requestLock.unlock() }
@@ -192,7 +213,8 @@ final class PlaybackEngine: @unchecked Sendable {
     private func loadTrack(
         track: TrackItem,
         plan: PlaybackPlan,
-        resumeAt requestedSeconds: TimeInterval
+        resumeAt requestedSeconds: TimeInterval,
+        autoplay: Bool = true
     ) throws -> TrackMetadata {
         currentTrack = track
         currentPlaybackPlan = plan
@@ -208,9 +230,9 @@ final class PlaybackEngine: @unchecked Sendable {
             track: track,
             plan: plan,
             resumeAt: clampedResume,
-            autoplay: true
+            autoplay: autoplay
         )
-        isPlaying = true
+        isPlaying = autoplay
         publishPlaybackState()
         return metadata
     }

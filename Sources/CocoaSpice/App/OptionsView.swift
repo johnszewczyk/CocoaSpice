@@ -5,6 +5,7 @@ struct OptionsView: View {
     @Bindable var model: PlayerViewModel
     @State private var longPlayTimeText = ""
     @State private var selection: OptionsSection = .library
+    @State private var hasInitializedPresentation = false
     @State private var confirmsResetPaths = false
     @State private var confirmsResetDatabase = false
 
@@ -78,6 +79,12 @@ struct OptionsView: View {
         .background(OptionsWindowConfigurator())
         .onAppear {
             longPlayTimeText = Self.formatTime(model.manualPreFadeSeconds)
+            guard !hasInitializedPresentation else { return }
+            hasInitializedPresentation = true
+            selection = .library
+            DispatchQueue.main.async {
+                NSApp.windows.first(where: { $0.title == "Options" })?.makeFirstResponder(nil)
+            }
         }
         .onDisappear {
             model.savePreferencesNow()
@@ -313,13 +320,7 @@ struct OptionsView: View {
                 }
             }
 
-            LazyVGrid(
-                columns: [GridItem(.adaptive(minimum: 240), spacing: 16)],
-                spacing: 16
-            ) {
-                sidebarAppearanceCard
-                playlistAppearanceCard
-            }
+            interfaceAppearanceCard
 
             sectionCard(title: "Sidebar Options") {
                 Toggle(isOn: Binding(
@@ -388,9 +389,9 @@ struct OptionsView: View {
         }
     }
 
-    private var sidebarAppearanceCard: some View {
-        sectionCard(title: "Sidebar Style") {
-            Text("Controls the game list text in the main database sidebar.")
+    private var interfaceAppearanceCard: some View {
+        sectionCard(title: "Interface Style") {
+            Text("Controls text in both the database sidebar and playlist.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
 
@@ -430,7 +431,7 @@ struct OptionsView: View {
                 )) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Monospace Font")
-                    Text("Use system fixed-width font in Sidebar.")
+                    Text("Use system fixed-width font in Sidebar and Playlist.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
@@ -443,67 +444,6 @@ struct OptionsView: View {
                     model.setDatabaseSidebarFontSize(12)
                     model.setDatabaseSidebarTextColor(.primary)
                     model.setDatabaseSidebarMonospaceFont(false)
-                }
-            }
-            .frame(maxWidth: .infinity, alignment: .trailing)
-        }
-    }
-
-    private var playlistAppearanceCard: some View {
-        sectionCard(title: "Playlist Style") {
-            Text("Controls the editable track table in the main window.")
-                .font(.system(size: 11))
-                .foregroundStyle(.secondary)
-
-            HStack {
-                Text("Font Size")
-                Spacer()
-                Picker("Font Size", selection: Binding(
-                    get: { Int(model.playlistFontSize) },
-                    set: { model.setPlaylistFontSize(CGFloat($0)) }
-                )) {
-                    ForEach(6...18, id: \.self) { size in
-                        Text("\(size)").tag(size)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-            }
-
-            HStack {
-                Text("Font Color")
-                Spacer()
-                Picker("Font Color", selection: Binding(
-                    get: { model.playlistTextColor },
-                    set: { model.setPlaylistTextColor($0) }
-                )) {
-                    ForEach(PlayerViewModel.DatabaseSidebarTextColor.allCases) { color in
-                        Text(color.title).tag(color)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-            }
-
-            Toggle(isOn: Binding(
-                    get: { model.playlistMonospaceFont },
-                    set: { model.setPlaylistMonospaceFont($0) }
-                )) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Monospace Font")
-                    Text("Use system fixed-width font in Playlist.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-            }
-            .toggleStyle(.checkbox)
-
-            HStack {
-                Spacer()
-                Button("Reset") {
-                    model.setPlaylistFontSize(12)
-                    model.setPlaylistTextColor(.primary)
-                    model.setPlaylistMonospaceFont(false)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .trailing)

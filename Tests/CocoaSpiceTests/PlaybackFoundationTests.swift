@@ -70,6 +70,21 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(renderedRight == renderedLeft)
 }
 
+@MainActor
+@Test func interfaceStyleUsesOneValueForSidebarAndPlaylist() {
+    let model = PlayerViewModel()
+    model.setDatabaseSidebarFontSize(15)
+    model.setPlaylistTextColor(.secondary)
+    model.setPlaylistMonospaceFont(true)
+
+    #expect(model.databaseSidebarFontSize == 15)
+    #expect(model.playlistFontSize == 15)
+    #expect(model.databaseSidebarTextColor == .secondary)
+    #expect(model.playlistTextColor == .secondary)
+    #expect(model.databaseSidebarMonospaceFont)
+    #expect(model.playlistMonospaceFont)
+}
+
 @Test func wwiseEventBanksAreExcludedAsNonPlayableResources() throws {
     let temporaryURL = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString)

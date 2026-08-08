@@ -133,15 +133,36 @@ final class PlayerViewModel {
             scheduleSidebarSearchPersistence()
         }
     }
-    var databaseSidebarFontSize: CGFloat = 12
-    var databaseSidebarTextColor: DatabaseSidebarTextColor = .primary
-    var databaseSidebarMonospaceFont = false
+    var interfaceFontSize: CGFloat = 12
+    var interfaceTextColor: DatabaseSidebarTextColor = .primary
+    var interfaceMonospaceFont = false
+    var databaseSidebarFontSize: CGFloat {
+        get { interfaceFontSize }
+        set { interfaceFontSize = newValue }
+    }
+    var databaseSidebarTextColor: DatabaseSidebarTextColor {
+        get { interfaceTextColor }
+        set { interfaceTextColor = newValue }
+    }
+    var databaseSidebarMonospaceFont: Bool {
+        get { interfaceMonospaceFont }
+        set { interfaceMonospaceFont = newValue }
+    }
     /// Space between a Files-mode disclosure triangle and its label, in points.
     var databaseSidebarDisclosureGapPoints: CGFloat = 6
     var databaseSidebarHidesFileExtensions = false
-    var playlistFontSize: CGFloat = 12
-    var playlistTextColor: DatabaseSidebarTextColor = .primary
-    var playlistMonospaceFont = false
+    var playlistFontSize: CGFloat {
+        get { interfaceFontSize }
+        set { interfaceFontSize = newValue }
+    }
+    var playlistTextColor: DatabaseSidebarTextColor {
+        get { interfaceTextColor }
+        set { interfaceTextColor = newValue }
+    }
+    var playlistMonospaceFont: Bool {
+        get { interfaceMonospaceFont }
+        set { interfaceMonospaceFont = newValue }
+    }
     var sidebarBrowserMode: SidebarBrowserMode = .games
     var sidebarSystemMode = false
     private(set) var expandedDatabaseSystems: Set<String> = []
@@ -1414,7 +1435,7 @@ final class PlayerViewModel {
     }
 
     func setDatabaseSidebarFontSize(_ size: CGFloat) {
-        databaseSidebarFontSize = min(max(size.rounded(), 6), 18)
+        interfaceFontSize = min(max(size.rounded(), 6), 18)
         savePreferencesNow()
     }
 
@@ -1465,12 +1486,12 @@ final class PlayerViewModel {
     }
 
     func setDatabaseSidebarTextColor(_ color: DatabaseSidebarTextColor) {
-        databaseSidebarTextColor = color
+        interfaceTextColor = color
         savePreferencesNow()
     }
 
     func setDatabaseSidebarMonospaceFont(_ enabled: Bool) {
-        databaseSidebarMonospaceFont = enabled
+        interfaceMonospaceFont = enabled
         savePreferencesNow()
     }
 
@@ -1485,18 +1506,15 @@ final class PlayerViewModel {
     }
 
     func setPlaylistFontSize(_ size: CGFloat) {
-        playlistFontSize = min(max(size.rounded(), 6), 18)
-        savePreferencesNow()
+        setDatabaseSidebarFontSize(size)
     }
 
     func setPlaylistTextColor(_ color: DatabaseSidebarTextColor) {
-        playlistTextColor = color
-        savePreferencesNow()
+        setDatabaseSidebarTextColor(color)
     }
 
     func setPlaylistMonospaceFont(_ enabled: Bool) {
-        playlistMonospaceFont = enabled
-        savePreferencesNow()
+        setDatabaseSidebarMonospaceFont(enabled)
     }
 
     func setSidebarSystemMode(_ enabled: Bool) {
@@ -2075,15 +2093,27 @@ final class PlayerViewModel {
 
     func applyPlaybackTiming() {
         guard let currentTrack, !isLoading else { return }
-        isPlaying = false
-        toolbarSpectrum.reset()
-        isSeeking = false
-        playbackElapsedSeconds = 0
-        seekPreviewSeconds = 0
-        didAutoAdvanceForCurrentTrack = false
-        currentMetadata = nil
-        updateRemoteTransportState()
-        requestPlayback(for: currentTrack)
+        let plan = playbackPlan(for: currentMetadata, trackPathExtension: currentTrack.playablePathExtension)
+        isLoading = true
+        statusText = "Updating Long Play…"
+        let playback = self.playback
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let metadata = try await playback.reconfigureCurrentTrack(plan: plan)
+                let snapshot = await playback.statusSnapshot()
+                self.currentMetadata = metadata
+                self.updatePlaylistMetadata(for: currentTrack.id, metadata: metadata)
+                self.playbackElapsedSeconds = snapshot.elapsedSeconds
+                self.seekPreviewSeconds = snapshot.elapsedSeconds
+                self.isPlaying = snapshot.isPlaying
+                self.statusText = "Long Play updated"
+            } catch {
+                self.statusText = error.localizedDescription
+            }
+            self.isLoading = false
+            self.updateRemoteTransportState()
+        }
     }
 
     func playSelectedTrack() {
@@ -2973,13 +3003,13 @@ final class PlayerViewModel {
         if let lastAudioExportDirectoryPath = preferences.lastAudioExportDirectoryPath {
             lastAudioExportDirectoryURL = URL(fileURLWithPath: lastAudioExportDirectoryPath, isDirectory: true).standardizedFileURL
         }
-        if let storedSidebarFontSize = preferences.databaseSidebarFontSize {
-            databaseSidebarFontSize = min(max(CGFloat(storedSidebarFontSize).rounded(), 6), 18)
+        if let storedInterfaceFontSize = preferences.databaseSidebarFontSize ?? preferences.playlistFontSize {
+            interfaceFontSize = min(max(CGFloat(storedInterfaceFontSize).rounded(), 6), 18)
         }
-        if let storedSidebarTextColor = preferences.databaseSidebarTextColor.flatMap(DatabaseSidebarTextColor.init(rawValue:)) {
-            databaseSidebarTextColor = storedSidebarTextColor
+        if let storedInterfaceTextColor = (preferences.databaseSidebarTextColor ?? preferences.playlistTextColor).flatMap(DatabaseSidebarTextColor.init(rawValue:)) {
+            interfaceTextColor = storedInterfaceTextColor
         }
-        databaseSidebarMonospaceFont = preferences.databaseSidebarMonospaceFont
+        interfaceMonospaceFont = preferences.databaseSidebarMonospaceFont || preferences.playlistMonospaceFont
         if let storedSidebarDisclosureGapPoints = preferences.databaseSidebarDisclosureGapPoints {
             databaseSidebarDisclosureGapPoints = min(max(CGFloat(storedSidebarDisclosureGapPoints), 0), 48)
         } else if let legacyEmGap = preferences.databaseSidebarDisclosureGap {
@@ -2988,13 +3018,6 @@ final class PlayerViewModel {
             databaseSidebarDisclosureGapPoints = min(max(CGFloat(legacyEmGap) * databaseSidebarFontSize, 0), 48)
         }
         databaseSidebarHidesFileExtensions = preferences.databaseSidebarHidesFileExtensions
-        if let storedPlaylistFontSize = preferences.playlistFontSize {
-            playlistFontSize = min(max(CGFloat(storedPlaylistFontSize).rounded(), 6), 18)
-        }
-        if let storedPlaylistTextColor = preferences.playlistTextColor.flatMap(DatabaseSidebarTextColor.init(rawValue:)) {
-            playlistTextColor = storedPlaylistTextColor
-        }
-        playlistMonospaceFont = preferences.playlistMonospaceFont
         sidebarSystemMode = preferences.sidebarSystemMode
         sidebarBrowserMode = SidebarBrowserMode(rawValue: preferences.sidebarBrowserModeRawValue ?? "games") ?? .games
         applySidebarSearch()

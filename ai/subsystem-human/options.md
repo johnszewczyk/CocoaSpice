@@ -22,6 +22,8 @@
 
 - Volume: its explanation appears directly below the panel heading; the App Volume slider lowers CocoaSpice playback from its standard 100% output level without adding gain. macOS volume keys continue to control system volume.
 - Mono: combines the left and right channels and duplicates that mixed signal to both speakers.
+- Interface Style: one font size, color, and monospace setting applies consistently to both the database sidebar and playlist.
+- Options opens on Library after a new app launch without restoring a prior control focus. Its page stays selected only while the app remains open.
 - Equalizer: enable ten shared 31 Hz–16 kHz bands, adjust each by ±12 dB, and reset all gains to flat. The setting applies to every playback format and can also be toggled from the main toolbar.
 
 ## Playback

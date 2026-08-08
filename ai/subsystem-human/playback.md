@@ -22,6 +22,7 @@
 - 3DO streams: AIFC, GENH, and NeuroDancer STREAM files use vgmstream and are identified as 3DO tracks.
 - Seeking: supports forward and backward movement.
 - Audio output: resumes at the current position after an output-device change when playback was active.
+- Changing Long Play or its target while a supported track is active reapplies the native loop policy at the current playback position instead of restarting the track.
 - Random playback has three toolbar states: off, random selection from the indexed library, and random selection from the current playlist. All three toolbar glyphs are native SF Symbols.
 - Random Library queues the requested playback action while a small track-count-weighted library pool loads, so Next and end-of-track advance cannot race an empty asynchronous pool or require hydrating the entire indexed library.
 
