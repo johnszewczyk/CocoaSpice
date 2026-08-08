@@ -508,12 +508,14 @@ struct OptionsView: View {
 
             if let progress = model.libraryOperationProgress {
                 sectionCard(title: "Scan Status") {
-                    Text(model.libraryScanStatus ?? "Working…")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .lineLimit(2, reservesSpace: true)
-                        .truncationMode(.tail)
-                        .frame(maxWidth: .infinity, alignment: .topLeading)
+                    libraryOperationStatusLine(
+                        label: "Path",
+                        value: model.libraryScanCurrentPath ?? "Preparing library operation…"
+                    )
+                    libraryOperationStatusLine(
+                        label: "File",
+                        value: model.libraryScanCurrentFile ?? model.libraryScanStatus ?? "Preparing…"
+                    )
                     libraryOperationProgressBar(progress)
                     Button(model.libraryOperationIsLinkTest ? "Cancel Test Links" : (model.queuedLibraryScanCount > 0 ? "Stop Scan + Clear Queue" : "Cancel Scan")) {
                         model.stopLibraryScan()
@@ -724,6 +726,22 @@ struct OptionsView: View {
                 .frame(maxWidth: .infinity)
                 .accessibilityLabel("Library operation progress")
         }
+    }
+
+    private func libraryOperationStatusLine(label: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(label)
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 28, alignment: .leading)
+            Text(value)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .frame(height: 16)
     }
 
     @ViewBuilder

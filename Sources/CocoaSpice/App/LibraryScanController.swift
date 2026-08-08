@@ -127,6 +127,8 @@ final class LibraryScanController {
         let liveLog = LibraryScanLiveLogWindow(root: root)
         liveLogs[root.id] = liveLog
         operations.setScanProgress(rootID: root.id, current: 0, total: 0)
+        operations.scanCurrentPath = root.standardizedURL.path
+        operations.scanCurrentFile = "Preparing scan…"
         defer {
             if liveLogs[root.id] === liveLog {
                 liveLogs[root.id] = nil
@@ -152,7 +154,9 @@ final class LibraryScanController {
                         self.operations.setScanProgress(rootID: root.id, current: current, total: total)
                     }
                 } activity: { [weak liveLog] current, total, detail in
-                    Task { @MainActor in
+                    Task { @MainActor [weak self] in
+                        guard let self, self.operations.isCurrentTask(generation) else { return }
+                        self.operations.scanCurrentFile = detail
                         liveLog?.update(current: current, total: total, detail: detail)
                     }
                 } issues: { [weak liveLog] lines in

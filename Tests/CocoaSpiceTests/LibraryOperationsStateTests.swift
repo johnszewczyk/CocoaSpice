@@ -66,6 +66,8 @@ import Testing
 @MainActor
 @Test func libraryOperationStateClampsScanProgressAndPrefersLinkTests() {
     let state = LibraryOperationsState()
+    state.scanCurrentPath = "/Music/JoshW"
+    state.scanCurrentFile = "Game.tar.zst"
     state.setScanProgress(rootID: 1, current: 120, total: 100)
     #expect(state.scanProgressByRootID[1] == LibraryScanProgress(current: 100, total: 100))
     #expect(state.operationProgress == LibraryScanProgress(current: 100, total: 100))
@@ -75,6 +77,8 @@ import Testing
     #expect(state.scanProgressByRootID.isEmpty)
     state.resetScanProgress()
     #expect(state.scanProgressByRootID.isEmpty)
+    #expect(state.scanCurrentPath == nil)
+    #expect(state.scanCurrentFile == nil)
 }
 
 @Test func databaseFileFolderDisclosureIgnoresRangeSelectionModifiers() {

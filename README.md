@@ -4,20 +4,63 @@
 
 CocoaSpice scans a collection into a persistent Database, plays supported files through one low-latency audio path, and keeps an editable Playlist beside the library. It is designed for the way game music is actually collected: multi-track formats, archive members, companion libraries, loop metadata, and unusual console streams—not just ordinary audio files with different extensions.
 
+## Contents
+
+- [What CocoaSpice does](#what-cocoaspice-does)
+- [Long Play](#long-play--game-music-the-way-it-was-meant-to-loop)
+- [Library workflow](#library-workflow)
+- [Playback and interface](#playback-and-interface)
+- [Supported playback formats](#supported-playback-formats)
+- [Archive containers](#archive-containers)
+- [Credits, build, and licensing](#decoder-emulator-and-codec-credits)
+
+## What CocoaSpice does
+
+| Library | Playback | Formats | macOS experience |
+| --- | --- | --- | --- |
+| Persistent scanned database, background scans, archive-member indexing, and direct Files browsing | Low-latency streamed PCM, seeking, repeat/random play, AAC export, and global app volume | Console-native streams, emulator-backed music, standard audio, and dependency-aware archive playback | Native windows, media keys, Finder drag and drop, light/dark-system controls, and independent Options panels |
+
+The app has one format-admission path. If a type is supported, it works consistently in scans, archives, Finder drag and drop, direct opening, and playlists. A format is not advertised merely because an extension is registered: decoder output is validated as real PCM.
+
 ## Long Play — game music the way it was meant to loop
 
 Long Play is CocoaSpice’s defining playback feature. Enable it with the infinity button or in **Options → Playback**, choose a target duration, and compatible loop-aware game-music formats continue naturally through their console-style loop point before the optional end fade.
 
 This is not ordinary “repeat the file” behavior. Long Play uses the decoder’s emulated music stream, so an SPC, NSF, GBS, KSS, HES, SAP, or related core game-music track can keep its music engine running just as it does on the original hardware. Turn it off whenever you prefer the file’s declared timing or native ending.
 
-## Built for a real game-music library
+## Library workflow
 
-- **Persistent scanned Database** — indexes files, archive members, metadata, durations, and subsongs; unchanged sources are reused on later scans, while a changed archive replaces its complete stored member set.
-- **Archive-native browsing** — scan and play supported members from ZIP, 7z, RSN, TAR+Zstandard (`.tar.zst`, `.tzst`), including dependency sets where a format needs sibling libraries.
-- **One intake path** — supported types work consistently for scanning, Finder drag and drop, direct opening, folders, archives, and playlist construction.
-- **Modern native player** — streamed low-latency PCM output, seek, media keys, repeat, library/playlist random play, AAC export, shared ten-band EQ, app-level volume, and a full-range 10/20/40-band spectrum display.
-- **Database-first library management** — scans run in the background with visible progress and queued requests; Test Links retains moved/missing-file data for fast rediscovery, while Clean Unlinked is the explicit permanent cleanup.
-- **Flexible path control** — unchecked library paths stay out of the active Database and Scan All, but can still be scanned directly from their row when needed.
+1. **Add paths** in **Options → Library**. Paths can be enabled or disabled without removing their scanned data.
+2. **Scan All** queues enabled paths. A direct row scan also works for an unchecked path. Scanning is background work; the Scan Status panel shows a fixed, ellipsized **Path** line and **File** activity line, progress, and cancellation.
+3. **Browse** Games for metadata-grouped titles, or Files for the scanned folder tree. Neither mode walks the live filesystem during ordinary browsing.
+4. **Test Links** marks absent sources as unlinked but preserves their file data for fast rediscovery after a move. **Clean Unlinked** is the deliberate, permanent removal step.
+5. **Deep Scan** forces fresh archive extraction and metadata inspection, replacing the stored scan results for that path.
+
+### Database rules
+
+- A source is identified by its library root, source path, archive member, and subtrack index. One source does not produce duplicate database rows.
+- Incremental scans reuse unchanged results. A changed archive replaces its complete stored member set, so removed or renamed members cannot remain visible.
+- Disabled paths are excluded from the active database and Scan All, yet remain available for a deliberate per-path scan.
+- Reset Database clears indexed state. The next scan recreates it from the chosen paths.
+
+## Playback and interface
+
+| Feature | Behavior |
+| --- | --- |
+| Playlist | Native multi-selection, keyboard activation, sortable columns, optional monospace display, and total-duration status. |
+| Sidebar search | The first character waits 250 ms; follow-up typing waits 100 ms. Games reuse prefix candidates; Files filtering runs off the main actor and opens matching folder branches. |
+| Long Play | Only loop-aware decoder modules participate. Ordinary finite media—WAV, AIFF, FLAC, MP3, M4A/AAC, and APE—always keep their native duration. |
+| Audio controls | Ten-band EQ, app-level attenuation-only volume, mono output, and optional 10/20/40-band spectrum. Spectrum is off by default because it uses additional CPU while playing. |
+| Transitions | Transport, seek, track changes, and Long Play reconfiguration use a brief output duck to reduce device-change clicks without altering the music stream or macOS system volume. |
+| Appearance | Native Options controls follow macOS light/dark appearance. Sidebar and Playlist typography, color, and monospace styling are configurable. |
+
+### Format-aware details
+
+- Nintendo DS SWAV payloads misnamed as `.wav` are recognized from their header. Known NDS `_22.wav` assets without a WAV header are decoded as signed 8-bit, 22 kHz mono PCM instead of failing as malformed WAV.
+- `.txtp` manifests and PSF/SSF/USF/2SF mini files preserve the necessary archive dependency set during playback.
+- Multi-track files and embedded subsongs become separate playlist tracks.
+- `.fsb` banks and `.txtp` manifests use vgmstream. PSF library files are dependencies, not standalone tracks.
+- Doom `.mus`, raw AAC, and ALAC are currently not playback formats. Monkey's Audio `.ape` is supported through FFmpeg.
 
 ## Supported playback formats
 
@@ -38,14 +81,6 @@ All listed playable formats are admitted by the scanner, drag and drop, playlist
 | PlayStation 2 PSF | `.psf2`, `.minipsf2` | [Play!](https://github.com/jpd002/Play-) PSF core |
 | Streamed console/game audio | `.aa3`, `.adx`, `.ads`, `.aifc`, `.at3`, `.aus`, `.bnk`, `.fsb`, `.genh`, `.hd`, `.hbd`, `.iecs`, `.int`, `.mib`, `.msf`, `.mtaf`, `.ogg`, `.rws`, `.ss2`, `.stream`, `.svag`, `.vag`, `.xa`, `.txtp` | [vgmstream](https://github.com/vgmstream/vgmstream) |
 | Standard audio | `.aif`, `.aiff`, `.flac`, `.m4a`, `.mp3`, `.wav` | macOS audio frameworks |
-
-### Format-aware details
-
-- Nintendo DS SWAV payloads misnamed as `.wav` are recognized from their header. Known NDS `_22.wav` assets without a WAV header are decoded as signed 8-bit, 22 kHz mono PCM instead of failing as malformed WAV.
-- `.txtp` manifests and PSF/SSF/USF/2SF mini files preserve the necessary archive dependency set during playback.
-- Multi-track files and embedded subsongs become separate playlist tracks.
-- `.fsb` banks and `.txtp` manifests use vgmstream. PSF library files are dependencies, not standalone tracks.
-- Doom `.mus`, raw AAC, and ALAC are currently not playback formats. Monkey's Audio `.ape` is supported through FFmpeg.
 
 For the live, implementation-level inventory, see [Supported Formats](ai/subsystem-human/supported-formats.md).
 
@@ -85,6 +120,17 @@ Requires macOS, Xcode, Homebrew `game-music-emu`, `ffmpeg`, `libopenmpt`, CMake,
 ./build.sh
 ./launch.sh
 ```
+
+### Repository map
+
+| Path | Purpose |
+| --- | --- |
+| `Sources/CocoaSpice/App/` | Native SwiftUI/AppKit application, database, scanner, archive, playback, and UI logic. |
+| `Sources/C*/` | Narrow C/C++ bridges around decoder and emulator cores. |
+| `vendor/` | Vendored upstream decoder, emulator, and codec source trees. |
+| `ai/subsystem-human/` | Short current feature documentation. |
+| `ai/subsystem-agent/` | Engineering ownership and invariants. |
+| `THIRD_PARTY_LICENSES.md` | Component-by-component license inventory. |
 
 ## License and notices
 

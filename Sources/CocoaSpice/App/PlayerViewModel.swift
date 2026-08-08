@@ -306,6 +306,12 @@ final class PlayerViewModel {
     var libraryScanProgressByRootID: [Int64: LibraryScanProgress] {
         libraryOperations.scanProgressByRootID
     }
+    var libraryScanCurrentPath: String? {
+        libraryOperations.scanCurrentPath
+    }
+    var libraryScanCurrentFile: String? {
+        libraryOperations.scanCurrentFile
+    }
     private(set) var trimMissingProgress: LibraryScanProgress? {
         get { libraryOperations.linkTestProgress }
         set { libraryOperations.linkTestProgress = newValue }

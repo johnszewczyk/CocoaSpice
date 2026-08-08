@@ -26,6 +26,8 @@ final class LibraryOperationsState {
     var scanInProgress = false
     var forceScan = false
     var scanProgressByRootID: [Int64: LibraryScanProgress] = [:]
+    var scanCurrentPath: String?
+    var scanCurrentFile: String?
     var linkTestProgress: LibraryScanProgress?
     var linkTestCurrentPath: String?
 
@@ -45,6 +47,8 @@ final class LibraryOperationsState {
 
     func resetScanProgress() {
         scanProgressByRootID = [:]
+        scanCurrentPath = nil
+        scanCurrentFile = nil
     }
 
     func clearScanProgress(rootID: Int64) {
