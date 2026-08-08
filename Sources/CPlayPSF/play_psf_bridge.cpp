@@ -182,14 +182,9 @@ extern "C" void cocoaspice_play_psf_close(void* handle) { delete static_cast<Pla
 extern "C" int32_t cocoaspice_play_psf_read(void* handle, int16_t* output, int32_t frameCount) {
     if(!handle || !output || frameCount <= 0) return -1;
     auto* player = static_cast<Player*>(handle);
-    // Some PSF-family drivers stop emitting blocks exactly at the declared length.
-    // CocoaSpice owns the post-length fade, so provide silence for the
-    // remaining planned frames instead of making the stream end abruptly.
-    if(!player->longPlay && player->playLengthFrames > 0 && player->playedFrames >= player->playLengthFrames) {
-        std::fill(output, output + (frameCount * 2), 0);
-        player->playedFrames += frameCount;
-        return frameCount;
-    }
+    // The shared stream session owns the post-length fade. Continue decoding
+    // real PCM through that window; substituting silence here made the app
+    // fade six seconds of silence instead of the actual PSF audio.
     const auto frames = player->sound ? player->sound->Read(output, frameCount) : 0;
     player->playedFrames += frames;
     return frames;

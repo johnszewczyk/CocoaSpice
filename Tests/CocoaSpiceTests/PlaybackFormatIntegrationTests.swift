@@ -320,6 +320,23 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(summary.unsupported == 0)
 }
 
+@Test func residentEvil2PSFContinuesRealPCMIntoTheSharedFadeWindow() throws {
+    let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/JoshW/Sony PlayStation/Resident Evil 2 [Biohazard 2] (1998-01-21)(Capcom Production Studio 4)(Capcom)[PS1].tar.zst")
+    guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }
+
+    let decoder = try PlayPSFDecoder(
+        track: TrackItem(archiveURL: archiveURL, entryPath: "08 The Front Hall.psf"),
+        sampleRate: 44_100
+    )
+    let metadata = try decoder.metadata()
+    #expect(metadata.playLengthMs > 0)
+    try decoder.seek(toMilliseconds: metadata.playLengthMs)
+    let chunks = try (0..<4).map { _ in try decoder.decode(frameCount: 2_048) }
+    #expect(chunks.contains { chunk in
+        chunk.left.contains(where: { abs($0) > 0.0001 }) || chunk.right.contains(where: { abs($0) > 0.0001 })
+    }, "PSF supplied silence where the shared fade requires real PCM")
+}
+
 @Test func joshWPCResidentEvilTXTPUsesCompleteArchiveMaterialization() throws {
     let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/JoshW/PC/Resident Evil 3 (2020-04-03)(Capcom)[PC].tar.zst")
     guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }
