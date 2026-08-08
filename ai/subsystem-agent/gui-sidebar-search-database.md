@@ -10,11 +10,12 @@
 
 - Sidebar search uses the single database search field.
 - Sidebar placeholder text is `Search Database` in Games and `Search Files` in Files.
-- Search uses a short debounce interval for responsive native filtering.
-- Search filters the already-loaded database games or scanned file records in memory.
+- The native field delays a new non-empty query 250 ms, then follow-up edits 100 ms. Pending AppKit text is never overwritten by unrelated SwiftUI refreshes.
+- Games filter the loaded database list. Files filter a prebuilt normalized index on a utility task; stale tasks are cancelled by `LatestTaskOwner`.
 - Search results stay inside the same dense sidebar list or folder tree instead of switching to an older result view.
 - Search should not interrupt playback.
 - Files search matches stored filename and path, preserving the folder hierarchy that reaches matching source files.
+- A non-empty Files query expands all folders in the filtered tree. Clear restores the pre-search expanded-folder set.
 
 ## Rules
 

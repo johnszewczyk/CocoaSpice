@@ -30,6 +30,8 @@ All listed playable formats are admitted by the scanner, drag and drop, playlist
 | Sega music logs | `.gym`, `.s98`, `.vgm`, `.vgz` | [libvgm](https://github.com/ValleyBell/libvgm) |
 | Game Boy Advance PSF | `.gsf`, `.minigsf` | [mGBA / Highly Complete](https://github.com/mgba-emu/mgba) |
 | Sega Saturn SSF | `.ssf`, `.minissf` | [Highly Theoretical](https://gitlab.com/kode54/highly_theoretical) |
+| Sega Saturn Konami streams | `.dvi` | [vgmstream](https://github.com/vgmstream/vgmstream) |
+| Sega Saturn Monkey's Audio | `.ape` | [FFmpeg](https://ffmpeg.org/) |
 | Nintendo 64 | `.usf`, `.miniusf` | [lazyusf2](https://gitlab.com/kode54/lazyusf2) |
 | Nintendo DS PSF | `.2sf`, `.mini2sf` | [2sf2wav](https://bitbucket.org/ahigerd/2sf2wav) |
 | PlayStation PSF | `.psf`, `.minipsf` | [Play!](https://github.com/jpd002/Play-) PSF core |
@@ -66,7 +68,7 @@ CocoaSpice is possible because of these projects and the work of their maintaine
 | libopenmpt | XM tracker playback | [Project site](https://lib.openmpt.org/libopenmpt/) |
 | libvgm | VGM-family playback | [GitHub](https://github.com/ValleyBell/libvgm) |
 | vgmstream | Console-native streamed audio, banks, and TXTP | [GitHub](https://github.com/vgmstream/vgmstream) |
-| FFmpeg | ATRAC3 and related vgmstream decode support | [Project site](https://ffmpeg.org/) |
+| FFmpeg | Monkey's Audio playback and vgmstream codec support | [Project site](https://ffmpeg.org/) |
 | libogg / libvorbis | Ogg Vorbis support used by vgmstream | [Xiph.org](https://xiph.org/) |
 | mGBA / Highly Complete | GSF and miniGSF | [GitHub](https://github.com/mgba-emu/mgba) |
 | Highly Theoretical | Sega Saturn SSF and miniSSF | [GitLab](https://gitlab.com/kode54/highly_theoretical) |

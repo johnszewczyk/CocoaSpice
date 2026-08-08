@@ -6,7 +6,7 @@
 
 - Scan roots: add and manage folders used by the database.
 - Library Paths: All / None, Add Path, Reset Paths, Scan All, and Test Links are the library-wide controls. All / None switches every configured path on or off together. Reset Paths asks for confirmation before removing every configured path; retained indexed data remains available if a path is added again. Test Links marks missing indexed sources dead while retaining their metadata for rediscovery.
-- Scanner Options: Deep Scan is the sole scanner setting. It makes Scan and Scan All unzip and read metadata for every discovered file, including unchanged archives.
+- Scanner Options: Deep Scan is the sole scanner setting. It makes Scan and Scan All re-inspect every discovered file, including unchanged archives, and replaces the root's live indexed results with the fresh scan.
 - Stop Scan: stops the active scan without removing indexed library entries already written.
 - Data: is a separate Options sidebar page with Database and Cache panels.
 - Database: reports total indexed tracks, unlinked tracks, and unlinked sources. It retains file data when files move on disk to speed up scans; Clean Unlinked permanently removes retained unlinked sources and their tracks, metadata, and scan inventory. One unlinked source can retain many tracks, especially an archive, so the source and track counts need not match. Its count and cleanup work begin only when this Data panel is opened, run in the background, and refresh the sidebar only after cleanup completes. Reset Database asks for confirmation, then removes all indexed files, metadata, scan inventory, and scan status while retaining configured library paths.

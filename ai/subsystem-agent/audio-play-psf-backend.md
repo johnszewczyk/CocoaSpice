@@ -22,7 +22,7 @@ The sound bridge uses a fixed one-second stereo ring buffer. Play!'s producer st
 
 ## Lifecycle
 
-When a PSF-family driver stops producing blocks at its declared length, the bridge supplies silence through the externally controlled fade window. This keeps completion behavior aligned with the common playback timeline instead of ending abruptly at the metadata boundary.
+The bridge continues supplying real PCM after a declared PSF tag length while the shared finite playback plan applies its external fade. Do not substitute silence here: it fades silence and leaves an audible transition at the actual stream handoff.
 
 Long Play explicitly disables that declared-length cutoff for both PSF generations. The Play! VM continues rendering while CocoaSpice's shared finite Long Play plan owns the manual duration and external fade, matching the contract used by every other registered decoder.
 

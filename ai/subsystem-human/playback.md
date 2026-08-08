@@ -3,7 +3,7 @@
 ## Formats
 
 - Supported formats: [supported-formats.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-human/supported-formats.md) lists every supported extension, archive container, and notable compatibility rule.
-- Playback does not currently accept other standard audio files such as Monkey's Audio APE, MP3, AAC/M4A, or ALAC.
+- Standard audio: AIFF, FLAC, M4A/AAC, MP3, and WAV use macOS audio support. Monkey's Audio APE uses the bundled FFmpeg decoder.
 
 ## Playback Controls
 
@@ -23,6 +23,7 @@
 - Seeking: supports forward and backward movement.
 - Audio output: resumes at the current position after an output-device change when playback was active.
 - Changing Long Play or its target while a supported track is active reapplies the native loop policy at the current playback position instead of restarting the track.
+- Transitions: track changes, seek, pause/resume, stop, and Long Play changes briefly mute before the audio stream changes, then restore the chosen App Volume. This reduces transport pops without changing system volume.
 - Random playback has three toolbar states: off, random selection from the indexed library, and random selection from the current playlist. All three toolbar glyphs are native SF Symbols.
 - Random Library queues the requested playback action while a small track-count-weighted library pool loads, so Next and end-of-track advance cannot race an empty asynchronous pool or require hydrating the entire indexed library.
 

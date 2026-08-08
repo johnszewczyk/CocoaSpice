@@ -17,6 +17,7 @@
 - Search: uses the same sidebar list rather than a separate results surface.
 - Search: matches game titles; console headings organize the results but are not an additional search field.
 - Files search: matches the stored filename and path while preserving the folder hierarchy needed to reach matching source files.
+- Files search: automatically opens every matching folder branch. Clearing search restores the folder folds that were open before searching.
 - Search: preserves the active database selection when the query changes.
 - Search: clearing the query folds all Console View headings, returning the sidebar to its compact state.
 
