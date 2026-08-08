@@ -93,6 +93,8 @@ final class NativePlaybackSession: @unchecked Sendable {
         autoplay: Bool
     ) throws -> TrackMetadata {
         try refillQueue.sync {
+            let wasPlaying = output.snapshot.transportState == .playing
+            if wasPlaying { output.duckForTransition() }
             refillTimer?.cancel()
             refillTimer = nil
             outputHeartbeat.reset(expectingRenderRequests: false)
@@ -124,6 +126,7 @@ final class NativePlaybackSession: @unchecked Sendable {
 
             if autoplay {
                 try output.start()
+                output.restoreAfterTransition()
                 outputHeartbeat.reset(expectingRenderRequests: true)
                 startRefillTimer()
             } else {
@@ -138,6 +141,7 @@ final class NativePlaybackSession: @unchecked Sendable {
         try refillQueue.sync {
             let isPlaying = output.snapshot.transportState == .playing
             if isPlaying {
+                output.duckForTransition()
                 output.pause()
                 stream?.setSuspended(true)
                 refillTimer?.cancel()
@@ -148,6 +152,7 @@ final class NativePlaybackSession: @unchecked Sendable {
 
             stream?.setSuspended(false)
             try output.start()
+            output.restoreAfterTransition()
             outputHeartbeat.reset(expectingRenderRequests: true)
             startRefillTimer()
             return true
@@ -158,6 +163,7 @@ final class NativePlaybackSession: @unchecked Sendable {
         try refillQueue.sync {
             guard let stream else { return }
             let wasPlaying = output.snapshot.transportState == .playing
+            if wasPlaying { output.duckForTransition() }
             outputHeartbeat.reset(expectingRenderRequests: false)
             output.prepareForRestart()
             generation += 1
@@ -171,6 +177,7 @@ final class NativePlaybackSession: @unchecked Sendable {
             try refillTo(targetBufferedFrames: output.primeFrameCount)
             if wasPlaying {
                 try output.start()
+                output.restoreAfterTransition()
                 outputHeartbeat.reset(expectingRenderRequests: true)
             } else {
                 outputHeartbeat.reset(expectingRenderRequests: false)
@@ -180,6 +187,7 @@ final class NativePlaybackSession: @unchecked Sendable {
 
     func stop() {
         refillQueue.sync {
+            if output.snapshot.transportState == .playing { output.duckForTransition() }
             refillTimer?.cancel()
             refillTimer = nil
             generation += 1

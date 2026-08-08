@@ -20,6 +20,8 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
     private var configurationChangeObserver: NSObjectProtocol?
     private var spectrumTapInstalled = false
     private var monoEnabled = false
+    private var appVolume: Float = 1
+    private var transitionGain: Float = 1
 
     init(
         sampleRate: Double = 44_100,
@@ -125,7 +127,39 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
     func setAppVolume(_ volume: Float) {
         // This is CocoaSpice's stock output volume (0–100%). It never calls
         // system-volume APIs, so hardware volume keys continue to control macOS.
-        engine.mainMixerNode.outputVolume = AudioOutputVolume.clamped(volume)
+        appVolume = AudioOutputVolume.clamped(volume)
+        applyOutputGain()
+    }
+
+    /// Keep abrupt stream/graph replacements out of the audible path. This
+    /// runs only on the serial refill queue (never the realtime source-node
+    /// callback), and the two-second PCM ring easily covers its 24 ms span.
+    func duckForTransition() {
+        rampTransitionGain(to: 0)
+    }
+
+    func restoreAfterTransition() {
+        rampTransitionGain(to: 1)
+    }
+
+    private func rampTransitionGain(to target: Float) {
+        let start = transitionGain
+        guard abs(start - target) > 0.0001 else { return }
+        let steps = 6
+        for step in 1...steps {
+            let progress = Float(step) / Float(steps)
+            // Half cosine prevents a slope discontinuity at either endpoint.
+            let eased = 0.5 - 0.5 * cosf(.pi * progress)
+            transitionGain = start + (target - start) * eased
+            applyOutputGain()
+            if step < steps { usleep(4_000) }
+        }
+        transitionGain = target
+        applyOutputGain()
+    }
+
+    private func applyOutputGain() {
+        engine.mainMixerNode.outputVolume = AudioOutputVolume.clamped(appVolume * transitionGain)
     }
 
     func setMonoEnabled(_ enabled: Bool) {
