@@ -164,7 +164,10 @@ final class ToolbarSpectrumNativeView: NSView {
     init(model: ToolbarSpectrumModel) {
         self.model = model
         super.init(frame: .zero)
-        wantsLayer = false
+        // Keep the animated meter in its own backing layer.  Invalidating a
+        // titlebar accessory at display rate must not redraw or recomposite
+        // the surrounding SwiftUI toolbar.
+        wantsLayer = true
         model.attachDisplaySurface(self)
         setAccessibilityLabel("Spectrum Analyzer")
     }
@@ -189,18 +192,42 @@ final class ToolbarSpectrumNativeView: NSView {
 
         let baseY = verticalPadding
         let usableHeight = meterHeight - peakGap - peakHeight
-        let gradient = NSGradient(starting: model.gradientStartColor, ending: model.gradientEndColor)
-        for index in model.levels.indices {
+        let levels = model.levels
+        let capLevels = model.capLevels
+        let meterRect = NSRect(
+            x: horizontalPadding,
+            y: baseY,
+            width: bounds.width - (horizontalPadding * 2),
+            height: usableHeight
+        )
+
+        // A single clipped draw paints the whole gradient.  Drawing a new
+        // NSGradient for each bar made a 40-band meter perform 2,400 gradient
+        // renders per second at 60 FPS, despite the bars sharing the same
+        // color ramp.
+        let barMask = NSBezierPath()
+        for index in levels.indices {
             let x = horizontalPadding + CGFloat(index) * (barWidth + spacing)
-            let level = CGFloat(min(max(model.levels[index], 0), 1))
+            let level = CGFloat(min(max(levels[index], 0), 1))
             let barHeight = max(minimumVisibleHeight, usableHeight * level)
             let barRect = NSRect(x: x, y: baseY, width: barWidth, height: barHeight)
-            let barPath = NSBezierPath(roundedRect: barRect, xRadius: 1.5, yRadius: 1.5)
-            gradient?.draw(in: barPath, angle: 90)
+            barMask.append(NSBezierPath(roundedRect: barRect, xRadius: 1.5, yRadius: 1.5))
+        }
 
-            let capLevel = CGFloat(min(max(model.capLevels[index], 0), 1))
+        NSGraphicsContext.saveGraphicsState()
+        barMask.addClip()
+        NSGradient(
+            starting: model.gradientStartColor,
+            ending: model.gradientEndColor
+        )?.draw(in: meterRect, angle: 90)
+        NSGraphicsContext.restoreGraphicsState()
+
+        let peakColor = model.peakColor.withAlphaComponent(0.95)
+        for index in capLevels.indices {
+            let x = horizontalPadding + CGFloat(index) * (barWidth + spacing)
+            let capLevel = CGFloat(min(max(capLevels[index], 0), 1))
             let capRect = NSRect(x: x, y: baseY + usableHeight * capLevel + peakGap, width: barWidth, height: peakHeight)
-            model.peakColor.withAlphaComponent(0.95).setFill()
+            peakColor.setFill()
             NSBezierPath(roundedRect: capRect, xRadius: 1, yRadius: 1).fill()
         }
     }
