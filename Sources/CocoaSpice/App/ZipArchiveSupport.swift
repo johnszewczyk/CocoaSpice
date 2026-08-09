@@ -117,18 +117,38 @@ enum ZipArchiveSupport {
     /// own root; this removes roots left behind when the previous process was
     /// interrupted before its cleanup scope ran.
     static func reclaimAbandonedScanMaterializations() -> ScratchRecovery {
-        let rootURL = scanScratchRootURL()
         let fileManager = FileManager.default
-        guard let roots = try? fileManager.contentsOfDirectory(
-            at: rootURL,
-            includingPropertiesForKeys: [.isDirectoryKey],
-            options: [.skipsHiddenFiles]
-        ) else { return ScratchRecovery(rootCount: 0, byteCount: 0) }
         var count = 0
         var bytes: Int64 = 0
-        for root in roots where (try? root.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+
+        func discard(_ root: URL) {
+            guard fileManager.fileExists(atPath: root.path) else { return }
             bytes += directoryByteCount(root)
             if (try? fileManager.removeItem(at: root)) != nil { count += 1 }
+        }
+
+        // Interrupted scan and cache-off playback roots are always disposable.
+        discard(scanScratchRootURL())
+        discard(disposableCacheRootURL())
+
+        // The pre-policy cache placed archive-key directories directly under
+        // ArchiveCache. They are no longer reachable by current materializers
+        // and must not strand storage after an app update.
+        let root = cacheRootURL()
+        let retainedNames: Set<String> = ["DurablePlayback", "ScanScratch", "DisposablePlayback"]
+        if let children = try? fileManager.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) {
+            for child in children where !retainedNames.contains(child.lastPathComponent) {
+                discard(child)
+            }
+        }
+
+        // A durable cache may retain only completed materializations. Staging
+        // names are hidden by construction and therefore safe to remove before
+        // new playback starts.
+        if let children = try? fileManager.contentsOfDirectory(at: durableCacheRootURL(), includingPropertiesForKeys: nil) {
+            for child in children where child.lastPathComponent.hasPrefix(".") {
+                discard(child)
+            }
         }
         return ScratchRecovery(rootCount: count, byteCount: bytes)
     }

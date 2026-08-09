@@ -507,7 +507,7 @@ final class PlayerViewModel {
                 ZipArchiveSupport.reclaimAbandonedScanMaterializations()
             }.value
             guard recovery.rootCount > 0 else { return }
-            self?.statusText = "Recovered \(recovery.rootCount) abandoned scan materializations (\(ByteCountFormatter.string(fromByteCount: recovery.byteCount, countStyle: .file)))."
+            self?.statusText = "Recovered \(recovery.rootCount) abandoned CocoaSpice cache items (\(ByteCountFormatter.string(fromByteCount: recovery.byteCount, countStyle: .file)))."
         }
         reloadLibraryScanRoots()
         reloadDatabaseGameItems()
