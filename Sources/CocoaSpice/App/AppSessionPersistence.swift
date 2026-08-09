@@ -43,6 +43,8 @@ enum AppDefaultsKey {
     static let playlistMonospaceFont = "CocoaSpice.playlistMonospaceFont"
     static let sidebarSystemMode = "CocoaSpice.sidebarSystemMode"
     static let sidebarBrowserMode = "CocoaSpice.sidebarBrowserMode"
+    static let archiveCacheMode = "CocoaSpice.archiveCacheMode"
+    static let archiveCacheLimitBytes = "CocoaSpice.archiveCacheLimitBytes"
 }
 
 struct RestoredPlaybackPreferences {

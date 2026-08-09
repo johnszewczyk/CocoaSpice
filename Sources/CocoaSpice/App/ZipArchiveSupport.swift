@@ -42,10 +42,17 @@ enum ZipArchiveSupport {
         }
     }
 
+    struct ScratchRecovery: Sendable {
+        let rootCount: Int
+        let byteCount: Int64
+    }
+
     enum ArchiveError: LocalizedError {
         case unsupportedArchive(URL)
         case processFailed(executable: String, message: String)
         case invalidEntryPath(String)
+        case insufficientStorage(requiredBytes: Int64)
+        case cacheLimitExceeded(limitBytes: Int64)
 
         var errorDescription: String? {
             switch self {
@@ -55,6 +62,10 @@ enum ZipArchiveSupport {
                 return "\(executable) failed: \(message)"
             case .invalidEntryPath(let path):
                 return "Invalid archive entry path: \(path)"
+            case .insufficientStorage(let requiredBytes):
+                return "Archive materialization needs at least \(ByteCountFormatter.string(fromByteCount: requiredBytes, countStyle: .file)) of free disk space."
+            case .cacheLimitExceeded(let limitBytes):
+                return "This archive materialization exceeds the \(ByteCountFormatter.string(fromByteCount: limitBytes, countStyle: .file)) cache limit."
             }
         }
     }
@@ -67,7 +78,7 @@ enum ZipArchiveSupport {
     }
 
     static func cacheSummary() -> CacheSummary {
-        let rootURL = cacheRootURL()
+        let rootURL = materializationCacheRootURL()
         let fileManager = FileManager.default
         guard fileManager.fileExists(atPath: rootURL.path),
               let enumerator = fileManager.enumerator(
@@ -92,9 +103,34 @@ enum ZipArchiveSupport {
     }
 
     static func clearCache() throws {
-        let rootURL = cacheRootURL()
-        guard FileManager.default.fileExists(atPath: rootURL.path) else { return }
-        try FileManager.default.removeItem(at: rootURL)
+        let fileManager = FileManager.default
+        for rootURL in [durableCacheRootURL(), disposableCacheRootURL()] where fileManager.fileExists(atPath: rootURL.path) {
+            try fileManager.removeItem(at: rootURL)
+        }
+    }
+
+    static func discardDisposablePlaybackMaterialization() {
+        try? FileManager.default.removeItem(at: disposableCacheRootURL())
+    }
+
+    /// Launch-time recovery only. Every scan owns and normally discards its
+    /// own root; this removes roots left behind when the previous process was
+    /// interrupted before its cleanup scope ran.
+    static func reclaimAbandonedScanMaterializations() -> ScratchRecovery {
+        let rootURL = scanScratchRootURL()
+        let fileManager = FileManager.default
+        guard let roots = try? fileManager.contentsOfDirectory(
+            at: rootURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else { return ScratchRecovery(rootCount: 0, byteCount: 0) }
+        var count = 0
+        var bytes: Int64 = 0
+        for root in roots where (try? root.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true {
+            bytes += directoryByteCount(root)
+            if (try? fileManager.removeItem(at: root)) != nil { count += 1 }
+        }
+        return ScratchRecovery(rootCount: count, byteCount: bytes)
     }
 
     static func listPlayableEntries(
@@ -240,8 +276,11 @@ enum ZipArchiveSupport {
         if fileManager.fileExists(atPath: destinationURL.path),
            let extractedModifiedAt = try? destinationURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
            extractedModifiedAt >= archiveModifiedAt {
+            touchCacheEntry(for: archiveURL)
             return destinationURL
         }
+
+        try prepareDurableCacheWrite(for: archiveURL)
 
         try fileManager.createDirectory(
             at: destinationURL.deletingLastPathComponent(),
@@ -273,6 +312,7 @@ enum ZipArchiveSupport {
             return destinationURL
         }
         try fileManager.moveItem(at: temporaryURL, to: destinationURL)
+        try enforceDurableCacheLimit(preserving: archiveCacheURL(for: archiveURL))
         return destinationURL
     }
 
@@ -281,7 +321,12 @@ enum ZipArchiveSupport {
         let rootURL = archiveCacheURL(for: archiveURL)
             .appendingPathComponent("set", isDirectory: true)
         let completionURL = rootURL.appendingPathComponent(".complete", isDirectory: false)
-        if FileManager.default.fileExists(atPath: completionURL.path) { return rootURL }
+        if FileManager.default.fileExists(atPath: completionURL.path) {
+            touchCacheEntry(for: archiveURL)
+            return rootURL
+        }
+
+        try prepareDurableCacheWrite(for: archiveURL)
 
         let stagingURL = rootURL.deletingLastPathComponent().appendingPathComponent(".set-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: stagingURL) }
@@ -299,6 +344,7 @@ enum ZipArchiveSupport {
         if !FileManager.default.fileExists(atPath: rootURL.path) {
             try FileManager.default.moveItem(at: stagingURL, to: rootURL)
         }
+        try enforceDurableCacheLimit(preserving: archiveCacheURL(for: archiveURL))
         return rootURL
     }
 
@@ -323,7 +369,12 @@ enum ZipArchiveSupport {
         let rootURL = archiveCacheURL(for: archiveURL)
             .appendingPathComponent("selection-\(selectionKey)", isDirectory: true)
         let completionURL = rootURL.appendingPathComponent(".complete", isDirectory: false)
-        if FileManager.default.fileExists(atPath: completionURL.path) { return rootURL }
+        if FileManager.default.fileExists(atPath: completionURL.path) {
+            touchCacheEntry(for: archiveURL)
+            return rootURL
+        }
+
+        try prepareDurableCacheWrite(for: archiveURL)
 
         let stagingURL = rootURL.deletingLastPathComponent()
             .appendingPathComponent(".selection-\(UUID().uuidString)", isDirectory: true)
@@ -357,6 +408,7 @@ enum ZipArchiveSupport {
         if !FileManager.default.fileExists(atPath: rootURL.path) {
             try FileManager.default.moveItem(at: stagingURL, to: rootURL)
         }
+        try enforceDurableCacheLimit(preserving: archiveCacheURL(for: archiveURL))
         return rootURL
     }
 
@@ -569,7 +621,7 @@ enum ZipArchiveSupport {
                 + "|"
                 + String(archiveModifiedAt.timeIntervalSinceReferenceDate)
         )
-        return cacheRootURL().appendingPathComponent(archiveCacheKey, isDirectory: true)
+        return materializationCacheRootURL().appendingPathComponent(archiveCacheKey, isDirectory: true)
     }
 
     private static func cacheRootURL() -> URL {
@@ -580,6 +632,79 @@ enum ZipArchiveSupport {
         return cachesURL
             .appendingPathComponent("CocoaSpice", isDirectory: true)
             .appendingPathComponent("ArchiveCache", isDirectory: true)
+    }
+
+    private static func durableCacheRootURL() -> URL {
+        cacheRootURL().appendingPathComponent("DurablePlayback", isDirectory: true)
+    }
+
+    private static func disposableCacheRootURL() -> URL {
+        cacheRootURL().appendingPathComponent("DisposablePlayback", isDirectory: true)
+    }
+
+    private static func materializationCacheRootURL() -> URL {
+        ArchiveCachePolicy.load().isEnabled ? durableCacheRootURL() : disposableCacheRootURL()
+    }
+
+    private static func prepareDurableCacheWrite(for archiveURL: URL) throws {
+        let values = try materializationCacheRootURL().resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+        let available = Int64(values.volumeAvailableCapacityForImportantUsage ?? 0)
+        guard available >= ArchiveCachePolicy.requiredFreeBytes else {
+            throw ArchiveError.insufficientStorage(requiredBytes: ArchiveCachePolicy.requiredFreeBytes)
+        }
+        try enforceDurableCacheLimit(preserving: archiveCacheURL(for: archiveURL))
+    }
+
+    private static func enforceDurableCacheLimit(preserving protectedRoot: URL) throws {
+        let limit = ArchiveCachePolicy.load().activeLimitBytes
+        let fileManager = FileManager.default
+        let root = protectedRoot.deletingLastPathComponent()
+        guard let entries = try? fileManager.contentsOfDirectory(
+            at: root,
+            includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
+            options: [.skipsHiddenFiles]
+        ) else { return }
+        let protectedPath = protectedRoot.standardizedFileURL.path
+        var candidates = entries.compactMap { entry -> (url: URL, bytes: Int64, date: Date)? in
+            guard (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
+                return nil
+            }
+            let values = try? entry.resourceValues(forKeys: [.contentModificationDateKey])
+            return (entry, directoryByteCount(entry), values?.contentModificationDate ?? .distantPast)
+        }
+        var total = candidates.reduce(Int64(0)) { $0 + $1.bytes }
+        guard total > limit else { return }
+        candidates.sort { $0.date < $1.date }
+        for candidate in candidates where total > limit {
+            guard candidate.url.standardizedFileURL.path != protectedPath else { continue }
+            try fileManager.removeItem(at: candidate.url)
+            total -= candidate.bytes
+        }
+        if total > limit {
+            throw ArchiveError.cacheLimitExceeded(limitBytes: limit)
+        }
+    }
+
+    private static func touchCacheEntry(for archiveURL: URL) {
+        try? FileManager.default.setAttributes(
+            [.modificationDate: Date()],
+            ofItemAtPath: archiveCacheURL(for: archiveURL).path
+        )
+    }
+
+    private static func directoryByteCount(_ rootURL: URL) -> Int64 {
+        let fileManager = FileManager.default
+        guard let enumerator = fileManager.enumerator(
+            at: rootURL,
+            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
+            options: [.skipsHiddenFiles]
+        ) else { return 0 }
+        var total: Int64 = 0
+        for case let url as URL in enumerator {
+            let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+            if values?.isRegularFile == true { total += Int64(values?.fileSize ?? 0) }
+        }
+        return total
     }
 
     private static func scanScratchRootURL() -> URL {

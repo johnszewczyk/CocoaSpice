@@ -577,9 +577,33 @@ struct OptionsView: View {
             }
 
             sectionCard(title: "Cache") {
-                HStack(alignment: .center, spacing: 12) {
+                Toggle(isOn: Binding(
+                    get: { model.archiveCachePolicy.isEnabled },
+                    set: { model.setArchiveCacheEnabled($0) }
+                )) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Archive Cache")
+                        Text("Keep extracted archive material for faster replay. Turn off to use disposable playback storage.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+
+                if model.archiveCachePolicy.isEnabled {
+                    Picker("Limit", selection: Binding(
+                        get: { model.archiveCachePolicy.maximumBytes },
+                        set: { model.setArchiveCacheLimitBytes($0) }
+                    )) {
+                        ForEach(ArchiveCachePolicy.supportedLimits, id: \.self) { bytes in
+                            Text(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)).tag(bytes)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(model.archiveCachePolicy.isEnabled ? "Usage" : "Disposable Storage")
                         Text(model.archiveCacheSummaryText)
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)

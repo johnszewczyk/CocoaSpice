@@ -162,6 +162,7 @@ final class PlaybackEngine: @unchecked Sendable {
     func stopPlayback() async {
         await enqueue {
             self.resetPlaybackState()
+            ZipArchiveSupport.discardDisposablePlaybackMaterialization()
         }
     }
 
@@ -170,6 +171,7 @@ final class PlaybackEngine: @unchecked Sendable {
             guard self.isLatestPlaybackRequest(requestID) else { return false }
             if self.currentTrack != nil || self.isPlaying {
                 self.resetPlaybackState()
+                ZipArchiveSupport.discardDisposablePlaybackMaterialization()
             }
             return true
         }

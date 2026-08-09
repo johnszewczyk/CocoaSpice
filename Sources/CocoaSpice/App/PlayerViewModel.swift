@@ -328,6 +328,7 @@ final class PlayerViewModel {
         get { libraryOperations.isClearingArchiveCache }
         set { libraryOperations.isClearingArchiveCache = newValue }
     }
+    var archiveCachePolicy = ArchiveCachePolicy.load()
     private(set) var deadLinkSummaryText: String {
         get { libraryOperations.deadLinkSummaryText }
         set { libraryOperations.deadLinkSummaryText = newValue }
@@ -501,6 +502,13 @@ final class PlayerViewModel {
         toolbarSpectrum.gradientEndColor = spectrumGradientEndColor
         toolbarSpectrum.peakColor = spectrumPeakColor
         restorePlaybackPreferences(restoredState.playbackPreferences)
+        Task { [weak self] in
+            let recovery = await Task.detached(priority: .utility) {
+                ZipArchiveSupport.reclaimAbandonedScanMaterializations()
+            }.value
+            guard recovery.rootCount > 0 else { return }
+            self?.statusText = "Recovered \(recovery.rootCount) abandoned scan materializations (\(ByteCountFormatter.string(fromByteCount: recovery.byteCount, countStyle: .file)))."
+        }
         reloadLibraryScanRoots()
         reloadDatabaseGameItems()
         restorePersistedPlaylist(restoredState.sessionState)
@@ -1551,6 +1559,26 @@ final class PlayerViewModel {
             guard !Task.isCancelled else { return }
             self?.archiveCacheSummaryText = Self.archiveCacheSummaryText(for: summary)
         }
+    }
+
+    func setArchiveCacheEnabled(_ enabled: Bool) {
+        archiveCachePolicy = ArchiveCachePolicy(
+            mode: enabled ? .enabled : .disabled,
+            maximumBytes: archiveCachePolicy.maximumBytes
+        )
+        archiveCachePolicy.save()
+        refreshArchiveCacheSummary()
+    }
+
+    func setArchiveCacheLimitBytes(_ bytes: Int64) {
+        archiveCachePolicy = ArchiveCachePolicy(
+            mode: archiveCachePolicy.mode,
+            maximumBytes: ArchiveCachePolicy.supportedLimits.min(by: {
+                abs($0 - bytes) < abs($1 - bytes)
+            }) ?? ArchiveCachePolicy.defaultLimitBytes
+        )
+        archiveCachePolicy.save()
+        refreshArchiveCacheSummary()
     }
 
     func clearArchiveCache() {
