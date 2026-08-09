@@ -16,7 +16,7 @@
 - Library paths are automatically sorted by path. Each compact row has enablement, its green/yellow/red result icon, an abbreviated path with the full path on hover, and glyph actions for Scan, Log, and Delete. Enablement changes immediately, then coalesce into one background persistence/sidebar refresh so several checkboxes can be changed without waiting. The row Scan action works even when that path is unchecked, without enabling it for the Database or Scan All. Scan reuses prior results for unchanged successful files unless Deep Scan is checked; failed or changed files are attempted again automatically.
 - Scan requests queue behind an active scan instead of interrupting it. Stop clears the active scan and all pending scans. Test Links is unavailable while scanning.
 - Logs use a stable `Scan Log` window title and a header line for scan date, duration, success/total, and issue count; the body is the error list.
-- A green check means a complete non-empty scan, yellow means some files did not process completely (or Test Links changed the path), and red means the scan found no playable files.
+- A grey outlined check means the path has not been scanned yet; green means a complete non-empty scan, yellow means some files did not process completely (or Test Links changed the path), and red means the scan found no playable files.
 
 ## Audio
 

@@ -840,6 +840,10 @@ struct OptionsView: View {
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(.green)
                 .accessibilityLabel("Scan completed without issues")
+        } else {
+            Image(systemName: "checkmark.circle")
+                .foregroundStyle(.secondary)
+                .accessibilityLabel("Not yet scanned")
         }
     }
 
