@@ -153,11 +153,12 @@ final class LibraryScanController {
                         guard let self, self.operations.isCurrentTask(generation) else { return }
                         self.operations.setScanProgress(rootID: root.id, current: current, total: total)
                     }
-                } activity: { [weak liveLog] current, total, detail in
+                } activity: { [weak liveLog] current, total, activity in
                     Task { @MainActor [weak self] in
                         guard let self, self.operations.isCurrentTask(generation) else { return }
-                        self.operations.scanCurrentFile = detail
-                        liveLog?.update(current: current, total: total, detail: detail)
+                        self.operations.scanCurrentPath = activity.sourcePath
+                        self.operations.scanCurrentFile = activity.filename
+                        liveLog?.update(current: current, total: total, detail: activity.detail)
                     }
                 } issues: { [weak liveLog] lines in
                     Task { @MainActor in

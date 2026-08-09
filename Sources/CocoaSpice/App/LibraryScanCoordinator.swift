@@ -19,7 +19,7 @@ final class LibraryScanCoordinator {
         mode: ScanMode,
         report: @escaping @Sendable (String) -> Void = { _ in },
         progress: @escaping @Sendable (Int, Int) -> Void = { _, _ in },
-        activity: @escaping @Sendable (Int, Int, String) -> Void = { _, _, _ in },
+        activity: @escaping @Sendable (Int, Int, ScanActivity) -> Void = { _, _, _ in },
         issues: @escaping @Sendable ([String]) -> Void = { _ in }
     ) async throws -> ScanSummary {
         report("Starting scan: \(root.standardizedURL.lastPathComponent)")
@@ -107,9 +107,9 @@ final class LibraryScanCoordinator {
                     await progressReporter.update(current: current, total: total, detail: detail)
                 }
             },
-            activity: { current, total, detail in
+            activity: { current, total, activity in
                 Task {
-                    await progressReporter.reportActivity(current: current, total: total, detail: detail)
+                    await progressReporter.reportActivity(current: current, total: total, activity: activity)
                 }
             },
             issue: { failure in
@@ -169,7 +169,7 @@ private func enrichArchiveCandidates(
 private actor ScanProgressReporter {
     private let report: @Sendable (String) -> Void
     private let progress: @Sendable (Int, Int) -> Void
-    private let activity: @Sendable (Int, Int, String) -> Void
+    private let activity: @Sendable (Int, Int, ScanActivity) -> Void
     private var lastReportedCurrent = -1
     private var lastReportDate = Date.distantPast
     private var lastActivityDate = Date.distantPast
@@ -177,14 +177,14 @@ private actor ScanProgressReporter {
     init(
         report: @escaping @Sendable (String) -> Void,
         progress: @escaping @Sendable (Int, Int) -> Void,
-        activity: @escaping @Sendable (Int, Int, String) -> Void
+        activity: @escaping @Sendable (Int, Int, ScanActivity) -> Void
     ) {
         self.report = report
         self.progress = progress
         self.activity = activity
     }
 
-    func update(current: Int, total: Int, detail: String) {
+    func update(current: Int, total: Int, detail _: String) {
         let now = Date()
         let reachedEnd = current >= total
         let advancedEnough = current - lastReportedCurrent >= 25
@@ -194,16 +194,15 @@ private actor ScanProgressReporter {
         lastReportedCurrent = current
         lastReportDate = now
         progress(current, total)
-        activity(current, total, detail)
-        report("Scanning \(current)/\(total): \(detail)")
+        report("Scanning \(current) / \(total)")
     }
 
-    func reportActivity(current: Int, total: Int, detail: String) {
+    func reportActivity(current: Int, total: Int, activity: ScanActivity) {
         let now = Date()
         guard now.timeIntervalSince(lastActivityDate) >= 0.15 else { return }
         lastActivityDate = now
-        activity(current, total, detail)
-        report("Scanning \(current)/\(total): \(detail)")
+        self.activity(current, total, activity)
+        report("Scanning \(current) / \(total)")
     }
 }
 

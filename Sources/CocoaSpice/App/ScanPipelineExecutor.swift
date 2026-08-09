@@ -11,6 +11,23 @@ enum ScanPipelineError: LocalizedError {
     }
 }
 
+struct ScanActivity: Sendable {
+    let sourcePath: String
+    let filename: String
+    let detail: String
+
+    init(candidate: ScanCandidate, detail: String) {
+        if let entryPath = candidate.identity.archiveEntry {
+            sourcePath = "\(candidate.sourceURL.path)#\(entryPath)"
+            filename = URL(fileURLWithPath: entryPath).lastPathComponent
+        } else {
+            sourcePath = candidate.sourceURL.path
+            filename = candidate.sourceURL.lastPathComponent
+        }
+        self.detail = detail
+    }
+}
+
 enum ScanOperationTimeout {
     enum Kind {
         case archiveListing
@@ -83,7 +100,7 @@ struct ScanPipelineExecutor: Sendable {
     func process(
         plan: ScanPlan,
         progress: @escaping @Sendable (Int, Int, String) -> Void = { _, _, _ in },
-        activity: @escaping @Sendable (Int, Int, String) -> Void = { _, _, _ in },
+        activity: @escaping @Sendable (Int, Int, ScanActivity) -> Void = { _, _, _ in },
         issue: @escaping @Sendable (ScanFailure) -> Void = { _ in },
         persist: @escaping @Sendable ([ScanPipelineResult]) async throws -> Void
     ) async throws -> ScanResultAccumulator {
@@ -102,7 +119,11 @@ struct ScanPipelineExecutor: Sendable {
                         try Task.checkCancellation()
                         let candidate = plan.candidates[index]
                         let results = await self.process(candidate) { detail in
-                            activity(completionCounter.current(), plan.count, detail)
+                            activity(
+                                completionCounter.current(),
+                                plan.count,
+                                ScanActivity(candidate: candidate, detail: detail)
+                            )
                         }
                         // A huge archive can produce thousands of leaves.
                         // Persist bounded batches instead of asking SQLite to

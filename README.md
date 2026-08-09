@@ -31,7 +31,7 @@ This is not ordinary “repeat the file” behavior. Long Play uses the decoder�
 ## Library workflow
 
 1. **Add paths** in **Options → Library**. Paths can be enabled or disabled without removing their scanned data.
-2. **Scan All** queues enabled paths. A direct row scan also works for an unchecked path. Scanning is background work; the Scan Status panel shows a fixed, ellipsized **Path** line and **File** activity line, progress, and cancellation.
+2. **Scan All** queues enabled paths. A direct row scan also works for an unchecked path. Scanning is background work; the Scan Status panel shows separately ellipsized **Current Activity**, **File Path**, and **File Name** fields, plus progress and cancellation.
 3. **Browse** Games for metadata-grouped titles, or Files for the scanned folder tree. Neither mode walks the live filesystem during ordinary browsing.
 4. **Test Links** marks absent sources as unlinked but preserves their file data for fast rediscovery after a move. **Clean Unlinked** is the deliberate, permanent removal step.
 5. **Deep Scan** forces fresh archive extraction and metadata inspection, replacing the stored scan results for that path.

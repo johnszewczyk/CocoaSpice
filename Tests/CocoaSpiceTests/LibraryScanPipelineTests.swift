@@ -38,6 +38,27 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(ScanSelection.includes(successful, mode: .newScan, currentFingerprint: fingerprint))
 }
 
+@Test func scanActivitySeparatesSourcePathFromDisplayFilename() {
+    let archiveURL = URL(fileURLWithPath: "/music/Katamari.tar.zst")
+    let archiveCandidate = ScanCandidate(
+        identity: ScanItemIdentity(rootID: 1, path: archiveURL.path, archiveEntry: nil),
+        fingerprint: ScanFingerprint(fileSize: 1, modifiedAt: .distantPast),
+        sourceURL: archiveURL,
+        route: nil
+    )
+    let memberCandidate = ScanCandidate(
+        identity: ScanItemIdentity(rootID: 1, path: archiveURL.path, archiveEntry: "music/title.txtp"),
+        fingerprint: ScanFingerprint(fileSize: 1, modifiedAt: .distantPast),
+        sourceURL: archiveURL,
+        route: nil
+    )
+
+    #expect(ScanActivity(candidate: archiveCandidate, detail: "Listing").sourcePath == archiveURL.path)
+    #expect(ScanActivity(candidate: archiveCandidate, detail: "Listing").filename == "Katamari.tar.zst")
+    #expect(ScanActivity(candidate: memberCandidate, detail: "Inspecting").sourcePath == "\(archiveURL.path)#music/title.txtp")
+    #expect(ScanActivity(candidate: memberCandidate, detail: "Inspecting").filename == "title.txtp")
+}
+
 @Test func archiveManifestSignatureSkipsTimestampOnlyChanges() {
     let identity = ScanItemIdentity(rootID: 1, path: "/music/set.7z", archiveEntry: nil)
     let previous = ScanFingerprint(

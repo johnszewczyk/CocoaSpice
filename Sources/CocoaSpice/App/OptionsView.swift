@@ -470,14 +470,18 @@ struct OptionsView: View {
                 }
 
                 HStack(spacing: 8) {
-                    libraryActionButton("All / None") {
-                        model.toggleAllLibraryScanRootsEnabled()
-                    }
-                    .disabled(model.libraryScanInProgress || model.libraryScanRoots.isEmpty)
                     libraryActionButton("Add Path") {
                         model.chooseLibraryScanRoots()
                     }
                     .disabled(model.libraryScanInProgress)
+                    Button {
+                        model.toggleAllLibraryScanRootsEnabled()
+                    } label: {
+                        Image(systemName: "checkmark.circle")
+                    }
+                    .help("Enable All / Disable All")
+                    .accessibilityLabel("Enable All / Disable All Paths")
+                    .disabled(model.libraryScanInProgress || model.libraryScanRoots.isEmpty)
                     libraryActionButton("Reset Paths") {
                         confirmsResetPaths = true
                     }
@@ -508,12 +512,16 @@ struct OptionsView: View {
 
             if let progress = model.libraryOperationProgress {
                 sectionCard(title: "Scan Status") {
-                    libraryOperationStatusLine(
-                        label: "Path",
-                        value: model.libraryScanCurrentPath ?? "Preparing library operation…"
+                    libraryOperationStatusField(
+                        title: "Current Activity",
+                        value: model.libraryScanStatus ?? "Preparing library operation…"
                     )
-                    libraryOperationStatusLine(
-                        label: "File",
+                    libraryOperationStatusField(
+                        title: "File Path",
+                        value: model.libraryScanCurrentPath ?? "Preparing library path…"
+                    )
+                    libraryOperationStatusField(
+                        title: "File Name",
                         value: model.libraryScanCurrentFile ?? model.libraryScanStatus ?? "Preparing…"
                     )
                     libraryOperationProgressBar(progress)
@@ -728,12 +736,11 @@ struct OptionsView: View {
         }
     }
 
-    private func libraryOperationStatusLine(label: String, value: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(label)
+    private func libraryOperationStatusField(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.secondary)
-                .frame(width: 28, alignment: .leading)
             Text(value)
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
@@ -741,7 +748,7 @@ struct OptionsView: View {
                 .truncationMode(.middle)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(height: 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
