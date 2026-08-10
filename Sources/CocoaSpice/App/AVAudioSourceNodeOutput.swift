@@ -5,6 +5,7 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
     let sampleRate: Double
     let channels: AVAudioChannelCount
     let ringBuffer: RealtimePCMFrameRingBuffer
+    private let transportEnvelope: RealtimePCMTransportEnvelope
 
     private let engine = AVAudioEngine()
     private let sourceNode: AVAudioSourceNode
@@ -21,7 +22,7 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
     private var spectrumTapInstalled = false
     private var monoEnabled = false
     private var appVolume: Float = 1
-    private var transitionGain: Float = 1
+    private let transitionDuration: TimeInterval = 0.024
 
     init(
         sampleRate: Double = 44_100,
@@ -39,6 +40,7 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
         self.sampleRate = sampleRate
         self.channels = channels
         self.ringBuffer = try RealtimePCMFrameRingBuffer(capacityFrames: capacityFrames)
+        self.transportEnvelope = try RealtimePCMTransportEnvelope()
         self.primeFrameCount = primeFrameCount
         guard let format = AVAudioFormat(
             standardFormatWithSampleRate: sampleRate,
@@ -50,6 +52,7 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
         self.equalizerNode = AVAudioUnitEQ(numberOfBands: AudioEqualizer.bandFrequencies.count)
 
         let ringBuffer = self.ringBuffer
+        let transportEnvelope = self.transportEnvelope
         self.sourceNode = AVAudioSourceNode(format: format) { _, _, frameCount, audioBufferList in
             let requestedFrames = Int(frameCount)
             let buffers = UnsafeMutableAudioBufferListPointer(audioBufferList)
@@ -72,6 +75,7 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
                 left[suppliedFrames..<requestedFrames].initialize(repeating: 0)
                 right[suppliedFrames..<requestedFrames].initialize(repeating: 0)
             }
+            transportEnvelope.apply(left: left, right: right)
             return noErr
         }
 
@@ -131,35 +135,43 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
         applyOutputGain()
     }
 
-    /// Keep abrupt stream/graph replacements out of the audible path. This
-    /// runs only on the serial refill queue (never the realtime source-node
-    /// callback), and the two-second PCM ring easily covers its 24 ms span.
+    /// Keep abrupt stream/graph replacements out of the audible path. The
+    /// envelope runs sample-by-sample in the source-node render callback;
+    /// this method only publishes its atomic target and waits for silence
+    /// before the serial session tears down PCM or the graph.
     func duckForTransition() {
-        rampTransitionGain(to: 0)
+        guard engine.isRunning else {
+            transportEnvelope.set(0)
+            return
+        }
+        transportEnvelope.ramp(to: 0, overFrames: transitionFrameCount)
+        waitForTransitionSilence()
     }
 
     func restoreAfterTransition() {
-        rampTransitionGain(to: 1)
-    }
-
-    private func rampTransitionGain(to target: Float) {
-        let start = transitionGain
-        guard abs(start - target) > 0.0001 else { return }
-        let steps = 6
-        for step in 1...steps {
-            let progress = Float(step) / Float(steps)
-            // Half cosine prevents a slope discontinuity at either endpoint.
-            let eased = 0.5 - 0.5 * cosf(.pi * progress)
-            transitionGain = start + (target - start) * eased
-            applyOutputGain()
-            if step < steps { usleep(4_000) }
-        }
-        transitionGain = target
-        applyOutputGain()
+        transportEnvelope.ramp(to: 1, overFrames: transitionFrameCount)
     }
 
     private func applyOutputGain() {
-        engine.mainMixerNode.outputVolume = AudioOutputVolume.clamped(appVolume * transitionGain)
+        engine.mainMixerNode.outputVolume = appVolume
+    }
+
+    private var transitionFrameCount: Int {
+        max(1, Int((sampleRate * transitionDuration).rounded()))
+    }
+
+    private func waitForTransitionSilence() {
+        let maximumWaitMicroseconds = UInt32((transitionDuration + 0.040) * 1_000_000)
+        var waitedMicroseconds: UInt32 = 0
+        while transportEnvelope.remainingFrames > 0, waitedMicroseconds < maximumWaitMicroseconds {
+            usleep(1_000)
+            waitedMicroseconds += 1_000
+        }
+        // A route change can halt callbacks while the output is being
+        // replaced. The next source must still begin muted in that case.
+        if transportEnvelope.remainingFrames > 0 {
+            transportEnvelope.set(0)
+        }
     }
 
     func setMonoEnabled(_ enabled: Bool) {

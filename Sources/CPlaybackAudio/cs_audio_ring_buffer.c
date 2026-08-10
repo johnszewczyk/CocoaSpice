@@ -16,6 +16,19 @@ struct CSAudioRingBuffer {
     _Atomic uint64_t clipped_sample_count;
 };
 
+struct CSAudioTransportEnvelope {
+    _Atomic float gain;
+    _Atomic float target_gain;
+    _Atomic uint64_t remaining_frames;
+    _Atomic uint64_t revision;
+};
+
+static float cs_audio_clamp_gain(float gain) {
+    if (gain < 0.0f) return 0.0f;
+    if (gain > 1.0f) return 1.0f;
+    return gain;
+}
+
 CSAudioRingBuffer *cs_audio_ring_buffer_create(uint64_t capacity_frames) {
     if (capacity_frames == 0) {
         return NULL;
@@ -230,4 +243,79 @@ uint64_t cs_audio_ring_buffer_read_stereo(
     }
     atomic_fetch_add_explicit(&buffer->frames_read, frames_to_read, memory_order_relaxed);
     return frames_to_read;
+}
+
+CSAudioTransportEnvelope *cs_audio_transport_envelope_create(void) {
+    CSAudioTransportEnvelope *envelope = calloc(1, sizeof(*envelope));
+    if (envelope == NULL) return NULL;
+    atomic_init(&envelope->gain, 1.0f);
+    atomic_init(&envelope->target_gain, 1.0f);
+    atomic_init(&envelope->remaining_frames, 0);
+    atomic_init(&envelope->revision, 0);
+    return envelope;
+}
+
+void cs_audio_transport_envelope_destroy(CSAudioTransportEnvelope *envelope) {
+    free(envelope);
+}
+
+void cs_audio_transport_envelope_set(CSAudioTransportEnvelope *envelope, float gain) {
+    if (envelope == NULL) return;
+    const float safe_gain = cs_audio_clamp_gain(gain);
+    atomic_fetch_add_explicit(&envelope->revision, 1, memory_order_acq_rel);
+    atomic_store_explicit(&envelope->gain, safe_gain, memory_order_release);
+    atomic_store_explicit(&envelope->target_gain, safe_gain, memory_order_release);
+    atomic_store_explicit(&envelope->remaining_frames, 0, memory_order_release);
+}
+
+void cs_audio_transport_envelope_ramp(
+    CSAudioTransportEnvelope *envelope,
+    float gain,
+    uint64_t frame_count
+) {
+    if (envelope == NULL) return;
+    if (frame_count == 0) {
+        cs_audio_transport_envelope_set(envelope, gain);
+        return;
+    }
+    atomic_fetch_add_explicit(&envelope->revision, 1, memory_order_acq_rel);
+    atomic_store_explicit(&envelope->target_gain, cs_audio_clamp_gain(gain), memory_order_release);
+    atomic_store_explicit(&envelope->remaining_frames, frame_count, memory_order_release);
+}
+
+uint64_t cs_audio_transport_envelope_remaining_frames(const CSAudioTransportEnvelope *envelope) {
+    return envelope == NULL
+        ? 0
+        : atomic_load_explicit(&envelope->remaining_frames, memory_order_acquire);
+}
+
+void cs_audio_transport_envelope_apply_stereo(
+    CSAudioTransportEnvelope *envelope,
+    float *left,
+    float *right,
+    uint64_t frame_count
+) {
+    if (envelope == NULL || left == NULL || right == NULL || frame_count == 0) return;
+
+    const uint64_t revision = atomic_load_explicit(&envelope->revision, memory_order_acquire);
+    float gain = atomic_load_explicit(&envelope->gain, memory_order_acquire);
+    const float target_gain = atomic_load_explicit(&envelope->target_gain, memory_order_acquire);
+    uint64_t remaining_frames = atomic_load_explicit(&envelope->remaining_frames, memory_order_acquire);
+
+    for (uint64_t frame = 0; frame < frame_count; frame += 1) {
+        if (remaining_frames > 0) {
+            gain += (target_gain - gain) / (float)remaining_frames;
+            remaining_frames -= 1;
+        } else {
+            gain = target_gain;
+        }
+        left[frame] *= gain;
+        right[frame] *= gain;
+    }
+
+    // A new control request wins over a callback already in progress.
+    if (atomic_load_explicit(&envelope->revision, memory_order_acquire) == revision) {
+        atomic_store_explicit(&envelope->gain, gain, memory_order_release);
+        atomic_store_explicit(&envelope->remaining_frames, remaining_frames, memory_order_release);
+    }
 }

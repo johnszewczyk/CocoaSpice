@@ -152,6 +152,36 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(renderedRight == renderedLeft)
 }
 
+@Test func realtimeTransportEnvelopeRampsEachOutputFrame() throws {
+    let envelope = try RealtimePCMTransportEnvelope()
+    var left = Array(repeating: Float(1), count: 4)
+    var right = Array(repeating: Float(1), count: 4)
+
+    envelope.set(0)
+    left.withUnsafeMutableBufferPointer { leftPointer in
+        right.withUnsafeMutableBufferPointer { rightPointer in
+            envelope.apply(left: leftPointer, right: rightPointer)
+        }
+    }
+    #expect(left == Array(repeating: 0, count: 4))
+    #expect(right == left)
+
+    left = Array(repeating: 1, count: 4)
+    right = Array(repeating: 1, count: 4)
+    envelope.ramp(to: 1, overFrames: 4)
+    left.withUnsafeMutableBufferPointer { leftPointer in
+        right.withUnsafeMutableBufferPointer { rightPointer in
+            envelope.apply(left: leftPointer, right: rightPointer)
+        }
+    }
+    let expected: [Float] = [0.25, 0.5, 0.75, 1]
+    for (actual, target) in zip(left, expected) {
+        #expect(abs(actual - target) < 0.0001)
+    }
+    #expect(right == left)
+    #expect(envelope.remainingFrames == 0)
+}
+
 @MainActor
 @Test func interfaceStyleUsesOneValueForSidebarAndPlaylist() {
     let model = PlayerViewModel()
