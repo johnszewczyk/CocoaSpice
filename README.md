@@ -39,6 +39,7 @@ This is not ordinary “repeat the file” behavior. Long Play uses the decoder�
 ### Database rules
 
 - A source is identified by its library root, source path, archive member, and subtrack index. One source does not produce duplicate database rows.
+- A Games row is identified by its library root, game, and system. Matching titles from separate roots remain separate and load only that root's stored playlist rows.
 - Incremental scans reuse unchanged results. A changed archive replaces its complete stored member set, so removed or renamed members cannot remain visible.
 - Disabled paths are excluded from the active database and Scan All, yet remain available for a deliberate per-path scan.
 - Reset Database clears indexed state. The next scan recreates it from the chosen paths.
