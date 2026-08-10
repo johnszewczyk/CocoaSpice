@@ -30,4 +30,9 @@ struct ArchiveCachePolicy: Sendable, Equatable {
 
     var isEnabled: Bool { mode == .enabled }
     var activeLimitBytes: Int64 { isEnabled ? maximumBytes : Self.disposableLimitBytes }
+
+    static func displayLimit(_ bytes: Int64) -> String {
+        let gibibyte: Int64 = 1_024 * 1_024 * 1_024
+        return "\(max(1, bytes / gibibyte)) GB"
+    }
 }

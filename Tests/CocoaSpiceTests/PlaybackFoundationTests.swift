@@ -63,6 +63,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     defaults.set(7 * 1_024 * 1_024 * 1_024, forKey: AppDefaultsKey.archiveCacheLimitBytes)
     #expect(ArchiveCachePolicy.load(defaults: defaults).maximumBytes == 8 * 1_024 * 1_024 * 1_024)
     #expect(ArchiveCachePolicy.load(defaults: defaults).activeLimitBytes == ArchiveCachePolicy.disposableLimitBytes)
+    #expect(ArchiveCachePolicy.displayLimit(16 * 1_024 * 1_024 * 1_024) == "16 GB")
 }
 
 @Test func archiveCacheLifecycleReclaimsOnlyAbandonedOwnedMaterial() throws {

@@ -595,7 +595,7 @@ struct OptionsView: View {
                         set: { model.setArchiveCacheLimitBytes($0) }
                     )) {
                         ForEach(ArchiveCachePolicy.supportedLimits, id: \.self) { bytes in
-                            Text(ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)).tag(bytes)
+                            Text(ArchiveCachePolicy.displayLimit(bytes)).tag(bytes)
                         }
                     }
                     .pickerStyle(.segmented)
