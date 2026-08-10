@@ -184,6 +184,22 @@ struct OptionsView: View {
 
             }
 
+            sectionCard(title: "Faded Skip") {
+                Toggle(isOn: Binding(
+                    get: { model.fadedSkipEnabled },
+                    set: { model.setFadedSkipEnabled($0) }
+                )) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Enable Faded Skip")
+                            .foregroundStyle(.white)
+                        Text("Next and Previous fade the live track for the configured 6-second fade out before advancing. Press again to skip immediately.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .toggleStyle(.checkbox)
+            }
+
             libraryBehaviorCard
 
             sectionCard(title: "Playback Diagnostics") {

@@ -152,6 +152,14 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
         transportEnvelope.ramp(to: 1, overFrames: transitionFrameCount)
     }
 
+    /// A musical skip fade deliberately leaves the live decoder, ring, and
+    /// output graph running. The caller owns the later adjacent-track change.
+    func fadeLiveOutput(duration: TimeInterval) {
+        guard engine.isRunning else { return }
+        let frames = max(1, Int((sampleRate * max(0, duration)).rounded()))
+        transportEnvelope.ramp(to: 0, overFrames: frames)
+    }
+
     private func applyOutputGain() {
         engine.mainMixerNode.outputVolume = appVolume
     }

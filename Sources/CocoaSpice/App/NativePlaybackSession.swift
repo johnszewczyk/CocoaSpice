@@ -208,6 +208,16 @@ final class NativePlaybackSession: @unchecked Sendable {
         }
     }
 
+    /// Begins a non-destructive musical fade of the current live source. The
+    /// refill timer keeps decoding until the coordinator advances the queue.
+    func beginFadedSkip(duration: TimeInterval) -> Int? {
+        refillQueue.sync {
+            guard output.snapshot.transportState == .playing else { return nil }
+            output.fadeLiveOutput(duration: duration)
+            return generation
+        }
+    }
+
     func statusSnapshot() -> PlaybackStatusSnapshot {
         refillQueue.sync {
             let snapshot = output.snapshot

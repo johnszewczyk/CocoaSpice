@@ -181,6 +181,18 @@ final class PlaybackEngine: @unchecked Sendable {
         await stopPlayback()
     }
 
+    func beginFadedSkip(duration: TimeInterval) async -> Int? {
+        await enqueue {
+            self.nativeSession.beginFadedSkip(duration: duration)
+        }
+    }
+
+    func isCurrentGeneration(_ generation: Int) async -> Bool {
+        await enqueue {
+            self.nativeSession.isCurrentGeneration(generation)
+        }
+    }
+
     func statusSnapshot() async -> PlaybackStatusSnapshot {
         await enqueue {
             self.currentSnapshot()

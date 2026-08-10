@@ -10,6 +10,7 @@ enum AppDefaultsKey {
     static let longPlayEnabled = "CocoaSpice.longPlayEnabled"
     static let manualPreFadeSeconds = "CocoaSpice.manualPreFadeSeconds"
     static let endFadeEnabled = "CocoaSpice.endFadeEnabled"
+    static let fadedSkipEnabled = "CocoaSpice.fadedSkipEnabled"
     static let spectrumGradientStartColor = "CocoaSpice.spectrumGradientStartColor"
     static let spectrumGradientEndColor = "CocoaSpice.spectrumGradientEndColor"
     static let spectrumPeakColor = "CocoaSpice.spectrumPeakColor"
@@ -52,6 +53,7 @@ struct RestoredPlaybackPreferences {
     let playlistFollowsCursor: Bool
     let manualPreFadeSeconds: Int?
     let endFadeEnabled: Bool
+    let fadedSkipEnabled: Bool
     let spectrumGradientStartColor: String?
     let spectrumGradientEndColor: String?
     let spectrumPeakColor: String?
@@ -123,6 +125,7 @@ enum AppSessionPersistence {
                 return storedUnifiedPreFade > 0 ? storedUnifiedPreFade : nil
             }(),
             endFadeEnabled: defaults.object(forKey: AppDefaultsKey.endFadeEnabled) as? Bool ?? true,
+            fadedSkipEnabled: defaults.object(forKey: AppDefaultsKey.fadedSkipEnabled) as? Bool ?? false,
             spectrumGradientStartColor: defaults.string(forKey: AppDefaultsKey.spectrumGradientStartColor),
             spectrumGradientEndColor: defaults.string(forKey: AppDefaultsKey.spectrumGradientEndColor),
             spectrumPeakColor: defaults.string(forKey: AppDefaultsKey.spectrumPeakColor),
@@ -178,6 +181,7 @@ enum AppSessionPersistence {
         playlistFollowsCursor: Bool,
         manualPreFadeSeconds: Int,
         endFadeEnabled: Bool,
+        fadedSkipEnabled: Bool,
         spectrumGradientStartColor: NSColor,
         spectrumGradientEndColor: NSColor,
         spectrumPeakColor: NSColor,
@@ -207,6 +211,7 @@ enum AppSessionPersistence {
         defaults.set(playlistFollowsCursor, forKey: AppDefaultsKey.playlistFollowsCursor)
         defaults.set(manualPreFadeSeconds, forKey: AppDefaultsKey.manualPreFadeSeconds)
         defaults.set(endFadeEnabled, forKey: AppDefaultsKey.endFadeEnabled)
+        defaults.set(fadedSkipEnabled, forKey: AppDefaultsKey.fadedSkipEnabled)
         defaults.set(serializedColor(spectrumGradientStartColor), forKey: AppDefaultsKey.spectrumGradientStartColor)
         defaults.set(serializedColor(spectrumGradientEndColor), forKey: AppDefaultsKey.spectrumGradientEndColor)
         defaults.set(serializedColor(spectrumPeakColor), forKey: AppDefaultsKey.spectrumPeakColor)

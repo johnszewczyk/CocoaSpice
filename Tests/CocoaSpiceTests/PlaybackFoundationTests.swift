@@ -42,9 +42,11 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     defer { defaults.removePersistentDomain(forName: suiteName) }
     defaults.set(0.36, forKey: AppDefaultsKey.appVolume)
     defaults.set(true, forKey: AppDefaultsKey.monoEnabled)
+    defaults.set(true, forKey: AppDefaultsKey.fadedSkipEnabled)
 
     #expect(AppSessionPersistence.restorePlaybackPreferences(defaults: defaults).appVolume == 0.36)
     #expect(AppSessionPersistence.restorePlaybackPreferences(defaults: defaults).monoEnabled)
+    #expect(AppSessionPersistence.restorePlaybackPreferences(defaults: defaults).fadedSkipEnabled)
 }
 
 @Test func archiveCachePolicyPersistsModeAndNearestSupportedLimit() {

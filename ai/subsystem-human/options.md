@@ -31,6 +31,7 @@
 - Long Play: enable shared extended playback.
 - Duration: set a manual playback target.
 - End Fade: enable or disable the standard six-second fade. With it off, metadata-timed tracks use their native ending.
+- Faded Skip: optionally uses that same six-second duration for Next and Previous while the live source continues playing; press again to advance immediately.
 - Library Behavior: Playlist Follows Cursor applies to the Games browser; the Files browser queues only on double-click or Return. Double-Click Enqueues remains a playback control for Games.
 - Playback Diagnostics: reports current PCM buffer headroom plus per-track underruns and source over-scale samples. These counters reset for each new track; source clipping cannot detect amplifier or speaker distortion.
 

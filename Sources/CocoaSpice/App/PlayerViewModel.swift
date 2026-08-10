@@ -273,7 +273,10 @@ final class PlayerViewModel {
     var longPlayEnabled = false
     var manualPreFadeSeconds: Int = 180
     var endFadeEnabled = true
+    var fadedSkipEnabled = false
     var fadeSeconds: Int { endFadeEnabled ? 6 : 0 }
+    private var fadedSkipTask: Task<Void, Never>?
+    private var fadedSkipToken: UUID?
     var statusText: String = "Choose a music folder to begin."
     var isLoading = false
     var isPlaying = false
@@ -1421,6 +1424,7 @@ final class PlayerViewModel {
             playlistFollowsCursor: playlistFollowsCursor,
             manualPreFadeSeconds: manualPreFadeSeconds,
             endFadeEnabled: endFadeEnabled,
+            fadedSkipEnabled: fadedSkipEnabled,
             spectrumGradientStartColor: spectrumGradientStartColor,
             spectrumGradientEndColor: spectrumGradientEndColor,
             spectrumPeakColor: spectrumPeakColor,
@@ -1496,6 +1500,12 @@ final class PlayerViewModel {
         if currentTrack != nil {
             applyPlaybackTiming()
         }
+    }
+
+    func setFadedSkipEnabled(_ enabled: Bool) {
+        fadedSkipEnabled = enabled
+        if !enabled { cancelFadedSkip() }
+        savePreferencesNow()
     }
 
     func setDatabaseSidebarTextColor(_ color: DatabaseSidebarTextColor) {
@@ -1926,6 +1936,7 @@ final class PlayerViewModel {
 
     func pausePlayback() {
         guard !isLoading, isPlaying else { return }
+        cancelFadedSkip()
         let playback = self.playback
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -1962,6 +1973,7 @@ final class PlayerViewModel {
 
     func toggleTrackPlayback(_ track: TrackItem) {
         if currentTrack?.id == track.id, isPlaying {
+            cancelFadedSkip()
             playbackRequestState.cancel()
             isLoading = false
             let playback = self.playback
@@ -1997,7 +2009,7 @@ final class PlayerViewModel {
             direction: .next,
             wraps: true
         ) else { return }
-        requestPlayback(for: nextTrack)
+        requestAdjacentPlayback(nextTrack)
     }
 
     func cycleRandomPlaybackScope() {
@@ -2100,7 +2112,61 @@ final class PlayerViewModel {
             direction: .previous,
             wraps: true
         ) else { return }
-        requestPlayback(for: previousTrack)
+        requestAdjacentPlayback(previousTrack)
+    }
+
+    private func requestAdjacentPlayback(_ track: TrackItem) {
+        guard fadedSkipEnabled,
+              isPlaying,
+              fadeSeconds > 0,
+              currentTrack != nil,
+              playbackElapsedSeconds < Double(effectivePreFadeSeconds) else {
+            requestPlayback(for: track)
+            return
+        }
+
+        // A second adjacent command abandons the long musical fade and lets
+        // ordinary replacement perform only its 24 ms de-click transition.
+        guard fadedSkipToken == nil else {
+            cancelFadedSkip()
+            requestPlayback(for: track)
+            return
+        }
+
+        let token = UUID()
+        let fadeDuration = TimeInterval(fadeSeconds)
+        fadedSkipToken = token
+        let playback = self.playback
+        fadedSkipTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            guard let sessionGeneration = await playback.beginFadedSkip(duration: fadeDuration),
+                  self.fadedSkipToken == token else {
+                if self.fadedSkipToken == token {
+                    self.cancelFadedSkip()
+                    self.requestPlayback(for: track)
+                }
+                return
+            }
+            self.statusText = "Fading to \(track.filename)…"
+            do {
+                try await Task.sleep(for: .seconds(fadeDuration))
+            } catch {
+                return
+            }
+            guard self.fadedSkipToken == token,
+                  await playback.isCurrentGeneration(sessionGeneration) else {
+                return
+            }
+            self.fadedSkipTask = nil
+            self.fadedSkipToken = nil
+            self.requestPlayback(for: track)
+        }
+    }
+
+    private func cancelFadedSkip() {
+        fadedSkipTask?.cancel()
+        fadedSkipTask = nil
+        fadedSkipToken = nil
     }
 
     func handleMediaPreviousCommand() {
@@ -2170,6 +2236,7 @@ final class PlayerViewModel {
     }
 
     func completeSeek() {
+        cancelFadedSkip()
         let target = seekPreviewSeconds
         isSeeking = false
         let playback = self.playback
@@ -2186,6 +2253,7 @@ final class PlayerViewModel {
     }
 
     private func requestPlayback(for track: TrackItem) {
+        cancelFadedSkip()
         if isLoading, currentTrack?.id == track.id {
             return
         }
@@ -2466,6 +2534,7 @@ final class PlayerViewModel {
     private func handlePlaybackCompletionIfNeeded() {
         guard !isLoading,
               !isSeeking,
+              fadedSkipToken == nil,
               !isPlaying,
               !didAutoAdvanceForCurrentTrack,
               let currentTrack,
@@ -3007,6 +3076,7 @@ final class PlayerViewModel {
             manualPreFadeSeconds = storedManualPreFade
         }
         endFadeEnabled = preferences.endFadeEnabled
+        fadedSkipEnabled = preferences.fadedSkipEnabled
         if let storedStartColor = preferences.spectrumGradientStartColor.flatMap(AppSessionPersistence.deserializeColor) {
             spectrumGradientStartColor = storedStartColor
         }
