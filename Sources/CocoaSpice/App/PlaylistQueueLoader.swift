@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 struct LoadedPlaylistData: Sendable {
     let tracks: [TrackItem]
@@ -14,6 +15,10 @@ enum LibraryPlaylistLoadRequest: Sendable {
 }
 
 enum PlaylistQueueLoader {
+    private static let playlistLoadLogger = Logger(
+        subsystem: "com.local.cocoaspice",
+        category: "playlist-load"
+    )
     static func loadTracks(in folderURL: URL) async -> [TrackItem] {
         let loaded = await loadDroppedTracks(from: [folderURL])
         return loaded.tracks
@@ -45,10 +50,16 @@ enum PlaylistQueueLoader {
     ) async -> LoadedPlaylistData {
         await Task.detached(priority: .userInitiated) {
             guard let databaseURL else { return emptyLoadedPlaylistData() }
+            Self.playlistLoadLogger.info("sidebar database worker began")
+            let queryStartedAt = ContinuousClock.now
             let loaded = (try? LibraryDatabase.tracksAndMetadataForGames(
                 databaseURL: databaseURL,
                 gameItems: gameItems
             )).map(loadedPlaylistData(from:)) ?? emptyLoadedPlaylistData()
+            let queryElapsed = queryStartedAt.duration(to: .now)
+            Self.playlistLoadLogger.info(
+                "sidebar SQLite query finished: \(loaded.tracks.count) tracks in \(String(describing: queryElapsed), privacy: .public)"
+            )
             return loaded
         }.value
     }
