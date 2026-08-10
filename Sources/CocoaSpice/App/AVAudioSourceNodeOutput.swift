@@ -156,10 +156,6 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
         waitForTransitionSilence()
     }
 
-    func restoreAfterTransition() {
-        transportEnvelope.ramp(to: 1, overFrames: transitionFrameCount)
-    }
-
     /// A musical skip fade deliberately leaves the live decoder, ring, and
     /// output graph running. The caller owns the later adjacent-track change.
     func fadeLiveOutput(duration: TimeInterval) {
@@ -255,6 +251,10 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
             outputState = .primed
             throw AVAudioSourceNodeOutputError.insufficientPriming
         }
+        // Publish the fade-in before the render gate opens. A source callback
+        // can run as soon as the graph starts; reversing these operations can
+        // consume one callback at zero gain and trim a track's first attack.
+        transportEnvelope.ramp(to: 1, overFrames: transitionFrameCount)
         if !engine.isRunning {
             try engine.start()
         }

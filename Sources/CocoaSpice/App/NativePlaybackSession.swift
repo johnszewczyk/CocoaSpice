@@ -133,7 +133,6 @@ final class NativePlaybackSession: @unchecked Sendable {
 
             if autoplay {
                 try output.start()
-                output.restoreAfterTransition()
                 outputHeartbeat.reset(expectingRenderRequests: true)
                 startRefillTimer()
             } else {
@@ -159,7 +158,6 @@ final class NativePlaybackSession: @unchecked Sendable {
 
             stream?.setSuspended(false)
             try output.start()
-            output.restoreAfterTransition()
             outputHeartbeat.reset(expectingRenderRequests: true)
             startRefillTimer()
             return true
@@ -185,7 +183,6 @@ final class NativePlaybackSession: @unchecked Sendable {
             try refillTo(targetBufferedFrames: output.primeFrameCount)
             if wasPlaying {
                 try output.start()
-                output.restoreAfterTransition()
                 outputHeartbeat.reset(expectingRenderRequests: true)
             } else {
                 outputHeartbeat.reset(expectingRenderRequests: false)
@@ -324,7 +321,6 @@ final class NativePlaybackSession: @unchecked Sendable {
                 try self.refillTo(targetBufferedFrames: self.output.primeFrameCount)
                 if wasPlaying {
                     try self.output.start()
-                    self.output.restoreAfterTransition()
                     self.outputHeartbeat.reset(expectingRenderRequests: true)
                     self.startRefillTimer()
                 } else {
