@@ -2126,7 +2126,7 @@ final class PlayerViewModel {
         }
 
         // A second adjacent command abandons the long musical fade and lets
-        // ordinary replacement perform only its 24 ms de-click transition.
+        // ordinary replacement perform only its 10 ms de-click transition.
         guard fadedSkipToken == nil else {
             cancelFadedSkip()
             requestPlayback(for: track)

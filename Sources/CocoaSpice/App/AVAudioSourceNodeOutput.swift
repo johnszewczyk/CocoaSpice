@@ -22,7 +22,9 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
     private var spectrumTapInstalled = false
     private var monoEnabled = false
     private var appVolume: Float = 1
-    private let transitionDuration: TimeInterval = 0.024
+    // Match SPCBoy's proven short de-click window: it removes the signal
+    // discontinuity without audibly softening a track's opening attack.
+    private let transitionDuration: TimeInterval = 0.010
 
     init(
         sampleRate: Double = 44_100,
