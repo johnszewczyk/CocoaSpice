@@ -148,22 +148,31 @@ struct MainView: View {
                             systemImage: "magnifyingglass",
                             description: Text("No scanned files match the current sidebar search.")
                         )
-                    } else if model.sidebarBrowserMode == .games {
-                        DatabaseGameListView(
-                            model: model,
-                            sidebarFontSize: model.databaseSidebarFontSize,
-                            sidebarTextColor: model.databaseSidebarTextColor,
-                            sidebarMonospace: model.databaseSidebarMonospaceFont
-                        )
                     } else {
-                        DatabaseFileListView(
-                            model: model,
-                            sidebarFontSize: model.databaseSidebarFontSize,
-                            sidebarTextColor: model.databaseSidebarTextColor,
-                            sidebarMonospace: model.databaseSidebarMonospaceFont,
-                            sidebarDisclosureGap: model.databaseSidebarDisclosureGapPoints,
-                            hideFileExtensions: model.databaseSidebarHidesFileExtensions
-                        )
+                        // These are native AppKit table views. Keep both alive
+                        // after they are first shown so switching Games/Files
+                        // never reconstructs the expanded Files hierarchy.
+                        ZStack {
+                            DatabaseGameListView(
+                                model: model,
+                                sidebarFontSize: model.databaseSidebarFontSize,
+                                sidebarTextColor: model.databaseSidebarTextColor,
+                                sidebarMonospace: model.databaseSidebarMonospaceFont
+                            )
+                            .opacity(model.sidebarBrowserMode == .games ? 1 : 0)
+                            .allowsHitTesting(model.sidebarBrowserMode == .games)
+
+                            DatabaseFileListView(
+                                model: model,
+                                sidebarFontSize: model.databaseSidebarFontSize,
+                                sidebarTextColor: model.databaseSidebarTextColor,
+                                sidebarMonospace: model.databaseSidebarMonospaceFont,
+                                sidebarDisclosureGap: model.databaseSidebarDisclosureGapPoints,
+                                hideFileExtensions: model.databaseSidebarHidesFileExtensions
+                            )
+                            .opacity(model.sidebarBrowserMode == .files ? 1 : 0)
+                            .allowsHitTesting(model.sidebarBrowserMode == .files)
+                        }
                     }
                 }
             }
