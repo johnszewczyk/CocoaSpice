@@ -1,11 +1,16 @@
 import AppKit
 import Foundation
+import OSLog
 import Observation
 import UniformTypeIdentifiers
 
 @MainActor
 @Observable
 final class PlayerViewModel {
+    private static let playlistLoadLogger = Logger(
+        subsystem: "com.local.cocoaspice",
+        category: "playlist-load"
+    )
     enum RepeatMode: String, CaseIterable, Identifiable {
         case off, playlist, song
         var id: Self { self }
@@ -1134,6 +1139,8 @@ final class PlayerViewModel {
         let generation = queueBuildTaskOwner.begin()
         statusText = "Loading \(label)..."
         let databaseURL = libraryDatabaseURL
+        let startedAt = ContinuousClock.now
+        Self.playlistLoadLogger.info("sidebar playlist load began: \(label, privacy: .public)")
 
         let task = Task { [weak self] in
             guard let self else { return }
@@ -1142,6 +1149,11 @@ final class PlayerViewModel {
                 request: request
             )
             guard !Task.isCancelled, self.queueBuildTaskOwner.isCurrent(generation) else { return }
+            let databaseElapsed = startedAt.duration(to: .now)
+            Self.playlistLoadLogger.info(
+                "sidebar database load finished: \(loaded.tracks.count) tracks in \(String(describing: databaseElapsed), privacy: .public)"
+            )
+            let applyStartedAt = ContinuousClock.now
             self.applyQueuedTracks(
                 loaded.tracks,
                 from: sourceURL,
@@ -1151,6 +1163,10 @@ final class PlayerViewModel {
                 widthHints: loaded.widthHints,
                 metadataInspectionPolicy: .databaseSnapshot,
                 autoplay: autoplay
+            )
+            let applyElapsed = applyStartedAt.duration(to: .now)
+            Self.playlistLoadLogger.info(
+                "sidebar queue applied: \(loaded.tracks.count) tracks in \(String(describing: applyElapsed), privacy: .public)"
             )
             self.statusText = replace
                 ? "Queued \(loaded.tracks.count) tracks from \(label)"

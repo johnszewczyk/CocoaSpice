@@ -1,4 +1,5 @@
 import AppKit
+import OSLog
 import SwiftUI
 
 struct PlaylistTableView: NSViewRepresentable {
@@ -68,6 +69,10 @@ struct PlaylistTableView: NSViewRepresentable {
 
     @MainActor
     final class Coordinator: NSObject {
+        private static let playlistLoadLogger = Logger(
+            subsystem: "com.local.cocoaspice",
+            category: "playlist-load"
+        )
         private let columnResizeAnimationSteps = 12
         private let columnResizeIntervalNanoseconds: UInt64 = 24_000_000
         private let autoSizeSampleLimit = 200
@@ -242,7 +247,12 @@ struct PlaylistTableView: NSViewRepresentable {
             }
 
             if rowsChanged || sortChanged || fontChanged {
+                let reloadStartedAt = ContinuousClock.now
                 tableView.reloadData()
+                let reloadElapsed = reloadStartedAt.duration(to: .now)
+                Self.playlistLoadLogger.info(
+                    "playlist table reload finished: \(self.model.visiblePlaylist.count) rows in \(String(describing: reloadElapsed), privacy: .public)"
+                )
             } else {
                 if metadataTokenChanged {
                     reloadMetadataRows(
