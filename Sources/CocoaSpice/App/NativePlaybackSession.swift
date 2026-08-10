@@ -97,8 +97,10 @@ final class NativePlaybackSession: @unchecked Sendable {
         autoplay: Bool
     ) throws -> TrackMetadata {
         try refillQueue.sync {
-            let wasPlaying = output.snapshot.transportState == .playing
-            if wasPlaying { output.duckForTransition() }
+            // Every new stream starts from a muted final mixer, including the
+            // first one after launch or Stop. Starting a primed source at
+            // unity can expose its first non-zero PCM sample as a pop.
+            output.duckForTransition()
             refillTimer?.cancel()
             refillTimer = nil
             outputHeartbeat.reset(expectingRenderRequests: false)
@@ -302,6 +304,7 @@ final class NativePlaybackSession: @unchecked Sendable {
                 // re-emulation.
                 self.refillTimer?.cancel()
                 self.refillTimer = nil
+                if wasPlaying { self.output.duckForTransition() }
                 self.output.prepareForRestart()
                 self.generation += 1
                 self.sessionStartFrame = resumeFrame
@@ -311,6 +314,7 @@ final class NativePlaybackSession: @unchecked Sendable {
                 try self.refillTo(targetBufferedFrames: self.output.primeFrameCount)
                 if wasPlaying {
                     try self.output.start()
+                    self.output.restoreAfterTransition()
                     self.outputHeartbeat.reset(expectingRenderRequests: true)
                     self.startRefillTimer()
                 } else {
