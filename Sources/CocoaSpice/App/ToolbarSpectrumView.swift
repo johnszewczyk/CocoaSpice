@@ -183,7 +183,7 @@ final class ToolbarSpectrumNativeView: NSView {
 
     override func draw(_ dirtyRect: NSRect) {
         let bounds = self.bounds
-        NSColor(calibratedWhite: 20.0 / 255.0, alpha: 1).setFill()
+        NSColor(srgbRed: 20.0 / 255.0, green: 20.0 / 255.0, blue: 20.0 / 255.0, alpha: 1).setFill()
         NSBezierPath(roundedRect: bounds, xRadius: bounds.height / 2, yRadius: bounds.height / 2).fill()
         NSColor.white.withAlphaComponent(0.06).setStroke()
         let outline = NSBezierPath(roundedRect: bounds.insetBy(dx: 0.25, dy: 0.25), xRadius: bounds.height / 2, yRadius: bounds.height / 2)
