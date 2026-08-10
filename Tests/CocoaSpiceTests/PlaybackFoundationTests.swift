@@ -47,6 +47,24 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(AppSessionPersistence.restorePlaybackPreferences(defaults: defaults).monoEnabled)
 }
 
+@Test func archiveCachePolicyPersistsModeAndNearestSupportedLimit() {
+    let suiteName = "CocoaSpiceTests.\(UUID().uuidString)"
+    guard let defaults = UserDefaults(suiteName: suiteName) else {
+        Issue.record("Failed to create isolated UserDefaults suite")
+        return
+    }
+    defaults.removePersistentDomain(forName: suiteName)
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+
+    let policy = ArchiveCachePolicy(mode: .disabled, maximumBytes: 1_024 * 1_024 * 1_024)
+    policy.save(defaults: defaults)
+    #expect(ArchiveCachePolicy.load(defaults: defaults) == policy)
+
+    defaults.set(777 * 1_024 * 1_024, forKey: AppDefaultsKey.archiveCacheLimitBytes)
+    #expect(ArchiveCachePolicy.load(defaults: defaults).maximumBytes == 1_024 * 1_024 * 1_024)
+    #expect(ArchiveCachePolicy.load(defaults: defaults).activeLimitBytes == ArchiveCachePolicy.disposableLimitBytes)
+}
+
 @Test func monoRingBufferMixesStereoAndDuplicatesTheResult() throws {
     let ringBuffer = try RealtimePCMFrameRingBuffer(capacityFrames: 8)
     let left: [Float] = [1, 0.5, -1]
