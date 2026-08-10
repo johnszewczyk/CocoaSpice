@@ -193,6 +193,14 @@ final class PlayerViewModel {
     var browsedFolderTracks: [TrackItem] = []
     var selectedTrackID: TrackItem.ID?
     var selectedTrackIDs: Set<TrackItem.ID> = []
+    private enum PlaylistMetadataInspectionPolicy: Equatable {
+        /// The playlist was built from scan-time database rows. Its presentation
+        /// must never reopen source files merely to fill in optional fields.
+        case databaseSnapshot
+        /// Direct imports may inspect source files to fill absent metadata.
+        case inspectMissing
+    }
+
     var playlist: [TrackItem] = [] {
         didSet {
             if !isRestoringPersistedPlaylist {
@@ -206,6 +214,7 @@ final class PlayerViewModel {
     private var isRestoringPersistedPlaylist = false
     private var deferredPersistedPlaylistValues: [String] = []
     var metadataCache: [String: TrackMetadata] = [:]
+    private var playlistMetadataInspectionPolicy: PlaylistMetadataInspectionPolicy = .inspectMissing
     private(set) var playlistTotalDurationReadout = "0:00"
     private var playlistDurationSecondsByTrackID: [TrackItem.ID: Int] = [:]
     private var playlistDurationTrackIDs: Set<TrackItem.ID> = []
@@ -1140,6 +1149,7 @@ final class PlayerViewModel {
                 preservePlayback: replace && !autoplay,
                 seedMetadataCache: loaded.metadata,
                 widthHints: loaded.widthHints,
+                metadataInspectionPolicy: .databaseSnapshot,
                 autoplay: autoplay
             )
             self.statusText = replace
@@ -1212,6 +1222,7 @@ final class PlayerViewModel {
         preservePlayback: Bool = false,
         seedMetadataCache: [String: TrackMetadata] = [:],
         widthHints: PlaylistColumnWidthHints? = nil,
+        metadataInspectionPolicy: PlaylistMetadataInspectionPolicy = .inspectMissing,
         autoplay: Bool = false
     ) {
         guard !tracks.isEmpty else {
@@ -1220,6 +1231,7 @@ final class PlayerViewModel {
         }
 
         metadataCache = seedMetadataCache
+        playlistMetadataInspectionPolicy = metadataInspectionPolicy
         playlistColumnWidthHints = widthHints
 
         if replace {
@@ -1257,7 +1269,8 @@ final class PlayerViewModel {
                 tracks,
                 status: "Queued \(tracks.count) tracks from \(folderURL.lastPathComponent)",
                 seedMetadataCache: seedMetadataCache,
-                widthHints: widthHints
+                widthHints: widthHints,
+                metadataInspectionPolicy: metadataInspectionPolicy
             )
             return
         }
@@ -1274,7 +1287,8 @@ final class PlayerViewModel {
         _ tracks: [TrackItem],
         status: String,
         seedMetadataCache: [String: TrackMetadata] = [:],
-        widthHints: PlaylistColumnWidthHints? = nil
+        widthHints: PlaylistColumnWidthHints? = nil,
+        metadataInspectionPolicy: PlaylistMetadataInspectionPolicy = .inspectMissing
     ) {
         var existing = Set(playlist.map(\.id))
         let uniqueTracks = tracks.filter { existing.insert($0.id).inserted }
@@ -1283,6 +1297,9 @@ final class PlayerViewModel {
             return
         }
         metadataCache.merge(seedMetadataCache) { current, _ in current }
+        if metadataInspectionPolicy == .databaseSnapshot {
+            playlistMetadataInspectionPolicy = .databaseSnapshot
+        }
         if let widthHints {
             playlistColumnWidthHints = widthHints
         } else if !seedMetadataCache.isEmpty {
@@ -2600,7 +2617,8 @@ final class PlayerViewModel {
                 replace: replace,
                 preservePlayback: preservePlayback,
                 seedMetadataCache: loaded.metadata,
-                widthHints: loaded.widthHints
+                widthHints: loaded.widthHints,
+                metadataInspectionPolicy: .databaseSnapshot
             )
             self.queueBuildTaskOwner.finish(generation: generation)
         }
@@ -2633,7 +2651,8 @@ final class PlayerViewModel {
                 replace: replace,
                 preservePlayback: replace,
                 seedMetadataCache: loaded.metadata,
-                widthHints: loaded.widthHints
+                widthHints: loaded.widthHints,
+                metadataInspectionPolicy: .databaseSnapshot
             )
             if replace, let firstTrack = loaded.tracks.first {
                 self.currentTrack = firstTrack
@@ -2663,6 +2682,21 @@ final class PlayerViewModel {
 
         guard !tracks.isEmpty else {
             playlistColumnWidthHints = nil
+            playlistMetadataLoadToken += 1
+            playlistMetadataTaskOwner.finish(generation: generation)
+            return
+        }
+
+        // A sidebar playlist is a database projection. Selection is required
+        // to remain strictly database-only: no decoder probes, archive
+        // materialization, or filesystem metadata reads are permitted here.
+        guard playlistMetadataInspectionPolicy == .inspectMissing else {
+            if playlistColumnWidthHints == nil {
+                playlistColumnWidthHints = Self.buildPlaylistColumnWidthHints(
+                    tracks: tracks,
+                    metadata: cachedMetadata
+                )
+            }
             playlistMetadataLoadToken += 1
             playlistMetadataTaskOwner.finish(generation: generation)
             return
