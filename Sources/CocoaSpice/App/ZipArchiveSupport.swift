@@ -235,20 +235,12 @@ enum ZipArchiveSupport {
         let archiveURL = archiveURL.standardizedFileURL
         let normalizedEntryPath = normalizeEntryPath(entryPath)
 
-        // BSD tar can report its Zstandard helper as failed after `-xO` has
-        // already written a valid selected member. Read TAR+Zstandard archives
-        // to completion into the managed cache instead, then resolve the
-        // requested member from that complete set.
+        // A TAR+Zstandard stream must be decompressed from its beginning, but
+        // a selected-entry decoder still needs only one member. Extract that
+        // member into its durable selection cache; expanding every sibling
+        // makes small SPC playback wait on an unrelated archive-sized write.
         if archiveKind(for: archiveURL) == .tarZstandard {
-            if containsTarOctalEscape(normalizedEntryPath) {
-                let rootURL = try materializeEntries(at: archiveURL, entryPaths: [normalizedEntryPath])
-                let memberURL = archiveMemberURL(in: rootURL, entryPath: normalizedEntryPath)
-                guard FileManager.default.fileExists(atPath: memberURL.path) else {
-                    throw ArchiveError.invalidEntryPath(entryPath)
-                }
-                return memberURL
-            }
-            let rootURL = try materializeArchive(at: archiveURL)
+            let rootURL = try materializeEntries(at: archiveURL, entryPaths: [normalizedEntryPath])
             let memberURL = archiveMemberURL(in: rootURL, entryPath: normalizedEntryPath)
             guard FileManager.default.fileExists(atPath: memberURL.path) else {
                 throw ArchiveError.invalidEntryPath(entryPath)

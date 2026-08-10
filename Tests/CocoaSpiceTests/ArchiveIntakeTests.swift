@@ -227,6 +227,37 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     ))
 }
 
+@Test func tarZstandardSelectedPlaybackCachesOnlyTheRequestedMember() throws {
+    let zstd = "/opt/homebrew/bin/zstd"
+    guard FileManager.default.isExecutableFile(atPath: zstd) else { return }
+
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("cocoaspice-tarzst-selected-playback-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let first = directory.appendingPathComponent("first.spc")
+    let second = directory.appendingPathComponent("second.spc")
+    try Data("first".utf8).write(to: first)
+    try Data("second".utf8).write(to: second)
+    let tarURL = directory.appendingPathComponent("fixture.tar")
+    let archiveURL = directory.appendingPathComponent("fixture.tar.zst")
+    try archiveTestProcess("/usr/bin/tar", ["-cf", tarURL.path, "-C", directory.path, first.lastPathComponent, second.lastPathComponent])
+    try archiveTestProcess(zstd, ["-q", "-f", tarURL.path, "-o", archiveURL.path])
+
+    let cacheURL = ZipArchiveSupport.archiveCacheURL(for: archiveURL)
+    defer { try? FileManager.default.removeItem(at: cacheURL) }
+
+    let track = TrackItem(archiveURL: archiveURL, entryPath: first.lastPathComponent)
+    let materialized = try ZipArchiveSupport.materializePlayableFile(for: track)
+    #expect(try Data(contentsOf: materialized) == Data("first".utf8))
+    #expect(materialized.path.contains("/selection-"))
+    #expect(!FileManager.default.fileExists(atPath: cacheURL.appendingPathComponent("set").path))
+
+    let repeated = try ZipArchiveSupport.materializePlayableFile(for: track)
+    #expect(repeated == materialized)
+}
+
 @Test func ps3ArchiveAudioDecodesThroughVGMStream() throws {
     let ps3Root = URL(fileURLWithPath: "/Users/john/Downloads/audio/JoshW Zstd/PS3", isDirectory: true)
     let harmonyArchive = ps3Root.appendingPathComponent("Castlevania - Harmony of Despair [Akumajou Dracula - Harmony of Despair] [PSN](2011-09-27)(Konami)[PS3].tar.zst")
@@ -366,5 +397,27 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
                 atPath: ZipArchiveSupport.archiveMemberURL(in: scanRoot, entryPath: entryPath).path
             ))
         }
+    }
+}
+
+private func archiveTestProcess(_ executable: String, _ arguments: [String]) throws {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: executable)
+    process.arguments = arguments
+    let errors = Pipe()
+    process.standardError = errors
+    try process.run()
+    process.waitUntilExit()
+    guard process.terminationStatus == 0 else {
+        throw NSError(
+            domain: "ArchiveIntakeTests",
+            code: Int(process.terminationStatus),
+            userInfo: [
+                NSLocalizedDescriptionKey: String(
+                    decoding: errors.fileHandleForReading.readDataToEndOfFile(),
+                    as: UTF8.self
+                )
+            ]
+        )
     }
 }
