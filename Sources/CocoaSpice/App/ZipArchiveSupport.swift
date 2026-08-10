@@ -672,7 +672,9 @@ enum ZipArchiveSupport {
     }
 
     private static func prepareDurableCacheWrite(for archiveURL: URL) throws {
-        let values = try materializationCacheRootURL().resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
+        let materializationRoot = materializationCacheRootURL()
+        try FileManager.default.createDirectory(at: materializationRoot, withIntermediateDirectories: true)
+        let values = try materializationRoot.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey])
         let available = Int64(values.volumeAvailableCapacityForImportantUsage ?? 0)
         guard available >= ArchiveCachePolicy.requiredFreeBytes else {
             throw ArchiveError.insufficientStorage(requiredBytes: ArchiveCachePolicy.requiredFreeBytes)
