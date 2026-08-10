@@ -184,6 +184,16 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(envelope.remainingFrames == 0)
 }
 
+@Test func realtimeTransportEnvelopeCanHoldRenderWithoutChangingGain() throws {
+    let envelope = try RealtimePCMTransportEnvelope()
+    envelope.set(0.5)
+    envelope.setRenderHeld(true)
+    #expect(envelope.holdsRender)
+    #expect(envelope.remainingFrames == 0)
+    envelope.setRenderHeld(false)
+    #expect(!envelope.holdsRender)
+}
+
 @MainActor
 @Test func interfaceStyleUsesOneValueForSidebarAndPlaylist() {
     let model = PlayerViewModel()

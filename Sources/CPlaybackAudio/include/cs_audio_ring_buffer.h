@@ -46,6 +46,11 @@ void cs_audio_transport_envelope_ramp(
     float gain,
     uint64_t frame_count
 );
+void cs_audio_transport_envelope_set_render_hold(
+    CSAudioTransportEnvelope *envelope,
+    int held
+);
+int cs_audio_transport_envelope_render_held(const CSAudioTransportEnvelope *envelope);
 uint64_t cs_audio_transport_envelope_remaining_frames(const CSAudioTransportEnvelope *envelope);
 void cs_audio_transport_envelope_apply_stereo(
     CSAudioTransportEnvelope *envelope,

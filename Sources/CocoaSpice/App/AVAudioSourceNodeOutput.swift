@@ -70,6 +70,14 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
                 start: rightData.assumingMemoryBound(to: Float.self),
                 count: requestedFrames
             )
+            // Keep the hardware route active while paused, but do not consume
+            // PCM. This avoids a Bluetooth device-boundary restart and keeps
+            // resume on the exact frame following the de-click fade.
+            if transportEnvelope.holdsRender {
+                left.initialize(repeating: 0)
+                right.initialize(repeating: 0)
+                return noErr
+            }
             let suppliedFrames = ringBuffer.read(left: left, right: right)
             if suppliedFrames < requestedFrames {
                 left[suppliedFrames..<requestedFrames].initialize(repeating: 0)
@@ -250,12 +258,15 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
         if !engine.isRunning {
             try engine.start()
         }
+        transportEnvelope.setRenderHeld(false)
         outputState = .running
         transportState = .playing
     }
 
     func pause() {
-        engine.pause()
+        // AVAudioEngine's pause can still interrupt certain Bluetooth routes.
+        // Keep the graph warm and have the realtime callback render silence.
+        transportEnvelope.setRenderHeld(true)
         outputState = .primed
         transportState = .paused
     }
@@ -273,6 +284,7 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
         // resets the graph's render boundary at every track/seek restart.
         engine.stop()
         engine.reset()
+        transportEnvelope.setRenderHeld(false)
         ringBuffer.clear()
         outputState = .stopped
         transportState = .stopped
@@ -290,6 +302,7 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
     func stop() {
         engine.stop()
         engine.reset()
+        transportEnvelope.setRenderHeld(false)
         ringBuffer.clear()
         outputState = .stopped
         transportState = .stopped

@@ -21,6 +21,7 @@ struct CSAudioTransportEnvelope {
     _Atomic float target_gain;
     _Atomic uint64_t remaining_frames;
     _Atomic uint64_t revision;
+    _Atomic int render_held;
 };
 
 static float cs_audio_clamp_gain(float gain) {
@@ -252,6 +253,7 @@ CSAudioTransportEnvelope *cs_audio_transport_envelope_create(void) {
     atomic_init(&envelope->target_gain, 1.0f);
     atomic_init(&envelope->remaining_frames, 0);
     atomic_init(&envelope->revision, 0);
+    atomic_init(&envelope->render_held, 0);
     return envelope;
 }
 
@@ -281,6 +283,20 @@ void cs_audio_transport_envelope_ramp(
     atomic_fetch_add_explicit(&envelope->revision, 1, memory_order_acq_rel);
     atomic_store_explicit(&envelope->target_gain, cs_audio_clamp_gain(gain), memory_order_release);
     atomic_store_explicit(&envelope->remaining_frames, frame_count, memory_order_release);
+}
+
+void cs_audio_transport_envelope_set_render_hold(
+    CSAudioTransportEnvelope *envelope,
+    int held
+) {
+    if (envelope == NULL) return;
+    atomic_store_explicit(&envelope->render_held, held ? 1 : 0, memory_order_release);
+}
+
+int cs_audio_transport_envelope_render_held(const CSAudioTransportEnvelope *envelope) {
+    return envelope == NULL
+        ? 0
+        : atomic_load_explicit(&envelope->render_held, memory_order_acquire);
 }
 
 uint64_t cs_audio_transport_envelope_remaining_frames(const CSAudioTransportEnvelope *envelope) {

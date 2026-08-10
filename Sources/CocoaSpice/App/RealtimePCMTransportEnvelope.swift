@@ -21,12 +21,22 @@ final class RealtimePCMTransportEnvelope: @unchecked Sendable {
         Int(cs_audio_transport_envelope_remaining_frames(rawEnvelope))
     }
 
+    var holdsRender: Bool {
+        cs_audio_transport_envelope_render_held(rawEnvelope) != 0
+    }
+
     func set(_ gain: Float) {
         cs_audio_transport_envelope_set(rawEnvelope, gain)
     }
 
     func ramp(to gain: Float, overFrames frameCount: Int) {
         cs_audio_transport_envelope_ramp(rawEnvelope, gain, UInt64(max(0, frameCount)))
+    }
+
+    /// Keeps the output callback active while preserving queued PCM and the
+    /// transport clock. A paused callback must not consume buffered audio.
+    func setRenderHeld(_ held: Bool) {
+        cs_audio_transport_envelope_set_render_hold(rawEnvelope, held ? 1 : 0)
     }
 
     func apply(left: UnsafeMutableBufferPointer<Float>, right: UnsafeMutableBufferPointer<Float>) {

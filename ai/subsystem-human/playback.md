@@ -23,7 +23,7 @@
 - Seeking: supports forward and backward movement.
 - Audio output: resumes at the current position after an output-device change when playback was active.
 - Changing Long Play or its target while a supported track is active reapplies the native loop policy at the current playback position instead of restarting the track.
-- Transitions: track changes, seek, pause/resume, stop, and Long Play changes briefly mute before the audio stream changes, then restore the chosen App Volume. This reduces transport pops without changing system volume.
+- Transitions: track changes, seek, pause/resume, stop, and Long Play changes briefly mute before the audio stream changes, then restore the chosen App Volume. Pause keeps the configured audio route alive at silence and preserves the exact buffered playback frame for resume. This reduces transport pops without changing system volume.
 - Faded Skip: when enabled in Playback Options, the first Next or Previous keeps the live source playing through a six-second output fade, then advances. A second command advances immediately through the short transport mute.
 - Random playback has three toolbar states: off, random selection from the indexed library, and random selection from the current playlist. All three toolbar glyphs are native SF Symbols.
 - Random Library queues the requested playback action while a small track-count-weighted library pool loads, so Next and end-of-track advance cannot race an empty asynchronous pool or require hydrating the entire indexed library.
