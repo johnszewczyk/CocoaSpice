@@ -15,6 +15,7 @@ enum ZipArchiveSupport {
     // seven complete concurrently.
     static let archiveProcessConcurrency = max(1, ProcessInfo.processInfo.activeProcessorCount - 1)
     private static let processGate = DispatchSemaphore(value: archiveProcessConcurrency)
+    private static let playbackLease = PlaybackLease()
 
     private enum ArchiveKind {
         case zip
@@ -110,6 +111,7 @@ enum ZipArchiveSupport {
     }
 
     static func discardDisposablePlaybackMaterialization() {
+        playbackLease.clear()
         try? FileManager.default.removeItem(at: disposableCacheRootURL())
     }
 
@@ -245,7 +247,9 @@ enum ZipArchiveSupport {
             }
             switch module.archiveMaterialization {
             case .selectedEntry:
-                return try materializeEntry(archiveURL: archiveURL, entryPath: entryPath)
+                let fileURL = try materializeEntry(archiveURL: archiveURL, entryPath: entryPath)
+                activatePlaybackLease(for: archiveURL)
+                return fileURL
             case .completeSet, .completeSetWithLazyUSFAliases:
                 let setURL = try materializeArchive(at: archiveURL)
                 if case .completeSetWithLazyUSFAliases = module.archiveMaterialization {
@@ -254,6 +258,7 @@ enum ZipArchiveSupport {
                 if extensionName == "txtp" {
                     try prepareTXTPDependencies(in: setURL)
                 }
+                activatePlaybackLease(for: archiveURL)
                 return archiveMemberURL(in: setURL, entryPath: entryPath)
             }
         }
@@ -685,6 +690,7 @@ enum ZipArchiveSupport {
             options: [.skipsHiddenFiles]
         ) else { return }
         let protectedPath = protectedRoot.standardizedFileURL.path
+        let activePath = playbackLease.path
         var candidates = entries.compactMap { entry -> (url: URL, bytes: Int64, date: Date)? in
             guard (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
                 return nil
@@ -696,7 +702,8 @@ enum ZipArchiveSupport {
         guard total > limit else { return }
         candidates.sort { $0.date < $1.date }
         for candidate in candidates where total > limit {
-            guard candidate.url.standardizedFileURL.path != protectedPath else { continue }
+            let candidatePath = candidate.url.standardizedFileURL.path
+            guard candidatePath != protectedPath, candidatePath != activePath else { continue }
             try fileManager.removeItem(at: candidate.url)
             total -= candidate.bytes
         }
@@ -710,6 +717,33 @@ enum ZipArchiveSupport {
             [.modificationDate: Date()],
             ofItemAtPath: archiveCacheURL(for: archiveURL).path
         )
+    }
+
+    private static func activatePlaybackLease(for archiveURL: URL) {
+        playbackLease.replace(with: archiveCacheURL(for: archiveURL).standardizedFileURL.path)
+    }
+
+    private final class PlaybackLease: @unchecked Sendable {
+        private let lock = NSLock()
+        private var storedPath: String?
+
+        var path: String? {
+            lock.lock()
+            defer { lock.unlock() }
+            return storedPath
+        }
+
+        func replace(with path: String) {
+            lock.lock()
+            storedPath = path
+            lock.unlock()
+        }
+
+        func clear() {
+            lock.lock()
+            storedPath = nil
+            lock.unlock()
+        }
     }
 
     private static func directoryByteCount(_ rootURL: URL) -> Int64 {
