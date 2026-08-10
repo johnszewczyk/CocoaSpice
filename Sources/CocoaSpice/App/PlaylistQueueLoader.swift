@@ -19,6 +19,13 @@ enum PlaylistQueueLoader {
         subsystem: "com.local.cocoaspice",
         category: "playlist-load"
     )
+    /// Sidebar selection is interactive database work. Keep it off Swift's
+    /// cooperative executor so decoder, archive, and scan jobs cannot delay a
+    /// small indexed playlist read.
+    private static let databaseReadQueue = DispatchQueue(
+        label: "com.local.cocoaspice.playlist-database-read",
+        qos: .userInitiated
+    )
     static func loadTracks(in folderURL: URL) async -> [TrackItem] {
         let loaded = await loadDroppedTracks(from: [folderURL])
         return loaded.tracks
@@ -48,8 +55,9 @@ enum PlaylistQueueLoader {
         databaseURL: URL?,
         gameItems: [DatabaseGameItem]
     ) async -> LoadedPlaylistData {
-        await Task.detached(priority: .userInitiated) {
-            guard let databaseURL else { return emptyLoadedPlaylistData() }
+        guard let databaseURL else { return emptyLoadedPlaylistData() }
+        return await withCheckedContinuation { continuation in
+            databaseReadQueue.async {
             Self.playlistLoadLogger.info("sidebar database worker began")
             let queryStartedAt = ContinuousClock.now
             let loaded = (try? LibraryDatabase.tracksAndMetadataForGames(
@@ -60,8 +68,9 @@ enum PlaylistQueueLoader {
             Self.playlistLoadLogger.info(
                 "sidebar SQLite query finished: \(loaded.tracks.count) tracks in \(String(describing: queryElapsed), privacy: .public)"
             )
-            return loaded
-        }.value
+                continuation.resume(returning: loaded)
+            }
+        }
     }
 
     static func loadLibraryTracks(
