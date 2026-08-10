@@ -37,6 +37,7 @@ enum ZipArchiveSupport {
     struct CacheSummary: Sendable {
         let fileCount: Int
         let byteCount: Int64
+        let availableBytes: Int64?
 
         var displaySize: String {
             ByteCountFormatter.string(fromByteCount: byteCount, countStyle: .file)
@@ -81,13 +82,14 @@ enum ZipArchiveSupport {
     static func cacheSummary() -> CacheSummary {
         let rootURL = materializationCacheRootURL()
         let fileManager = FileManager.default
+        let availableBytes = availableCapacityNear(rootURL)
         guard fileManager.fileExists(atPath: rootURL.path),
               let enumerator = fileManager.enumerator(
                 at: rootURL,
                 includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
                 options: [.skipsHiddenFiles]
               ) else {
-            return CacheSummary(fileCount: 0, byteCount: 0)
+            return CacheSummary(fileCount: 0, byteCount: 0, availableBytes: availableBytes)
         }
 
         var fileCount = 0
@@ -100,7 +102,7 @@ enum ZipArchiveSupport {
             fileCount += 1
             byteCount += Int64(values.fileSize ?? 0)
         }
-        return CacheSummary(fileCount: fileCount, byteCount: byteCount)
+        return CacheSummary(fileCount: fileCount, byteCount: byteCount, availableBytes: availableBytes)
     }
 
     static func clearCache() throws {
@@ -634,6 +636,18 @@ enum ZipArchiveSupport {
 
     private static func cacheLifecycle() -> ArchiveCacheLifecycle {
         ArchiveCacheLifecycle(cacheRootURL: cacheRootURL())
+    }
+
+    private static func availableCapacityNear(_ url: URL) -> Int64? {
+        let fileManager = FileManager.default
+        var probe = url
+        while !fileManager.fileExists(atPath: probe.path), probe.path != "/" {
+            probe.deleteLastPathComponent()
+        }
+        guard let values = try? probe.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]) else {
+            return nil
+        }
+        return values.volumeAvailableCapacityForImportantUsage.map { Int64($0) }
     }
 
     private static func materializationCacheRootURL() -> URL {

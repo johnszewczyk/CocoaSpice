@@ -1676,7 +1676,9 @@ final class PlayerViewModel {
 
     private static func archiveCacheSummaryText(for summary: ZipArchiveSupport.CacheSummary) -> String {
         let fileLabel = summary.fileCount == 1 ? "file" : "files"
-        return "\(summary.displaySize) • \(summary.fileCount) cached \(fileLabel)"
+        let usage = "\(summary.displaySize) • \(summary.fileCount) cached \(fileLabel)"
+        guard let availableBytes = summary.availableBytes else { return usage }
+        return "\(usage) • \(ByteCountFormatter.string(fromByteCount: availableBytes, countStyle: .file)) free"
     }
 
     func toggleDatabaseSystemExpansion(_ systemName: String) {
