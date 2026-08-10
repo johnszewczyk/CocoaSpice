@@ -80,14 +80,15 @@ extension LibraryDatabase {
     private static func loadGameItemsFromBuckets(handle: OpaquePointer) throws -> [DatabaseGameItem] {
         let sql = """
         SELECT
+            b.root_id,
+            r.path,
             b.browser_game AS game_name,
             b.browser_system AS system_name,
-            SUM(b.track_count)
+            b.track_count
         FROM game_sidebar_buckets b
         INNER JOIN library_roots r ON r.id = b.root_id
         WHERE r.is_enabled = 1
-        GROUP BY game_name, system_name
-        ORDER BY lower(game_name) ASC, game_name ASC, lower(system_name) ASC, system_name ASC;
+        ORDER BY lower(game_name) ASC, game_name ASC, lower(system_name) ASC, system_name ASC, lower(r.path) ASC, r.path ASC;
         """
 
         var statement: OpaquePointer?
@@ -98,14 +99,16 @@ extension LibraryDatabase {
 
         var items: [DatabaseGameItem] = []
         while sqlite3_step(statement) == SQLITE_ROW {
-            let rawName = sqliteString(statement, index: 0).trimmingCharacters(in: .whitespacesAndNewlines)
-            let systemName = sqliteString(statement, index: 1).trimmingCharacters(in: .whitespacesAndNewlines)
+            let rootID = sqlite3_column_int64(statement, 0)
+            let rootPath = sqliteString(statement, index: 1)
+            let rawName = sqliteString(statement, index: 2).trimmingCharacters(in: .whitespacesAndNewlines)
+            let systemName = sqliteString(statement, index: 3).trimmingCharacters(in: .whitespacesAndNewlines)
             let name = rawName.isEmpty ? "Unknown Game" : rawName
             let displayName = ZipArchiveSupport.canHandle(URL(fileURLWithPath: name))
                 ? URL(fileURLWithPath: name).lastPathComponent
                 : nil
-            let count = Int(sqlite3_column_int(statement, 2))
-            items.append(DatabaseGameItem(name: name, systemName: systemName, trackCount: count, displayName: displayName))
+            let count = Int(sqlite3_column_int(statement, 4))
+            items.append(DatabaseGameItem(rootID: rootID, rootPath: rootPath, name: name, systemName: systemName, trackCount: count, displayName: displayName))
         }
         return DatabaseSidebarPresentation.disambiguateGameItems(items)
     }
@@ -113,6 +116,8 @@ extension LibraryDatabase {
     private static func loadGameItemsFromTracks(handle: OpaquePointer) throws -> [DatabaseGameItem] {
         let sql = """
         SELECT
+            t.root_id,
+            r.path,
             t.browser_game AS game_name,
             t.browser_system AS system_name,
             COUNT(*)
@@ -120,8 +125,8 @@ extension LibraryDatabase {
         INNER JOIN library_roots r ON r.id = t.root_id
         WHERE r.is_enabled = 1
           AND NOT EXISTS (SELECT 1 FROM dead_sources d WHERE d.root_id = t.root_id AND d.path = t.path)
-        GROUP BY game_name, system_name
-        ORDER BY lower(game_name) ASC, game_name ASC, lower(system_name) ASC, system_name ASC;
+        GROUP BY t.root_id, r.path, game_name, system_name
+        ORDER BY lower(game_name) ASC, game_name ASC, lower(system_name) ASC, system_name ASC, lower(r.path) ASC, r.path ASC;
         """
 
         var statement: OpaquePointer?
@@ -132,14 +137,16 @@ extension LibraryDatabase {
 
         var items: [DatabaseGameItem] = []
         while sqlite3_step(statement) == SQLITE_ROW {
-            let rawName = sqliteString(statement, index: 0).trimmingCharacters(in: .whitespacesAndNewlines)
-            let systemName = sqliteString(statement, index: 1).trimmingCharacters(in: .whitespacesAndNewlines)
+            let rootID = sqlite3_column_int64(statement, 0)
+            let rootPath = sqliteString(statement, index: 1)
+            let rawName = sqliteString(statement, index: 2).trimmingCharacters(in: .whitespacesAndNewlines)
+            let systemName = sqliteString(statement, index: 3).trimmingCharacters(in: .whitespacesAndNewlines)
             let name = rawName.isEmpty ? "Unknown Game" : rawName
             let displayName = ZipArchiveSupport.canHandle(URL(fileURLWithPath: name))
                 ? URL(fileURLWithPath: name).lastPathComponent
                 : nil
-            let count = Int(sqlite3_column_int(statement, 2))
-            items.append(DatabaseGameItem(name: name, systemName: systemName, trackCount: count, displayName: displayName))
+            let count = Int(sqlite3_column_int(statement, 4))
+            items.append(DatabaseGameItem(rootID: rootID, rootPath: rootPath, name: name, systemName: systemName, trackCount: count, displayName: displayName))
         }
         return DatabaseSidebarPresentation.disambiguateGameItems(items)
     }
@@ -229,6 +236,7 @@ extension LibraryDatabase {
         INNER JOIN library_roots r ON r.id = t.root_id
         WHERE r.is_enabled = 1
           AND NOT EXISTS (SELECT 1 FROM dead_sources d WHERE d.root_id = t.root_id AND d.path = t.path)
+          AND t.root_id = ?
           AND t.browser_game = ?
           AND t.browser_system = ?
         ORDER BY t.folder_path ASC, t.filename ASC, t.track_index ASC;
@@ -240,8 +248,9 @@ extension LibraryDatabase {
         }
         defer { sqlite3_finalize(statement) }
 
-        sqliteBind(.text(gameItem.name), to: statement, at: 1)
-        sqliteBind(.text(gameItem.systemName), to: statement, at: 2)
+        sqliteBind(.int(gameItem.rootID), to: statement, at: 1)
+        sqliteBind(.text(gameItem.name), to: statement, at: 2)
+        sqliteBind(.text(gameItem.systemName), to: statement, at: 3)
 
         var tracks: [TrackItem] = []
         while sqlite3_step(statement) == SQLITE_ROW {
@@ -267,7 +276,7 @@ extension LibraryDatabase {
         defer { sqlite3_close(handle) }
 
         let bucketPredicate = Array(
-            repeating: "(t.browser_game = ? AND t.browser_system = ?)",
+            repeating: "(t.root_id = ? AND t.browser_game = ? AND t.browser_system = ?)",
             count: normalizedItems.count
         ).joined(separator: " OR ")
         let sql = """
@@ -302,9 +311,10 @@ extension LibraryDatabase {
         defer { sqlite3_finalize(statement) }
 
         for (index, gameItem) in normalizedItems.enumerated() {
-            let baseIndex = index * 2
-            sqliteBind(.text(gameItem.name), to: statement, at: Int32(baseIndex + 1))
-            sqliteBind(.text(gameItem.systemName), to: statement, at: Int32(baseIndex + 2))
+            let baseIndex = index * 3
+            sqliteBind(.int(gameItem.rootID), to: statement, at: Int32(baseIndex + 1))
+            sqliteBind(.text(gameItem.name), to: statement, at: Int32(baseIndex + 2))
+            sqliteBind(.text(gameItem.systemName), to: statement, at: Int32(baseIndex + 3))
         }
 
         var tracks: [TrackItem] = []

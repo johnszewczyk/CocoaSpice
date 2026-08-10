@@ -68,11 +68,79 @@ import Testing
         LibraryIndexedSource(rootID: root.id, path: firstPath, archiveEntry: nil)
     ])
     #expect(try database.loadGameItems() == [
-        DatabaseGameItem(name: "Other", systemName: "Game Boy", trackCount: 1)
+        DatabaseGameItem(rootID: root.id, rootPath: directory.path, name: "Other", systemName: "Game Boy", trackCount: 1)
     ])
 
     try database.markScanCompleted(rootID: root.id)
     #expect(try gameBucketCount(database: database, rootID: root.id) == 1)
+}
+
+@Test func gameSidebarKeepsSameGameAndSystemSeparatePerLibraryRoot() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("cocoaspice-root-scoped-games-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let firstRootPath = directory.appendingPathComponent("JoshW", isDirectory: true).path
+    let secondRootPath = directory.appendingPathComponent("SNESMusicOrg", isDirectory: true).path
+    try FileManager.default.createDirectory(atPath: firstRootPath, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(atPath: secondRootPath, withIntermediateDirectories: true)
+
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    try database.addRoot(path: firstRootPath)
+    try database.addRoot(path: secondRootPath)
+    let rootsByPath = Dictionary(uniqueKeysWithValues: try database.loadRoots().map { ($0.path, $0) })
+    let firstRoot = try #require(rootsByPath[firstRootPath])
+    let secondRoot = try #require(rootsByPath[secondRootPath])
+    let route = ScanRoute(pluginID: "gme", formatExtension: "spc", supportsArchiveMembers: true, supportsMultiTrack: false)
+    let timestamp = Date(timeIntervalSince1970: 1)
+
+    func result(root: LibraryScanRoot, path: String, song: String) -> ScanPipelineResult {
+        let candidate = ScanCandidate(
+            identity: ScanItemIdentity(rootID: root.id, path: path, archiveEntry: nil),
+            fingerprint: ScanFingerprint(fileSize: 1, modifiedAt: timestamp),
+            sourceURL: URL(fileURLWithPath: path),
+            route: route
+        )
+        return .success(candidate, ScanInspection(
+            route: route,
+            tracks: [ScanTrackMetadata(
+                trackIndex: 0,
+                trackCount: 1,
+                metadata: TrackMetadata(
+                    game: "Final Fight",
+                    song: song,
+                    system: "SNES",
+                    author: "",
+                    comment: "",
+                    introLengthMs: 0,
+                    loopLengthMs: 0,
+                    playLengthMs: 60_000,
+                    fadeLengthMs: 0
+                )
+            )]
+        ))
+    }
+
+    let firstPath = firstRootPath + "/Final Fight.spc"
+    let secondPath = secondRootPath + "/Final Fight.spc"
+    try database.persistScanTrackResults([
+        result(root: firstRoot, path: firstPath, song: "Josh Theme"),
+        result(root: secondRoot, path: secondPath, song: "SMO Theme")
+    ])
+    try database.markScanCompleted(rootID: firstRoot.id)
+    try database.markScanCompleted(rootID: secondRoot.id)
+
+    let items = try database.loadGameItems().filter { $0.name == "Final Fight" }
+    #expect(items.count == 2)
+    #expect(Set(items.map(\.id)).count == 2)
+    #expect(Set(items.map(\.displayName)) == [
+        "Final Fight (SNES • JoshW)",
+        "Final Fight (SNES • SNESMusicOrg)"
+    ])
+
+    let firstLoaded = try database.tracksAndMetadataForGames([try #require(items.first { $0.rootID == firstRoot.id })])
+    let secondLoaded = try database.tracksAndMetadataForGames([try #require(items.first { $0.rootID == secondRoot.id })])
+    #expect(firstLoaded.tracks.map(\.url.path) == [firstPath])
+    #expect(secondLoaded.tracks.map(\.url.path) == [secondPath])
 }
 
 private func gameBucketCount(database: LibraryDatabase, rootID: Int64) throws -> Int {

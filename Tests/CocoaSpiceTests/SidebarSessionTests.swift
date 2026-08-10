@@ -9,9 +9,9 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
 
 @Test func databaseSidebarDisambiguatesDuplicateGameTitlesBySystem() {
     let items = DatabaseSidebarPresentation.disambiguateGameItems([
-        DatabaseGameItem(name: "Mega Man", systemName: "NES", trackCount: 10),
-        DatabaseGameItem(name: "Mega Man", systemName: "Game Boy", trackCount: 12),
-        DatabaseGameItem(name: "Actraiser", systemName: "SNES", trackCount: 18)
+        DatabaseGameItem(rootID: 1, rootPath: "/music/JoshW", name: "Mega Man", systemName: "NES", trackCount: 10),
+        DatabaseGameItem(rootID: 2, rootPath: "/music/SNESMusicOrg", name: "Mega Man", systemName: "Game Boy", trackCount: 12),
+        DatabaseGameItem(rootID: 1, rootPath: "/music/JoshW", name: "Actraiser", systemName: "SNES", trackCount: 18)
     ])
 
     #expect(items[0].id != items[1].id)
@@ -36,9 +36,9 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
 
 @Test func databaseGameSearchIndexNarrowsPrefixQueriesAndRebuildsAfterBackspace() {
     var index = DatabaseGameSearchIndex(items: [
-        DatabaseGameItem(name: "Actraiser", systemName: "SNES", trackCount: 18),
-        DatabaseGameItem(name: "ActRaiser 2", systemName: "SNES", trackCount: 20),
-        DatabaseGameItem(name: "Chrono Trigger", systemName: "SNES", trackCount: 64)
+        DatabaseGameItem(rootID: 1, rootPath: "/music/JoshW", name: "Actraiser", systemName: "SNES", trackCount: 18),
+        DatabaseGameItem(rootID: 1, rootPath: "/music/JoshW", name: "ActRaiser 2", systemName: "SNES", trackCount: 20),
+        DatabaseGameItem(rootID: 1, rootPath: "/music/JoshW", name: "Chrono Trigger", systemName: "SNES", trackCount: 64)
     ])
 
     #expect(index.items(matching: "act").map(\.name) == ["Actraiser", "ActRaiser 2"])
@@ -246,8 +246,8 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
 @MainActor
 @Test func databaseSidebarSearchPreservesSelection() {
     let sidebar = DatabaseSidebarState()
-    let selected = DatabaseGameItem(name: "Actraiser", systemName: "SNES", trackCount: 18)
-    let other = DatabaseGameItem(name: "Mega Man", systemName: "NES", trackCount: 10)
+    let selected = DatabaseGameItem(rootID: 1, rootPath: "/music/JoshW", name: "Actraiser", systemName: "SNES", trackCount: 18)
+    let other = DatabaseGameItem(rootID: 1, rootPath: "/music/JoshW", name: "Mega Man", systemName: "NES", trackCount: 10)
     sidebar.replaceGameItems([selected, other])
     sidebar.selectedGameID = selected.id
     sidebar.selectedGameIDs = [selected.id]
@@ -262,8 +262,8 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
 @MainActor
 @Test func databaseSidebarReloadDropsRemovedSelection() {
     let sidebar = DatabaseSidebarState()
-    let selected = DatabaseGameItem(name: "Actraiser", systemName: "SNES", trackCount: 18)
-    let remaining = DatabaseGameItem(name: "Mega Man", systemName: "NES", trackCount: 10)
+    let selected = DatabaseGameItem(rootID: 1, rootPath: "/music/JoshW", name: "Actraiser", systemName: "SNES", trackCount: 18)
+    let remaining = DatabaseGameItem(rootID: 1, rootPath: "/music/JoshW", name: "Mega Man", systemName: "NES", trackCount: 10)
     sidebar.replaceGameItems([selected, remaining])
     sidebar.selectedGameID = selected.id
     sidebar.selectedGameIDs = [selected.id]

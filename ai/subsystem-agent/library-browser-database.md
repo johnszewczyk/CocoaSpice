@@ -12,7 +12,7 @@
 
 - The sidebar database browser is a scanned persistent browser, not a raw filesystem tree.
 - The normal sidebar displays a dense flat list of games derived from scanned metadata. Optional System Mode groups the same game leaves below expandable root-level system rows.
-- Sidebar game buckets are keyed by `game title + system`, not title alone, so cross-platform name collisions stay separate.
+- Sidebar game buckets and game-row identities are root-scoped: `root_id + game title + system`. This keeps same-title/same-system entries from separate library paths distinct and makes game activation bind the full `tracks_browser_bucket_index` key.
 - The scanned database now stores one playable row per discovered subtrack for loose or archived multi-track `libgme` containers such as NSF, GBS, and KSS.
 - Archive scans expand playable members from ZIP, 7z, and RSN containers, retaining archive path plus member path for later playback materialization.
 - SPC members use libgme metadata during indexing; multi-track archive members are materialized and inspected during indexing so their playlist/database leaves carry track counts, indices, and playback durations.
@@ -23,7 +23,7 @@
 - Database multi-row `Return` replaces the playlist with the combined selection.
 - Games, file rows, and file-tree folder selections enter `PlaylistQueueLoader` as one typed `LibraryPlaylistLoadRequest`; the view model owns one queue-build lifecycle and applies the loaded playlist identically for replace or enqueue.
 - Game activation loads playable leaves from the scanned database rather than rescanning the filesystem.
-- `tracks.browser_game` and `tracks.browser_system` are persisted alongside scan results and indexed as the activation lookup key. Do not rebuild the game bucket from `track_metadata` in a selection query; that turns every sidebar activation into a whole-library scan.
+- `tracks.browser_game` and `tracks.browser_system` are persisted alongside scan results and are activated with `root_id`; do not rebuild the game bucket from `track_metadata` in a selection query, omit the selected root, or turn every sidebar activation into a whole-library scan.
 - `DatabaseFileItem` groups scanned track rows by `root_id + source path`; `tracks_file_tree_index` supports the database-only Files tree. Archive members never become filesystem tree leaves: their archive source is the leaf and activation loads its indexed members through the matching root.
 - The Games browser has a separate covering `tracks_game_sidebar_index` for grouped startup reads and unlinked-source filtering. The current schema creates it once before data exists; a noncurrent schema is reset instead of being migrated at launch.
 - File-path activation resolves the scanned playable leaves for that file path, so NSF containers contribute subtracks rather than the raw container file.

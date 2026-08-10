@@ -7,7 +7,7 @@
 - Files: the standalone icon immediately left of the transport controls switches to a folder tree built only from scanned database records. It uses the same dense native row style as Games, with `▾`/`▸` disclosure glyphs and nested text indentation. Its own toolbar grouping distinguishes browser navigation from playback. It loads only when opened and starts with library roots collapsed, so a very large collection does not delay launch. It shows enabled library roots, scanned subfolders, and source files without live filesystem browsing.
 - Files: selecting a source file queues its stored tracks; archive files remain one source-file leaf and queue their indexed members.
 - Console View: Options can group games under expandable console headings.
-- Rows: show track counts and scan-root status.
+- Rows: show track counts and scan-root status. The same game/system scanned from different library paths remains separate; only those duplicate rows include their compact source-root name (for example, `JoshW` or `SNESMusicOrg`).
 - Incremental scans retain successful unchanged ZIP, 7z, and TAR+Zstandard archive results instead of re-inspecting their playable members.
 - When a changed archive is rescanned, its stored member set is replaced as a whole. Renamed or removed members therefore cannot remain in the Database after a repack.
 
@@ -15,7 +15,7 @@
 
 - Search: accepts typing immediately, waits 250 ms before a new first-character query, then filters follow-up typing after 100 ms.
 - Search: uses the same sidebar list rather than a separate results surface.
-- Search: matches game titles; console headings organize the results but are not an additional search field.
+- Search: matches game titles and compact source-root names; console headings organize the results but are not an additional search field.
 - Files search: matches the stored filename and path while preserving the folder hierarchy needed to reach matching source files.
 - Files search: automatically opens every matching folder branch. Clearing search restores the folder folds that were open before searching.
 - Search: preserves the active database selection when the query changes.

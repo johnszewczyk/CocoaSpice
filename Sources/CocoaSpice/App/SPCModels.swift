@@ -179,20 +179,28 @@ struct SidebarSearchItem: Identifiable, Hashable, Sendable {
 }
 
 struct DatabaseGameItem: Identifiable, Hashable, Sendable {
+    let rootID: Int64
+    let rootPath: String
     let name: String
     let systemName: String
     let trackCount: Int
     let displayName: String
     let searchableName: String
 
-    var id: String { "\(name)\u{1F}\(systemName)" }
+    var id: String { "\(rootID)\u{1F}\(name)\u{1F}\(systemName)" }
+    var rootDisplayName: String {
+        URL(fileURLWithPath: rootPath, isDirectory: true).lastPathComponent
+    }
 
-    init(name: String, systemName: String = "", trackCount: Int, displayName: String? = nil) {
+    init(rootID: Int64, rootPath: String, name: String, systemName: String = "", trackCount: Int, displayName: String? = nil) {
+        self.rootID = rootID
+        self.rootPath = rootPath
         self.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         self.systemName = systemName.trimmingCharacters(in: .whitespacesAndNewlines)
         self.trackCount = trackCount
         self.displayName = (displayName ?? self.name).trimmingCharacters(in: .whitespacesAndNewlines)
-        self.searchableName = "\(self.name) \(self.systemName)".lowercased()
+        let rootName = URL(fileURLWithPath: rootPath, isDirectory: true).lastPathComponent
+        self.searchableName = "\(self.name) \(self.systemName) \(rootName)".lowercased()
     }
 }
 
