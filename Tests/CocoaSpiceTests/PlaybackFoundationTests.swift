@@ -56,12 +56,12 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     defaults.removePersistentDomain(forName: suiteName)
     defer { defaults.removePersistentDomain(forName: suiteName) }
 
-    let policy = ArchiveCachePolicy(mode: .disabled, maximumBytes: 1_024 * 1_024 * 1_024)
+    let policy = ArchiveCachePolicy(mode: .disabled, maximumBytes: 4 * 1_024 * 1_024 * 1_024)
     policy.save(defaults: defaults)
     #expect(ArchiveCachePolicy.load(defaults: defaults) == policy)
 
-    defaults.set(777 * 1_024 * 1_024, forKey: AppDefaultsKey.archiveCacheLimitBytes)
-    #expect(ArchiveCachePolicy.load(defaults: defaults).maximumBytes == 1_024 * 1_024 * 1_024)
+    defaults.set(7 * 1_024 * 1_024 * 1_024, forKey: AppDefaultsKey.archiveCacheLimitBytes)
+    #expect(ArchiveCachePolicy.load(defaults: defaults).maximumBytes == 8 * 1_024 * 1_024 * 1_024)
     #expect(ArchiveCachePolicy.load(defaults: defaults).activeLimitBytes == ArchiveCachePolicy.disposableLimitBytes)
 }
 

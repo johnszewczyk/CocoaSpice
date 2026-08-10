@@ -12,9 +12,15 @@ final class ToolbarSpectrumModel {
     var targetLevels = Array(repeating: 0.0, count: SpectrumBandCount.defaultValue)
     var levels = Array(repeating: 0.0, count: SpectrumBandCount.defaultValue)
     var capLevels = Array(repeating: 0.0, count: SpectrumBandCount.defaultValue)
-    var gradientStartColor = NSColor.secondaryLabelColor
-    var gradientEndColor = NSColor.white
-    var peakColor = NSColor.white
+    var gradientStartColor = NSColor.secondaryLabelColor {
+        didSet { invalidateDisplaySurface() }
+    }
+    var gradientEndColor = NSColor.white {
+        didSet { invalidateDisplaySurface() }
+    }
+    var peakColor = NSColor.white {
+        didSet { invalidateDisplaySurface() }
+    }
     private var capHoldRemaining = Array(repeating: 0.0, count: SpectrumBandCount.defaultValue)
     private var lastAnimationUptime: TimeInterval?
     private var displayTimer: Timer?
@@ -160,6 +166,8 @@ final class ToolbarSpectrumNativeView: NSView {
     private let minimumVisibleHeight: CGFloat = 2
     private let peakHeight: CGFloat = 1
     private let peakGap: CGFloat = 1
+    private var cachedGradientStrip: NSImage?
+    private var cachedGradientColors: (start: NSColor, end: NSColor)?
 
     init(model: ToolbarSpectrumModel) {
         self.model = model
@@ -192,43 +200,41 @@ final class ToolbarSpectrumNativeView: NSView {
 
         let baseY = verticalPadding
         let usableHeight = meterHeight - peakGap - peakHeight
-        let levels = model.levels
-        let capLevels = model.capLevels
-        let meterRect = NSRect(
-            x: horizontalPadding,
-            y: baseY,
-            width: bounds.width - (horizontalPadding * 2),
-            height: usableHeight
-        )
-
-        // A single clipped draw paints the whole gradient.  Drawing a new
-        // NSGradient for each bar made a 40-band meter perform 2,400 gradient
-        // renders per second at 60 FPS, despite the bars sharing the same
-        // color ramp.
-        let barMask = NSBezierPath()
-        for index in levels.indices {
+        let gradientStrip = resolvedGradientStrip()
+        for index in model.levels.indices {
             let x = horizontalPadding + CGFloat(index) * (barWidth + spacing)
-            let level = CGFloat(min(max(levels[index], 0), 1))
+            let level = CGFloat(min(max(model.levels[index], 0), 1))
             let barHeight = max(minimumVisibleHeight, usableHeight * level)
             let barRect = NSRect(x: x, y: baseY, width: barWidth, height: barHeight)
-            barMask.append(NSBezierPath(roundedRect: barRect, xRadius: 1.5, yRadius: 1.5))
-        }
+            let barPath = NSBezierPath(roundedRect: barRect, xRadius: 1.5, yRadius: 1.5)
+            NSGraphicsContext.saveGraphicsState()
+            barPath.addClip()
+            gradientStrip.draw(in: barRect, from: NSRect(x: 0, y: 0, width: 1, height: 64), operation: .sourceOver, fraction: 1)
+            NSGraphicsContext.restoreGraphicsState()
 
-        NSGraphicsContext.saveGraphicsState()
-        barMask.addClip()
-        NSGradient(
-            starting: model.gradientStartColor,
-            ending: model.gradientEndColor
-        )?.draw(in: meterRect, angle: 90)
-        NSGraphicsContext.restoreGraphicsState()
-
-        let peakColor = model.peakColor.withAlphaComponent(0.95)
-        for index in capLevels.indices {
-            let x = horizontalPadding + CGFloat(index) * (barWidth + spacing)
-            let capLevel = CGFloat(min(max(capLevels[index], 0), 1))
+            let capLevel = CGFloat(min(max(model.capLevels[index], 0), 1))
             let capRect = NSRect(x: x, y: baseY + usableHeight * capLevel + peakGap, width: barWidth, height: peakHeight)
-            peakColor.setFill()
+            model.peakColor.withAlphaComponent(0.95).setFill()
             NSBezierPath(roundedRect: capRect, xRadius: 1, yRadius: 1).fill()
         }
+    }
+
+    private func resolvedGradientStrip() -> NSImage {
+        let start = model.gradientStartColor
+        let end = model.gradientEndColor
+        if let cachedGradientStrip,
+           let cachedGradientColors,
+           cachedGradientColors.start.isEqual(start),
+           cachedGradientColors.end.isEqual(end) {
+            return cachedGradientStrip
+        }
+
+        let image = NSImage(size: NSSize(width: 1, height: 64))
+        image.lockFocus()
+        NSGradient(starting: start, ending: end)?.draw(in: NSRect(x: 0, y: 0, width: 1, height: 64), angle: 90)
+        image.unlockFocus()
+        cachedGradientStrip = image
+        cachedGradientColors = (start, end)
+        return image
     }
 }

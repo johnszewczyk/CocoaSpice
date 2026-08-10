@@ -8,7 +8,7 @@ enum ArchiveCacheMode: String, CaseIterable, Sendable {
 /// Persistent limits for archive playback materialization. Scan scratch is
 /// intentionally outside this policy: it is disposable work owned by a scan.
 struct ArchiveCachePolicy: Sendable, Equatable {
-    static let supportedLimits: [Int64] = [512, 1_024, 2_048, 4_096].map { Int64($0) * 1_024 * 1_024 }
+    static let supportedLimits: [Int64] = [2, 4, 8, 16].map { Int64($0) * 1_024 * 1_024 * 1_024 }
     static let defaultLimitBytes: Int64 = 2_048 * 1_024 * 1_024
     static let disposableLimitBytes: Int64 = 2_048 * 1_024 * 1_024
     static let requiredFreeBytes: Int64 = 1_024 * 1_024 * 1_024
