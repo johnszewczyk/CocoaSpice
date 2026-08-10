@@ -65,6 +65,69 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(ArchiveCachePolicy.load(defaults: defaults).activeLimitBytes == ArchiveCachePolicy.disposableLimitBytes)
 }
 
+@Test func archiveCacheLifecycleReclaimsOnlyAbandonedOwnedMaterial() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let lifecycle = ArchiveCacheLifecycle(cacheRootURL: root)
+
+    let completed = lifecycle.durableRootURL.appendingPathComponent("complete")
+    let staging = lifecycle.durableRootURL.appendingPathComponent(".set-interrupted")
+    let legacy = root.appendingPathComponent("legacy-cache-key")
+    for directory in [completed, staging, lifecycle.scanScratchRootURL, lifecycle.disposableRootURL, legacy] {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data(repeating: 1, count: 16).write(to: directory.appendingPathComponent("payload"))
+    }
+
+    let recovery = lifecycle.reclaimAbandonedMaterialization()
+
+    #expect(recovery.rootCount == 4)
+    #expect(recovery.byteCount == 64)
+    #expect(FileManager.default.fileExists(atPath: completed.path))
+    #expect(!FileManager.default.fileExists(atPath: staging.path))
+    #expect(!FileManager.default.fileExists(atPath: lifecycle.scanScratchRootURL.path))
+    #expect(!FileManager.default.fileExists(atPath: lifecycle.disposableRootURL.path))
+    #expect(!FileManager.default.fileExists(atPath: legacy.path))
+}
+
+@Test func archiveCacheLifecyclePrunesLeastRecentlyUsedButProtectsPlayback() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let lifecycle = ArchiveCacheLifecycle(cacheRootURL: root)
+    let old = lifecycle.durableRootURL.appendingPathComponent("old")
+    let recent = lifecycle.durableRootURL.appendingPathComponent("recent")
+    let protected = lifecycle.durableRootURL.appendingPathComponent("pending")
+    for directory in [old, recent, protected] {
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try Data(repeating: 1, count: 10).write(to: directory.appendingPathComponent("payload"))
+    }
+    try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -20)], ofItemAtPath: old.path)
+    try FileManager.default.setAttributes([.modificationDate: Date(timeIntervalSinceNow: -10)], ofItemAtPath: recent.path)
+
+    let fits = try lifecycle.pruneDurableMaterialization(
+        maximumBytes: 20,
+        preserving: protected,
+        activePlaybackRoot: recent
+    )
+
+    #expect(fits)
+    #expect(!FileManager.default.fileExists(atPath: old.path))
+    #expect(FileManager.default.fileExists(atPath: recent.path))
+    #expect(FileManager.default.fileExists(atPath: protected.path))
+}
+
+@Test func archiveCacheLifecycleDiscardsOnlyCacheOffPlaybackOnStop() throws {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: root) }
+    let lifecycle = ArchiveCacheLifecycle(cacheRootURL: root)
+    try FileManager.default.createDirectory(at: lifecycle.durableRootURL, withIntermediateDirectories: true)
+    try FileManager.default.createDirectory(at: lifecycle.disposableRootURL, withIntermediateDirectories: true)
+
+    lifecycle.discardDisposablePlaybackMaterialization()
+
+    #expect(FileManager.default.fileExists(atPath: lifecycle.durableRootURL.path))
+    #expect(!FileManager.default.fileExists(atPath: lifecycle.disposableRootURL.path))
+}
+
 @Test func monoRingBufferMixesStereoAndDuplicatesTheResult() throws {
     let ringBuffer = try RealtimePCMFrameRingBuffer(capacityFrames: 8)
     let left: [Float] = [1, 0.5, -1]

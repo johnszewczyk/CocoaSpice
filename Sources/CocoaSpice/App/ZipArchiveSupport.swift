@@ -104,55 +104,20 @@ enum ZipArchiveSupport {
     }
 
     static func clearCache() throws {
-        let fileManager = FileManager.default
-        for rootURL in [durableCacheRootURL(), disposableCacheRootURL()] where fileManager.fileExists(atPath: rootURL.path) {
-            try fileManager.removeItem(at: rootURL)
-        }
+        try cacheLifecycle().clearAllPlaybackMaterialization()
     }
 
     static func discardDisposablePlaybackMaterialization() {
         playbackLease.clear()
-        try? FileManager.default.removeItem(at: disposableCacheRootURL())
+        cacheLifecycle().discardDisposablePlaybackMaterialization()
     }
 
     /// Launch-time recovery only. Every scan owns and normally discards its
     /// own root; this removes roots left behind when the previous process was
     /// interrupted before its cleanup scope ran.
     static func reclaimAbandonedScanMaterializations() -> ScratchRecovery {
-        let fileManager = FileManager.default
-        var count = 0
-        var bytes: Int64 = 0
-
-        func discard(_ root: URL) {
-            guard fileManager.fileExists(atPath: root.path) else { return }
-            bytes += directoryByteCount(root)
-            if (try? fileManager.removeItem(at: root)) != nil { count += 1 }
-        }
-
-        // Interrupted scan and cache-off playback roots are always disposable.
-        discard(scanScratchRootURL())
-        discard(disposableCacheRootURL())
-
-        // The pre-policy cache placed archive-key directories directly under
-        // ArchiveCache. They are no longer reachable by current materializers
-        // and must not strand storage after an app update.
-        let root = cacheRootURL()
-        let retainedNames: Set<String> = ["DurablePlayback", "ScanScratch", "DisposablePlayback"]
-        if let children = try? fileManager.contentsOfDirectory(at: root, includingPropertiesForKeys: nil) {
-            for child in children where !retainedNames.contains(child.lastPathComponent) {
-                discard(child)
-            }
-        }
-
-        // A durable cache may retain only completed materializations. Staging
-        // names are hidden by construction and therefore safe to remove before
-        // new playback starts.
-        if let children = try? fileManager.contentsOfDirectory(at: durableCacheRootURL(), includingPropertiesForKeys: nil) {
-            for child in children where child.lastPathComponent.hasPrefix(".") {
-                discard(child)
-            }
-        }
-        return ScratchRecovery(rootCount: count, byteCount: bytes)
+        let recovery = cacheLifecycle().reclaimAbandonedMaterialization()
+        return ScratchRecovery(rootCount: recovery.rootCount, byteCount: recovery.byteCount)
     }
 
     static func listPlayableEntries(
@@ -660,11 +625,15 @@ enum ZipArchiveSupport {
     }
 
     private static func durableCacheRootURL() -> URL {
-        cacheRootURL().appendingPathComponent("DurablePlayback", isDirectory: true)
+        cacheLifecycle().durableRootURL
     }
 
     private static func disposableCacheRootURL() -> URL {
-        cacheRootURL().appendingPathComponent("DisposablePlayback", isDirectory: true)
+        cacheLifecycle().disposableRootURL
+    }
+
+    private static func cacheLifecycle() -> ArchiveCacheLifecycle {
+        ArchiveCacheLifecycle(cacheRootURL: cacheRootURL())
     }
 
     private static func materializationCacheRootURL() -> URL {
@@ -684,32 +653,12 @@ enum ZipArchiveSupport {
 
     private static func enforceDurableCacheLimit(preserving protectedRoot: URL) throws {
         let limit = ArchiveCachePolicy.load().activeLimitBytes
-        let fileManager = FileManager.default
-        let root = protectedRoot.deletingLastPathComponent()
-        guard let entries = try? fileManager.contentsOfDirectory(
-            at: root,
-            includingPropertiesForKeys: [.isDirectoryKey, .contentModificationDateKey],
-            options: [.skipsHiddenFiles]
-        ) else { return }
-        let protectedPath = protectedRoot.standardizedFileURL.path
-        let activePath = playbackLease.path
-        var candidates = entries.compactMap { entry -> (url: URL, bytes: Int64, date: Date)? in
-            guard (try? entry.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true else {
-                return nil
-            }
-            let values = try? entry.resourceValues(forKeys: [.contentModificationDateKey])
-            return (entry, directoryByteCount(entry), values?.contentModificationDate ?? .distantPast)
-        }
-        var total = candidates.reduce(Int64(0)) { $0 + $1.bytes }
-        guard total > limit else { return }
-        candidates.sort { $0.date < $1.date }
-        for candidate in candidates where total > limit {
-            let candidatePath = candidate.url.standardizedFileURL.path
-            guard candidatePath != protectedPath, candidatePath != activePath else { continue }
-            try fileManager.removeItem(at: candidate.url)
-            total -= candidate.bytes
-        }
-        if total > limit {
+        let fits = try cacheLifecycle().pruneDurableMaterialization(
+            maximumBytes: limit,
+            preserving: protectedRoot,
+            activePlaybackRoot: playbackLease.path.map(URL.init(fileURLWithPath:))
+        )
+        if !fits {
             throw ArchiveError.cacheLimitExceeded(limitBytes: limit)
         }
     }
