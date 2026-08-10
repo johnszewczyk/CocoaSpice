@@ -38,7 +38,7 @@
 - Session refill passes decoder channel buffers directly into the native ring buffer without constructing intermediate Swift arrays.
 - `PlaybackEngine` is the app-facing façade and delegates playback, pause/resume, seek, stop, status, spectrum tap, and completion to the native session.
 - Startup, seek, and route recovery prime 8,192 frames before resuming; the refill worker grows the buffer toward its high-water mark after output starts.
-- Track and seek restarts stop and reset `AVAudioEngine` before clearing and refilling the ring buffer so the graph cannot preserve render-ahead state and consume the new stream before it becomes audible. The ring-buffer reader rejects any in-flight pre-clear read, so a stale callback yields silence instead of republishing old PCM after the next track has been queued.
+- Normal track and seek replacements keep `AVAudioEngine` and the device output warm at zero transport gain. The ring-buffer reader rejects any in-flight pre-clear read, so a stale callback yields silence instead of republishing old PCM while the next stream is primed. Only output-route recovery or a user Stop resets the graph.
 
 ## Rules
 

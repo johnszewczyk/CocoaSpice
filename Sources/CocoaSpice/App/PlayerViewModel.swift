@@ -2260,19 +2260,12 @@ final class PlayerViewModel {
 
         playlistMetadataTaskOwner.cancel()
         let generation = playbackRequestState.begin(track: track)
-        isPlaying = false
-        toolbarSpectrum.reset()
         isLoading = true
         statusText = "Rendering \(track.filename)..."
 
         let playback = self.playback
         let requestID = playback.reservePlaybackRequest()
         let task = Task { [weak self] in
-            guard await playback.stopPlayback(ifLatestRequest: requestID) else {
-                guard let self, self.playbackRequestState.isCurrent(generation) else { return }
-                self.finishPlaybackRequest(generation: generation)
-                return
-            }
             guard !Task.isCancelled else { return }
             guard let self, self.playbackRequestState.isCurrent(generation) else { return }
             await self.play(track: track, generation: generation, requestID: requestID)

@@ -104,7 +104,7 @@ final class NativePlaybackSession: @unchecked Sendable {
             refillTimer?.cancel()
             refillTimer = nil
             outputHeartbeat.reset(expectingRenderRequests: false)
-            output.prepareForRestart()
+            output.prepareForWarmReplacement()
             // The 2SF player owns process-global DS state. Release the old
             // decoder before constructing its replacement, otherwise the old
             // decoder's teardown can corrupt the newly loaded DS core.
@@ -172,7 +172,7 @@ final class NativePlaybackSession: @unchecked Sendable {
             let wasPlaying = output.snapshot.transportState == .playing
             if wasPlaying { output.duckForTransition() }
             outputHeartbeat.reset(expectingRenderRequests: false)
-            output.prepareForRestart()
+            output.prepareForWarmReplacement()
             generation += 1
             sessionStartFrame = Int64(max(0, (seconds * sampleRate).rounded()))
             finishedGeneration = nil

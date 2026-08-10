@@ -166,17 +166,6 @@ final class PlaybackEngine: @unchecked Sendable {
         }
     }
 
-    func stopPlayback(ifLatestRequest requestID: Int) async -> Bool {
-        await enqueue {
-            guard self.isLatestPlaybackRequest(requestID) else { return false }
-            if self.currentTrack != nil || self.isPlaying {
-                self.resetPlaybackState()
-                ZipArchiveSupport.discardDisposablePlaybackMaterialization()
-            }
-            return true
-        }
-    }
-
     func stop() async {
         await stopPlayback()
     }

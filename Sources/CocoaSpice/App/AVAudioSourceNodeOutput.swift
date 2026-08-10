@@ -278,6 +278,15 @@ final class AVAudioSourceNodeOutput: @unchecked Sendable, NativeAudioOutput {
         transportState = .stopped
     }
 
+    /// Normal track and seek replacement keeps the output device alive. The
+    /// render callback continues to receive silence while the next stream is
+    /// primed, avoiding a Core Audio close/reopen discontinuity.
+    func prepareForWarmReplacement() {
+        ringBuffer.clear()
+        outputState = .stopped
+        transportState = .stopped
+    }
+
     func stop() {
         engine.stop()
         engine.reset()
