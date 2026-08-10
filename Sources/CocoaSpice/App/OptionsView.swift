@@ -470,10 +470,6 @@ struct OptionsView: View {
                 }
 
                 HStack(spacing: 8) {
-                    libraryActionButton("Add Path") {
-                        model.chooseLibraryScanRoots()
-                    }
-                    .disabled(model.libraryScanInProgress)
                     Button {
                         model.toggleAllLibraryScanRootsEnabled()
                     } label: {
@@ -482,6 +478,10 @@ struct OptionsView: View {
                     .help("Enable All / Disable All")
                     .accessibilityLabel("Enable All / Disable All Paths")
                     .disabled(model.libraryScanInProgress || model.libraryScanRoots.isEmpty)
+                    libraryActionButton("Add Path") {
+                        model.chooseLibraryScanRoots()
+                    }
+                    .disabled(model.libraryScanInProgress)
                     libraryActionButton("Reset Paths") {
                         confirmsResetPaths = true
                     }
@@ -555,8 +555,6 @@ struct OptionsView: View {
                     .disabled(model.libraryScanInProgress || model.databaseEntryCount == 0)
                 }
 
-                Divider()
-
                 HStack(alignment: .center, spacing: 12) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Unlinked Sources")
@@ -582,7 +580,7 @@ struct OptionsView: View {
                     set: { model.setArchiveCacheEnabled($0) }
                 )) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Archive Cache")
+                        Text("Enable Cache")
                         Text("Keep extracted archive material for faster replay. Turn off to use disposable playback storage.")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
@@ -590,7 +588,7 @@ struct OptionsView: View {
                 }
 
                 if model.archiveCachePolicy.isEnabled {
-                    Picker("Limit", selection: Binding(
+                    Picker("Cache Size", selection: Binding(
                         get: { model.archiveCachePolicy.maximumBytes },
                         set: { model.setArchiveCacheLimitBytes($0) }
                     )) {
@@ -598,7 +596,7 @@ struct OptionsView: View {
                             Text(ArchiveCachePolicy.displayLimit(bytes)).tag(bytes)
                         }
                     }
-                    .pickerStyle(.segmented)
+                    .pickerStyle(.menu)
                 }
 
                 HStack(alignment: .center, spacing: 12) {
@@ -710,8 +708,6 @@ struct OptionsView: View {
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 8) {
-                Text("App Volume")
-                    .frame(width: 76, alignment: .leading)
                 Slider(
                     value: Binding(
                         get: { Double(model.appVolume) },
