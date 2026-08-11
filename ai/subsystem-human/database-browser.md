@@ -36,7 +36,7 @@
 - Rows: double-click follows the configured activation behavior.
 - Rows: Return loads the selected game or games into the playlist.
 - Files: double-clicking a folder replaces the playlist with all indexed descendant files. Double-clicking selected file rows or pressing Return replaces the playlist with those files.
-- Repeated activation of scanned games or files loads their stored playlist rows directly without rescanning or archive extraction.
+- Repeated activation of scanned games or files loads their stored playlist rows directly from the database without rescanning or archive extraction.
 
 ## Files
 

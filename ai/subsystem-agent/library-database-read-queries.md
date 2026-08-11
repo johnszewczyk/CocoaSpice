@@ -19,6 +19,7 @@
 - Clean enabled roots load Games from `game_sidebar_buckets`; the exact `tracks` grouping remains a correctness fallback only while an enabled root is dirty after an interrupted write or schema upgrade.
 - Clean enabled roots load Files from `file_sidebar_buckets`; the exact source grouping over `tracks` is a dirty-root fallback only. The normal Files path must stay proportional to source-file leaves, not playable subtracks.
 - Games rows retain `root_id`, and playlist activation binds `root_id + browser_game + browser_system`. Never merge roots during either projection or activation.
+- Files-source activation binds `root_id + path` and is backed by the direct `tracks_source_lookup_index`; it must not scan every track in a large library root to activate one archive source.
 - Startup batches every dirty enabled root into one utility-task rebuild. Disabled roots are repaired only when they are scanned directly or enabled again.
 - Scan completion rebuilds dirty root buckets before deriving its displayed track count from that same projection. Test Links, source restoration, force clears, archive member replacement, and normal scan writes mark only their affected roots dirty.
 - Query results are value types; UI publication and cancellation remain owned by the caller's task owner.

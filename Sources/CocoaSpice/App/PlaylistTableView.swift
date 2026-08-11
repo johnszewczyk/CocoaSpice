@@ -73,8 +73,8 @@ struct PlaylistTableView: NSViewRepresentable {
             subsystem: "com.local.cocoaspice",
             category: "playlist-load"
         )
-        private let columnResizeAnimationSteps = 12
-        private let columnResizeIntervalNanoseconds: UInt64 = 24_000_000
+        private let columnResizeAnimationSteps = 5
+        private let columnResizeIntervalNanoseconds: UInt64 = 20_000_000
         private let autoSizeSampleLimit = 200
         private let autoSizeDebounceNanoseconds: UInt64 = 120_000_000
 
