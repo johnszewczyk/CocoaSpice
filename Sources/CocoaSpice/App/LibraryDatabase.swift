@@ -1,10 +1,20 @@
 import Foundation
+import OSLog
 import SQLite3
+
+struct LibraryDatabaseScanMetrics: Equatable, Sendable {
+    let durationMilliseconds: Int
+    let databaseBytes: Int64
+    let walBytes: Int64
+}
 
 final class LibraryDatabase: @unchecked Sendable {
     static let schemaVersion = 19
+    static let performanceLogger = Logger(subsystem: "com.local.cocoaspice", category: "library-database")
     let db: OpaquePointer?
     private let dbURL: URL
+    private var atomicScanStartedAt: Date?
+    private(set) var lastAtomicScanMetrics: LibraryDatabaseScanMetrics?
 
     var databaseURL: URL { dbURL }
 
@@ -70,6 +80,7 @@ final class LibraryDatabase: @unchecked Sendable {
             )
         }
         try execute("BEGIN IMMEDIATE;")
+        atomicScanStartedAt = Date()
         do {
             if replacingLiveData {
                 try clearLiveScanInventory(rootID: rootID)
@@ -83,10 +94,24 @@ final class LibraryDatabase: @unchecked Sendable {
 
     func commitAtomicScan() throws {
         try execute("COMMIT;")
+        let elapsed = atomicScanStartedAt.map { Date().timeIntervalSince($0) } ?? 0
+        atomicScanStartedAt = nil
+        let metrics = LibraryDatabaseScanMetrics(
+            durationMilliseconds: Int((elapsed * 1_000).rounded()),
+            databaseBytes: fileSize(at: dbURL),
+            walBytes: fileSize(at: URL(fileURLWithPath: dbURL.path + "-wal"))
+        )
+        lastAtomicScanMetrics = metrics
+        Self.performanceLogger.info("Database scan published in \(metrics.durationMilliseconds) ms; WAL \(metrics.walBytes) bytes")
     }
 
     func rollbackAtomicScan() {
         try? execute("ROLLBACK;")
+        atomicScanStartedAt = nil
+    }
+
+    private func fileSize(at url: URL) -> Int64 {
+        Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
     }
 
     func loadScanInventory(rootID: Int64) throws -> [ScanInventoryItem] {
@@ -468,16 +493,38 @@ final class LibraryDatabase: @unchecked Sendable {
 
         let touchedRootIDs = Set(successes.map { $0.0.identity.rootID })
         let rootPaths = Dictionary(uniqueKeysWithValues: try loadRoots().map { ($0.id, $0.path) })
+        let deleteArchiveTrack = try prepareStatement(
+            "DELETE FROM tracks WHERE root_id = ? AND path = ? AND archive_entry = ?;"
+        )
+        defer { sqlite3_finalize(deleteArchiveTrack) }
+        let deleteLooseTrack = try prepareStatement(
+            "DELETE FROM tracks WHERE root_id = ? AND path = ? AND archive_entry IS NULL;"
+        )
+        defer { sqlite3_finalize(deleteLooseTrack) }
+        let insertTrack = try prepareStatement(
+            """
+            INSERT INTO tracks (root_id, folder_path, path, filename, extension, browser_game, browser_system, track_index, track_count, file_size, modified_at, discovered_at, archive_path, archive_entry)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """
+        )
+        defer { sqlite3_finalize(insertTrack) }
+        let insertMetadata = try prepareStatement(
+            """
+            INSERT INTO track_metadata (track_id, title, game, author, system, comment, intro_length_ms, loop_length_ms, play_length_ms, fade_length_ms, metadata_scanned_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+            """
+        )
+        defer { sqlite3_finalize(insertMetadata) }
 
         for (candidate, inspection) in successes {
             if let archiveEntry = candidate.identity.archiveEntry {
-                try execute(
-                    "DELETE FROM tracks WHERE root_id = ? AND path = ? AND archive_entry = ?;",
+                try executePrepared(
+                    deleteArchiveTrack,
                     bindings: [.int(candidate.identity.rootID), .text(candidate.identity.path), .text(archiveEntry)]
                 )
             } else {
-                try execute(
-                    "DELETE FROM tracks WHERE root_id = ? AND path = ? AND archive_entry IS NULL;",
+                try executePrepared(
+                    deleteLooseTrack,
                     bindings: [.int(candidate.identity.rootID), .text(candidate.identity.path)]
                 )
             }
@@ -501,11 +548,8 @@ final class LibraryDatabase: @unchecked Sendable {
                 let resolvedBrowserGame = browserGame.flatMap { $0.isEmpty ? nil : $0 }
                     ?? archivePath
                     ?? folderPath
-                try execute(
-                    """
-                    INSERT INTO tracks (root_id, folder_path, path, filename, extension, browser_game, browser_system, track_index, track_count, file_size, modified_at, discovered_at, archive_path, archive_entry)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                    """,
+                try executePrepared(
+                    insertTrack,
                     bindings: [
                         .int(candidate.identity.rootID),
                         .text(folderPath),
@@ -525,11 +569,8 @@ final class LibraryDatabase: @unchecked Sendable {
                 )
                 guard let metadata else { continue }
                 let trackID = try lastInsertedRowID()
-                try execute(
-                    """
-                    INSERT INTO track_metadata (track_id, title, game, author, system, comment, intro_length_ms, loop_length_ms, play_length_ms, fade_length_ms, metadata_scanned_at)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
-                    """,
+                try executePrepared(
+                    insertMetadata,
                     bindings: [
                         .int(trackID),
                         .text(metadata.song),
@@ -573,6 +614,26 @@ final class LibraryDatabase: @unchecked Sendable {
         }
     }
 
+    func prepareStatement(_ sql: String) throws -> OpaquePointer {
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK,
+              let statement else {
+            throw databaseError()
+        }
+        return statement
+    }
+
+    func executePrepared(_ statement: OpaquePointer, bindings: [SQLiteValue]) throws {
+        sqlite3_reset(statement)
+        sqlite3_clear_bindings(statement)
+        for (index, binding) in bindings.enumerated() {
+            sqliteBind(binding, to: statement, at: Int32(index + 1))
+        }
+        guard sqlite3_step(statement) == SQLITE_DONE else {
+            throw databaseError()
+        }
+    }
+
     private func scalarInt(_ sql: String) throws -> Int {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
@@ -584,13 +645,7 @@ final class LibraryDatabase: @unchecked Sendable {
     }
 
     private func lastInsertedRowID() throws -> Int64 {
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(db, "SELECT last_insert_rowid();", -1, &statement, nil) == SQLITE_OK else {
-            throw databaseError()
-        }
-        defer { sqlite3_finalize(statement) }
-        guard sqlite3_step(statement) == SQLITE_ROW else { throw databaseError() }
-        return sqlite3_column_int64(statement, 0)
+        sqlite3_last_insert_rowid(db)
     }
 
     func databaseError() -> NSError {

@@ -718,6 +718,8 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     try database.markScanCompleted(rootID: root.id)
     try database.commitAtomicScan()
     #expect(try database.loadGameItems().map(\.name) == ["New"])
+    #expect(database.lastAtomicScanMetrics?.durationMilliseconds ?? -1 >= 0)
+    #expect(database.lastAtomicScanMetrics?.databaseBytes ?? 0 > 0)
 }
 
 @Test func scanPlannerOnlySchedulesSelectedItemsInStableOrder() {

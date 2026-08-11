@@ -40,18 +40,30 @@ extension LibraryDatabase {
     /// The Games sidebar is the startup browser. Keep its compact grouped
     /// result separate from the potentially very large Files listing.
     static func loadGameSidebarItems(databaseURL: URL) throws -> [DatabaseGameItem] {
+        let startedAt = Date()
         let handle = try openReadOnlyConnection(databaseURL: databaseURL)
         defer { sqlite3_close(handle) }
-        return try loadGameItems(handle: handle)
+        let items = try loadGameItems(handle: handle)
+        logSlowSidebarRead(name: "Games", itemCount: items.count, startedAt: startedAt)
+        return items
     }
 
     /// File rows are intentionally loaded only when Files mode is shown. A
     /// large collection can have hundreds of thousands of source rows, which
     /// must not delay the initial application window.
     static func loadFileSidebarItems(databaseURL: URL) throws -> [DatabaseFileItem] {
+        let startedAt = Date()
         let handle = try openReadOnlyConnection(databaseURL: databaseURL)
         defer { sqlite3_close(handle) }
-        return try loadFileItems(handle: handle)
+        let items = try loadFileItems(handle: handle)
+        logSlowSidebarRead(name: "Files", itemCount: items.count, startedAt: startedAt)
+        return items
+    }
+
+    private static func logSlowSidebarRead(name: String, itemCount: Int, startedAt: Date) {
+        let elapsed = Date().timeIntervalSince(startedAt)
+        guard elapsed >= 0.25 else { return }
+        performanceLogger.info("Slow \(name) sidebar read: \(itemCount) items in \(Int((elapsed * 1_000).rounded())) ms")
     }
 
     private static func loadGameItems(handle: OpaquePointer) throws -> [DatabaseGameItem] {
