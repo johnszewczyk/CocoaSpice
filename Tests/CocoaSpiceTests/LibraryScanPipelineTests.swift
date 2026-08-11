@@ -707,11 +707,13 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     try database.markScanCompleted(rootID: root.id)
 
     try database.beginAtomicScan(rootID: root.id, replacingLiveData: true)
-    #expect(try database.trackCount() == 0)
+    #expect(try database.trackCount() == 1)
     #expect(try LibraryDatabase.loadGameSidebarItems(databaseURL: database.databaseURL).map(\.name) == ["Old"])
     try database.persistScanTrackResults([result(name: "Uncommitted")])
+    #expect(try stagedTrackCount(databaseURL: database.databaseURL) == 1)
     database.rollbackAtomicScan()
     #expect(try database.loadGameItems().map(\.name) == ["Old"])
+    #expect(try stagedTrackCount(databaseURL: database.databaseURL) == 0)
 
     try database.beginAtomicScan(rootID: root.id, replacingLiveData: true)
     try database.persistScanTrackResults([result(name: "New")])
@@ -720,6 +722,56 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(try database.loadGameItems().map(\.name) == ["New"])
     #expect(database.lastAtomicScanMetrics?.durationMilliseconds ?? -1 >= 0)
     #expect(database.lastAtomicScanMetrics?.databaseBytes ?? 0 > 0)
+}
+
+private func stagedTrackCount(databaseURL: URL) throws -> Int {
+    var handle: OpaquePointer?
+    guard sqlite3_open_v2(databaseURL.path, &handle, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
+        defer { sqlite3_close(handle) }
+        throw LibraryDatabase.databaseError(handle: handle)
+    }
+    defer { sqlite3_close(handle) }
+    var statement: OpaquePointer?
+    guard sqlite3_prepare_v2(handle, "SELECT COUNT(*) FROM tracks WHERE root_id IN (SELECT staging_root_id FROM scan_staging_roots);", -1, &statement, nil) == SQLITE_OK else {
+        throw LibraryDatabase.databaseError(handle: handle)
+    }
+    defer { sqlite3_finalize(statement) }
+    guard sqlite3_step(statement) == SQLITE_ROW else { throw LibraryDatabase.databaseError(handle: handle) }
+    return Int(sqlite3_column_int(statement, 0))
+}
+
+@Test func schemaNineteenUpgradePreservesLibraryAndCleansAbandonedScanStage() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("cocoaspice-stage-migration-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let databaseURL = directory.appendingPathComponent("Library.sqlite")
+
+    var database: LibraryDatabase? = try LibraryDatabase(databaseURL: databaseURL)
+    try database?.addRoot(path: directory.path)
+    let root = try #require(database?.loadRoots().first)
+    let route = ScanRoute(pluginID: "gme", formatExtension: "spc", supportsArchiveMembers: false, supportsMultiTrack: false)
+    let candidate = ScanCandidate(
+        identity: ScanItemIdentity(rootID: root.id, path: directory.appendingPathComponent("Old.spc").path, archiveEntry: nil),
+        fingerprint: ScanFingerprint(fileSize: 1, modifiedAt: .now),
+        sourceURL: directory.appendingPathComponent("Old.spc"),
+        route: route
+    )
+    try database?.persistScanTrackResults([.success(candidate, ScanInspection(
+        route: route,
+        tracks: [ScanTrackMetadata(trackIndex: 0, trackCount: 1, metadata: nil)]
+    ))])
+    try database?.execute("DROP TABLE scan_staging_roots;")
+    try database?.execute("PRAGMA user_version = 19;")
+    database = nil
+
+    database = try LibraryDatabase(databaseURL: databaseURL)
+    #expect(try database?.trackCount() == 1)
+    try database?.beginAtomicScan(rootID: root.id, replacingLiveData: true)
+    database = nil
+
+    database = try LibraryDatabase(databaseURL: databaseURL)
+    #expect(try database?.trackCount() == 1)
+    #expect(try stagedTrackCount(databaseURL: databaseURL) == 0)
 }
 
 @Test func scanPlannerOnlySchedulesSelectedItemsInStableOrder() {

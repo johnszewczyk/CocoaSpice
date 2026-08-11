@@ -5,6 +5,12 @@ extension LibraryDatabase {
         let version = try userVersion()
         guard version != Self.schemaVersion else { return }
 
+        if version == 19 {
+            try createScanStagingRootTable()
+            try setUserVersion(Self.schemaVersion)
+            return
+        }
+
         // Files-sidebar archive activation addresses a source by exactly its
         // library root and path. The former tree index inserted `folder_path`
         // between those fields, which forced SQLite to walk a whole large
@@ -14,6 +20,7 @@ extension LibraryDatabase {
             try execute("CREATE INDEX IF NOT EXISTS tracks_source_lookup_index ON tracks(root_id, path);")
             try repairVGMStreamConsoleBuckets()
             try clearHESFallbackDurations()
+            try createScanStagingRootTable()
             try setUserVersion(Self.schemaVersion)
             return
         }
@@ -21,12 +28,14 @@ extension LibraryDatabase {
         if version == 17 {
             try repairVGMStreamConsoleBuckets()
             try clearHESFallbackDurations()
+            try createScanStagingRootTable()
             try setUserVersion(Self.schemaVersion)
             return
         }
 
         if version == 18 {
             try clearHESFallbackDurations()
+            try createScanStagingRootTable()
             try setUserVersion(Self.schemaVersion)
             return
         }
@@ -36,6 +45,7 @@ extension LibraryDatabase {
         do {
             try dropAllApplicationTables()
             try createLibraryRootTable()
+            try createScanStagingRootTable()
             try createTrackTables()
             try createScanTables()
             try createDeadSourceTable()
@@ -49,6 +59,10 @@ extension LibraryDatabase {
             try? execute("PRAGMA foreign_keys = ON;")
             throw error
         }
+    }
+
+    func cleanupAbandonedScanStagingRoots() throws {
+        try execute("DELETE FROM library_roots WHERE id IN (SELECT staging_root_id FROM scan_staging_roots);")
     }
 
     private func dropAllApplicationTables() throws {
@@ -163,6 +177,19 @@ extension LibraryDatabase {
         );
         """)
         try execute("CREATE INDEX dead_sources_path_index ON dead_sources(path);")
+    }
+
+    private func createScanStagingRootTable() throws {
+        try execute("""
+        CREATE TABLE IF NOT EXISTS scan_staging_roots (
+            staging_root_id INTEGER PRIMARY KEY,
+            target_root_id INTEGER NOT NULL,
+            created_at REAL NOT NULL,
+            FOREIGN KEY(staging_root_id) REFERENCES library_roots(id) ON DELETE CASCADE,
+            FOREIGN KEY(target_root_id) REFERENCES library_roots(id) ON DELETE CASCADE
+        );
+        """)
+        try execute("CREATE INDEX IF NOT EXISTS scan_staging_target_index ON scan_staging_roots(target_root_id);")
     }
 
     private func createGameSidebarBucketTable() throws {

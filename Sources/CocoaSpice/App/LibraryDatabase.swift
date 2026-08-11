@@ -9,11 +9,13 @@ struct LibraryDatabaseScanMetrics: Equatable, Sendable {
 }
 
 final class LibraryDatabase: @unchecked Sendable {
-    static let schemaVersion = 19
+    static let schemaVersion = 20
     static let performanceLogger = Logger(subsystem: "com.local.cocoaspice", category: "library-database")
     let db: OpaquePointer?
     private let dbURL: URL
     private var atomicScanStartedAt: Date?
+    private var atomicScanRootID: Int64?
+    private var atomicScanStagingRootID: Int64?
     private(set) var lastAtomicScanMetrics: LibraryDatabaseScanMetrics?
 
     var databaseURL: URL { dbURL }
@@ -51,6 +53,7 @@ final class LibraryDatabase: @unchecked Sendable {
         // of misreporting a healthy member as a persistence failure.
         sqlite3_busy_timeout(handle, 5_000)
         try migrateSchemaIfNeeded()
+        try cleanupAbandonedScanStagingRoots()
     }
 
     deinit {
@@ -79,21 +82,41 @@ final class LibraryDatabase: @unchecked Sendable {
                 userInfo: [NSLocalizedDescriptionKey: "Cannot start an atomic scan while another database transaction is active."]
             )
         }
-        try execute("BEGIN IMMEDIATE;")
         atomicScanStartedAt = Date()
-        do {
-            if replacingLiveData {
-                try clearLiveScanInventory(rootID: rootID)
-                try clearLiveTracks(rootID: rootID)
+        atomicScanRootID = rootID
+        if replacingLiveData {
+            do {
+                atomicScanStagingRootID = try createScanStagingRoot(targetRootID: rootID)
+            } catch {
+                atomicScanStartedAt = nil
+                atomicScanRootID = nil
+                throw error
             }
-        } catch {
-            try? execute("ROLLBACK;")
-            throw error
+        } else {
+            do {
+                try execute("BEGIN IMMEDIATE;")
+            } catch {
+                atomicScanStartedAt = nil
+                atomicScanRootID = nil
+                throw error
+            }
         }
     }
 
     func commitAtomicScan() throws {
-        try execute("COMMIT;")
+        guard let rootID = atomicScanRootID else {
+            throw NSError(domain: "LibraryDatabase", code: 3, userInfo: [NSLocalizedDescriptionKey: "No atomic library scan is active."])
+        }
+        if let stagingRootID = atomicScanStagingRootID {
+            try publishScanStagingRoot(stagingRootID, targetRootID: rootID)
+            atomicScanStagingRootID = nil
+            atomicScanRootID = nil
+            try refreshDirtySidebarBuckets()
+            try markScanCompleted(rootID: rootID)
+        } else {
+            try execute("COMMIT;")
+            atomicScanRootID = nil
+        }
         let elapsed = atomicScanStartedAt.map { Date().timeIntervalSince($0) } ?? 0
         atomicScanStartedAt = nil
         let metrics = LibraryDatabaseScanMetrics(
@@ -106,8 +129,66 @@ final class LibraryDatabase: @unchecked Sendable {
     }
 
     func rollbackAtomicScan() {
-        try? execute("ROLLBACK;")
+        if let stagingRootID = atomicScanStagingRootID {
+            try? execute("DELETE FROM library_roots WHERE id = ?;", bindings: [.int(stagingRootID)])
+        } else if atomicScanRootID != nil {
+            try? execute("ROLLBACK;")
+        }
+        atomicScanRootID = nil
+        atomicScanStagingRootID = nil
         atomicScanStartedAt = nil
+    }
+
+    func isStagingFullScan(rootID: Int64) -> Bool {
+        atomicScanRootID == rootID && atomicScanStagingRootID != nil
+    }
+
+    private func storageRootID(for rootID: Int64) -> Int64 {
+        guard atomicScanRootID == rootID, let stagingRootID = atomicScanStagingRootID else { return rootID }
+        return stagingRootID
+    }
+
+    private func createScanStagingRoot(targetRootID: Int64) throws -> Int64 {
+        let stagingPath = "cocoaspice-scan-stage://\(targetRootID)/\(UUID().uuidString)"
+        return try withSavepoint {
+            try execute(
+                "INSERT INTO library_roots (path, is_enabled, display_order, created_at, is_attached, game_sidebar_buckets_dirty, file_sidebar_buckets_dirty) VALUES (?, 0, 0, ?, 0, 0, 0);",
+                bindings: [.text(stagingPath), .double(Date().timeIntervalSince1970)]
+            )
+            let stagingRootID = sqlite3_last_insert_rowid(db)
+            try execute(
+                "INSERT INTO scan_staging_roots (staging_root_id, target_root_id, created_at) VALUES (?, ?, ?);",
+                bindings: [.int(stagingRootID), .int(targetRootID), .double(Date().timeIntervalSince1970)]
+            )
+            return stagingRootID
+        }
+    }
+
+    private func publishScanStagingRoot(_ stagingRootID: Int64, targetRootID: Int64) throws {
+        try execute("BEGIN IMMEDIATE;")
+        do {
+            // Rediscovered sources become live at the same boundary as their
+            // staged inventory. Until this point the committed sidebar and
+            // missing-source state continue to describe the prior scan.
+            try execute("""
+            DELETE FROM dead_sources
+            WHERE root_id = ?
+              AND EXISTS (
+                  SELECT 1 FROM scan_items staged
+                  WHERE staged.root_id = ? AND staged.path = dead_sources.path
+              );
+            """, bindings: [.int(targetRootID), .int(stagingRootID)])
+            try clearLiveScanInventory(rootID: targetRootID)
+            try clearLiveTracks(rootID: targetRootID)
+            try execute("UPDATE scan_items SET root_id = ? WHERE root_id = ?;", bindings: [.int(targetRootID), .int(stagingRootID)])
+            try execute("UPDATE tracks SET root_id = ? WHERE root_id = ?;", bindings: [.int(targetRootID), .int(stagingRootID)])
+            try execute("DELETE FROM library_roots WHERE id = ?;", bindings: [.int(stagingRootID)])
+            try markSidebarBucketsDirty(rootIDs: [targetRootID])
+            try execute("COMMIT;")
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
     }
 
     private func fileSize(at url: URL) -> Int64 {
@@ -211,7 +292,7 @@ final class LibraryDatabase: @unchecked Sendable {
                 updated_at = excluded.updated_at;
             """,
             bindings: [
-                .int(item.identity.rootID),
+                .int(storageRootID(for: item.identity.rootID)),
                 .text(item.identity.path),
                 .text(item.identity.archiveEntry ?? ""),
                 .int(item.fingerprint.fileSize),
@@ -312,7 +393,8 @@ final class LibraryDatabase: @unchecked Sendable {
         let sql = """
         SELECT DISTINCT root_id, path
         FROM tracks
-        WHERE NOT EXISTS (
+        WHERE root_id NOT IN (SELECT staging_root_id FROM scan_staging_roots)
+          AND NOT EXISTS (
             SELECT 1 FROM dead_sources d
             WHERE d.root_id = tracks.root_id AND d.path = tracks.path
         )
@@ -374,6 +456,13 @@ final class LibraryDatabase: @unchecked Sendable {
 
     func restoreSources(_ sources: [LibraryIndexedSource]) throws {
         guard !sources.isEmpty else { return }
+        // Full scans publish rediscovery together with the staged rows. Doing
+        // this eagerly would expose half of the new scan through Fix Missing.
+        if let rootID = atomicScanRootID,
+           atomicScanStagingRootID != nil,
+           sources.allSatisfy({ $0.rootID == rootID }) {
+            return
+        }
         try withSavepoint {
             var restoredRootIDs = Set<Int64>()
             for source in Set(sources) {
@@ -394,7 +483,7 @@ final class LibraryDatabase: @unchecked Sendable {
     }
 
     func trackCount() throws -> Int {
-        try scalarInt("SELECT COUNT(*) FROM tracks;")
+        try scalarInt("SELECT COUNT(*) FROM tracks WHERE root_id NOT IN (SELECT staging_root_id FROM scan_staging_roots);")
     }
 
     func deadTrackCount() throws -> Int {
@@ -455,6 +544,7 @@ final class LibraryDatabase: @unchecked Sendable {
     /// example, adding a leading `./`), so replacing members one-by-one can
     /// otherwise leave obsolete tracks and metadata visible in the library.
     func resetArchiveMembers(rootID: Int64, path: String) throws {
+        let rootID = storageRootID(for: rootID)
         try withSavepoint {
             try execute(
                 "DELETE FROM tracks WHERE root_id = ? AND path = ? AND archive_entry IS NOT NULL;",
@@ -491,7 +581,7 @@ final class LibraryDatabase: @unchecked Sendable {
         }
         guard !successes.isEmpty else { return }
 
-        let touchedRootIDs = Set(successes.map { $0.0.identity.rootID })
+        let touchedRootIDs = Set(successes.map { storageRootID(for: $0.0.identity.rootID) })
         let rootPaths = Dictionary(uniqueKeysWithValues: try loadRoots().map { ($0.id, $0.path) })
         let deleteArchiveTrack = try prepareStatement(
             "DELETE FROM tracks WHERE root_id = ? AND path = ? AND archive_entry = ?;"
@@ -517,15 +607,16 @@ final class LibraryDatabase: @unchecked Sendable {
         defer { sqlite3_finalize(insertMetadata) }
 
         for (candidate, inspection) in successes {
+            let writeRootID = storageRootID(for: candidate.identity.rootID)
             if let archiveEntry = candidate.identity.archiveEntry {
                 try executePrepared(
                     deleteArchiveTrack,
-                    bindings: [.int(candidate.identity.rootID), .text(candidate.identity.path), .text(archiveEntry)]
+                    bindings: [.int(writeRootID), .text(candidate.identity.path), .text(archiveEntry)]
                 )
             } else {
                 try executePrepared(
                     deleteLooseTrack,
-                    bindings: [.int(candidate.identity.rootID), .text(candidate.identity.path)]
+                    bindings: [.int(writeRootID), .text(candidate.identity.path)]
                 )
             }
 
@@ -551,7 +642,7 @@ final class LibraryDatabase: @unchecked Sendable {
                 try executePrepared(
                     insertTrack,
                     bindings: [
-                        .int(candidate.identity.rootID),
+                        .int(writeRootID),
                         .text(folderPath),
                         .text(path),
                         .text(filename),

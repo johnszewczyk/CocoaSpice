@@ -115,6 +115,7 @@ extension LibraryDatabase {
     }
 
     func markScanCompleted(rootID: Int64) throws {
+        guard !isStagingFullScan(rootID: rootID) else { return }
         try rebuildGameSidebarBucketsIfDirty(rootID: rootID)
         try rebuildFileSidebarBucketsIfDirty(rootID: rootID)
         try execute(
