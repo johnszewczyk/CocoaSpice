@@ -670,11 +670,13 @@ final class PlaybackStreamSession {
 final class SPCDecoder {
     let sampleRate: Int
     private let trackIndex: Int
+    private let pathExtension: String
     private var emu: OpaquePointer?
 
     init(track: TrackItem, sampleRate: Int) throws {
         self.sampleRate = sampleRate
         self.trackIndex = max(0, track.trackIndex)
+        self.pathExtension = track.playablePathExtension.lowercased()
         let fileURL = try ZipArchiveSupport.materializePlayableFile(for: track)
 
         var created: OpaquePointer?
@@ -715,10 +717,10 @@ final class SPCDecoder {
             system: Self.string(from: info.system),
             author: Self.string(from: info.author),
             comment: Self.string(from: info.comment),
-            introLengthMs: Int(info.intro_length),
-            loopLengthMs: Int(info.loop_length),
-            playLengthMs: Int(info.play_length),
-            fadeLengthMs: Int(info.fade_length)
+            introLengthMs: pathExtension == "hes" ? 0 : Int(info.intro_length),
+            loopLengthMs: pathExtension == "hes" ? 0 : Int(info.loop_length),
+            playLengthMs: pathExtension == "hes" ? 0 : Int(info.play_length),
+            fadeLengthMs: pathExtension == "hes" ? 0 : Int(info.fade_length)
         )
     }
 
@@ -786,9 +788,11 @@ final class SPCDecoder {
 }
 
 final class SPCFileInspector {
+    private let pathExtension: String
     private var emu: OpaquePointer?
 
     init(fileURL: URL) throws {
+        pathExtension = fileURL.pathExtension.lowercased()
         var created: OpaquePointer?
         try SPCDecoder.throwIfNeeded(gme_open_file(fileURL.path, &created, Int32(gme_info_only)))
         emu = created
@@ -830,10 +834,10 @@ final class SPCFileInspector {
             system: SPCDecoder.string(from: info.system),
             author: SPCDecoder.string(from: info.author),
             comment: SPCDecoder.string(from: info.comment),
-            introLengthMs: Int(info.intro_length),
-            loopLengthMs: Int(info.loop_length),
-            playLengthMs: Int(info.play_length),
-            fadeLengthMs: Int(info.fade_length)
+            introLengthMs: pathExtension == "hes" ? 0 : Int(info.intro_length),
+            loopLengthMs: pathExtension == "hes" ? 0 : Int(info.loop_length),
+            playLengthMs: pathExtension == "hes" ? 0 : Int(info.play_length),
+            fadeLengthMs: pathExtension == "hes" ? 0 : Int(info.fade_length)
         )
     }
 }

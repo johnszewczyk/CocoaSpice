@@ -431,6 +431,9 @@ extension LibraryDatabase {
             repeating: "(t.root_id = ? AND t.path = ?)",
             count: normalizedItems.count
         ).joined(separator: " OR ")
+        // A Path-sidebar activation identifies exact scanned sources. Force
+        // the root/path lookup index so SQLite does not scan a complete root
+        // merely to satisfy the folder-oriented sort order.
         let sql = """
         SELECT
             t.path,
@@ -447,7 +450,7 @@ extension LibraryDatabase {
             COALESCE(m.loop_length_ms, 0),
             COALESCE(m.play_length_ms, 0),
             COALESCE(m.fade_length_ms, 0)
-        FROM tracks t
+        FROM tracks t INDEXED BY tracks_source_lookup_index
         INNER JOIN library_roots r ON r.id = t.root_id
         LEFT JOIN track_metadata m ON m.track_id = t.id
         WHERE r.is_enabled = 1
@@ -842,7 +845,8 @@ extension LibraryDatabase {
         var widestSystemText = ""
         var widestLengthText = "—"
 
-        while sqlite3_step(statement) == SQLITE_ROW {
+        var stepResult = sqlite3_step(statement)
+        while stepResult == SQLITE_ROW {
             let track = track(from: statement, pathIndex: 0, archivePathIndex: 1, archiveEntryIndex: 2, trackIndex: 3, trackCount: 4)
             let title = sqliteString(statement, index: 5)
             let game = sqliteString(statement, index: 6)
@@ -874,7 +878,9 @@ extension LibraryDatabase {
             widestSystemText = widerText(widestSystemText, system.isEmpty ? "SNES" : system)
             let lengthText = formatLengthText(playLengthMs: playLengthMs)
             widestLengthText = widerText(widestLengthText, lengthText)
+            stepResult = sqlite3_step(statement)
         }
+        guard stepResult == SQLITE_DONE else { throw databaseError(handle: handle) }
 
         let widthHints = PlaylistColumnWidthHints(
             indexText: String(max(1, tracks.count)),

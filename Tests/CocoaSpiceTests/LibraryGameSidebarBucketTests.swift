@@ -253,6 +253,9 @@ import Testing
         )
     }
     #expect(files.fileItems.count == 1)
+    #expect(loader.hasLoadedFiles)
+    #expect(!loader.isLoadingFiles)
+    #expect(loader.fileLoadingStatus.isEmpty)
     let initialRevision = files.contentRevision
 
     loader.loadIfNeeded(

@@ -24,9 +24,10 @@
 - Games, file rows, and file-tree folder selections enter `PlaylistQueueLoader` as one typed `LibraryPlaylistLoadRequest`; the view model owns one queue-build lifecycle and applies the loaded playlist identically for replace or enqueue.
 - Game activation loads playable leaves from the scanned database rather than rescanning the filesystem.
 - `tracks.browser_game` and `tracks.browser_system` are persisted alongside scan results and are activated with `root_id`; do not rebuild the game bucket from `track_metadata` in a selection query, omit the selected root, or turn every sidebar activation into a whole-library scan.
+- `LibraryConsoleResolver` owns persisted sidebar-console selection. Decoder routing remains independent: vgmstream container defaults are not embedded console tags, so resolve their console from the nearest recognized folder below the scan root. Keep intermediate format folders such as KSS, VGM, and VGZ out of that decision.
 - `DatabaseFileItem` groups scanned track rows by `root_id + source path`; `tracks_file_tree_index` supports the database-only Files tree. Archive members never become filesystem tree leaves: their archive source is the leaf and activation loads its indexed members through the matching root.
 - The Games browser has a separate covering `tracks_game_sidebar_index` for grouped startup reads and unlinked-source filtering. The current schema creates it once before data exists; a noncurrent schema is reset instead of being migrated at launch.
-- The Files browser has the durable root-scoped `file_sidebar_buckets` projection (`root_id + source path`), carrying folder, archive, and playable-track count. Normal reads must use it rather than grouping `tracks`; a dirty enabled root uses the direct grouping only until its projection rebuilds.
+- The Files browser has the durable root-scoped `file_sidebar_buckets` projection (`root_id + source path`), carrying folder, archive, and playable-track count. Normal reads must use it rather than grouping `tracks`; a dirty enabled root uses the direct grouping only until its projection rebuilds. A metadata-only repair (such as correcting a vgmstream console) may invalidate game buckets but must not dirty this file projection.
 - File-path activation resolves the scanned playable leaves for that file path, so NSF containers contribute subtracks rather than the raw container file.
 - File-tree file selection stores source-file IDs. A normal folder-row selection toggles expansion and does not alter the playlist or file selection.
 - A file-tree folder double-click resolves tracks by the indexed folder path and all descendant folder paths. File activation replaces the playlist only on double-click or Return.
@@ -46,6 +47,7 @@
 - [LibraryDatabase.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase.swift)
 - [LibraryDatabase+Schema.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase+Schema.swift)
 - [LibraryModels.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryModels.swift)
+- [LibraryConsoleResolver.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryConsoleResolver.swift)
 - [MainView.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
 - [PlaylistQueueLoader.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlaylistQueueLoader.swift)
 - [PlayerViewModel.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)

@@ -2,7 +2,7 @@ import Foundation
 import SQLite3
 
 final class LibraryDatabase: @unchecked Sendable {
-    static let schemaVersion = 17
+    static let schemaVersion = 19
     let db: OpaquePointer?
     private let dbURL: URL
 
@@ -442,6 +442,7 @@ final class LibraryDatabase: @unchecked Sendable {
         guard !successes.isEmpty else { return }
 
         let touchedRootIDs = Set(successes.map { $0.0.identity.rootID })
+        let rootPaths = Dictionary(uniqueKeysWithValues: try loadRoots().map { ($0.id, $0.path) })
 
         for (candidate, inspection) in successes {
             if let archiveEntry = candidate.identity.archiveEntry {
@@ -466,7 +467,12 @@ final class LibraryDatabase: @unchecked Sendable {
                 let archivePath = candidate.identity.archiveEntry == nil ? nil : path
                 let metadata = track.metadata
                 let browserGame = metadata?.game.trimmingCharacters(in: .whitespacesAndNewlines)
-                let browserSystem = metadata?.system.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let browserSystem = LibraryConsoleResolver.browserSystem(
+                    metadataSystem: metadata?.system ?? "",
+                    route: inspection.route,
+                    sourcePath: path,
+                    rootPath: rootPaths[candidate.identity.rootID]
+                )
                 let resolvedBrowserGame = browserGame.flatMap { $0.isEmpty ? nil : $0 }
                     ?? archivePath
                     ?? folderPath

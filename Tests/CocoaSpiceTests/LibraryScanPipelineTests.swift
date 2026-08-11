@@ -1,4 +1,5 @@
 import Foundation
+import SQLite3
 import Testing
 @testable import CocoaSpice
 
@@ -380,11 +381,11 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     let startupGames = try LibraryDatabase.loadGameSidebarItems(databaseURL: database.databaseURL)
     let deferredFiles = try LibraryDatabase.loadFileSidebarItems(databaseURL: database.databaseURL)
     let loadedFiles = try database.tracksAndMetadataForFiles(Array(files.prefix(2)))
-    let queued = await PlaylistQueueLoader.loadLibraryTracks(
+    let queued = try await PlaylistQueueLoader.loadLibraryTracks(
         databaseURL: database.databaseURL,
         request: .games([selectedGame])
     )
-    let folderQueued = await PlaylistQueueLoader.loadLibraryTracks(
+    let folderQueued = try await PlaylistQueueLoader.loadLibraryTracks(
         databaseURL: database.databaseURL,
         request: .fileSidebar(
             fileItems: [],
@@ -409,6 +410,213 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(queued.tracks.map(\.filename) == ["one.spc", "two.spc"])
     #expect(folderQueued.tracks.map(\.filename) == ["one.spc", "two.spc"])
     #expect(loadedFiles.tracks.count == 2)
+}
+
+@Test func fileSidebarArchiveLeafLoadsEveryIndexedMemberThroughTheQueue() async throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("cocoaspice-file-sidebar-archive-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    try database.addRoot(path: directory.path)
+    let root = try #require(database.loadRoots().first)
+    let archivePath = directory.appendingPathComponent("Game.rsn").path
+    let route = ScanRoute(
+        pluginID: "gme",
+        formatExtension: "spc",
+        supportsArchiveMembers: true,
+        supportsMultiTrack: false
+    )
+
+    func member(_ entry: String, title: String) -> ScanPipelineResult {
+        let candidate = ScanCandidate(
+            identity: ScanItemIdentity(rootID: root.id, path: archivePath, archiveEntry: entry),
+            fingerprint: ScanFingerprint(fileSize: 1, modifiedAt: Date(timeIntervalSince1970: 1)),
+            sourceURL: URL(fileURLWithPath: archivePath),
+            route: route
+        )
+        return .success(candidate, ScanInspection(
+            route: route,
+            tracks: [ScanTrackMetadata(
+                trackIndex: 0,
+                trackCount: 1,
+                metadata: TrackMetadata(
+                    game: "Game",
+                    song: title,
+                    system: "SNES",
+                    author: "",
+                    comment: "",
+                    introLengthMs: 0,
+                    loopLengthMs: 0,
+                    playLengthMs: 60_000,
+                    fadeLengthMs: 0
+                )
+            )]
+        ))
+    }
+
+    try database.persistScanTrackResults([
+        member("01 - Opening.spc", title: "Opening"),
+        member("02 - Ending.spc", title: "Ending")
+    ])
+    try database.markScanCompleted(rootID: root.id)
+
+    let source = try #require(database.loadFileItems().first { $0.path == archivePath })
+    let loaded = try await PlaylistQueueLoader.loadLibraryTracks(
+        databaseURL: database.databaseURL,
+        request: .fileSidebar(fileItems: [source], folders: [])
+    )
+
+    #expect(source.isArchive)
+    #expect(source.trackCount == 2)
+    #expect(loaded.tracks.map(\.filename) == ["01 - Opening.spc", "02 - Ending.spc"])
+    #expect(Set(loaded.metadata.values.map(\.song)) == ["Opening", "Ending"])
+}
+
+@Test func fileSidebarDatabaseFailureIsNotReportedAsAnEmptyPlaylist() async throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("cocoaspice-file-sidebar-error-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    try database.addRoot(path: directory.path)
+    let root = try #require(database.loadRoots().first)
+    #expect(sqlite3_exec(database.db, "DROP INDEX tracks_source_lookup_index;", nil, nil, nil) == SQLITE_OK)
+    let source = DatabaseFileItem(
+        rootID: root.id,
+        rootPath: directory.path,
+        folderPath: directory.path,
+        path: directory.appendingPathComponent("Missing.spc").path,
+        isArchive: false,
+        trackCount: 1
+    )
+
+    do {
+        _ = try await PlaylistQueueLoader.loadLibraryTracks(
+            databaseURL: database.databaseURL,
+            request: .fileSidebar(fileItems: [source], folders: [])
+        )
+        Issue.record("Expected the missing SQLite index to fail the playlist load")
+    } catch {
+        #expect(error.localizedDescription.contains("tracks_source_lookup_index"))
+    }
+}
+
+@Test func fileSidebarLegitimateEmptyResultRemainsSuccessful() async throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("cocoaspice-file-sidebar-empty-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    try database.addRoot(path: directory.path)
+    let root = try #require(database.loadRoots().first)
+    let source = DatabaseFileItem(
+        rootID: root.id,
+        rootPath: directory.path,
+        folderPath: directory.path,
+        path: directory.appendingPathComponent("Missing.spc").path,
+        isArchive: false,
+        trackCount: 1
+    )
+
+    let loaded = try await PlaylistQueueLoader.loadLibraryTracks(
+        databaseURL: database.databaseURL,
+        request: .fileSidebar(fileItems: [source], folders: [])
+    )
+
+    #expect(loaded.tracks.isEmpty)
+    #expect(loaded.metadata.isEmpty)
+}
+
+@Test func databaseConsoleUsesTheParentFolderForVGMStreamContainers() throws {
+    let rootPath = "/music/JoshW"
+    let route = ScanRoute(
+        pluginID: "vgmstream",
+        formatExtension: "genh",
+        supportsArchiveMembers: true,
+        supportsMultiTrack: false
+    )
+
+    #expect(LibraryConsoleResolver.browserSystem(
+        metadataSystem: "3DO",
+        route: route,
+        sourcePath: "/music/JoshW/Sega Saturn/mixed formats/Panzer Dragoon.tar.zst",
+        rootPath: rootPath
+    ) == "Sega Saturn")
+    #expect(LibraryConsoleResolver.browserSystem(
+        metadataSystem: "3DO",
+        route: route,
+        sourcePath: "/music/JoshW/Nintendo DS/Animal Crossing.tar.zst",
+        rootPath: rootPath
+    ) == "Nintendo DS")
+    #expect(LibraryConsoleResolver.browserSystem(
+        metadataSystem: "3DO",
+        route: route,
+        sourcePath: "/music/JoshW/3DO/Total Eclipse/TEcredits.genh",
+        rootPath: rootPath
+    ) == "3DO")
+}
+
+@Test func databaseConsoleKeepsAnExplicitNonVGMStreamSystemTag() {
+    let route = ScanRoute(
+        pluginID: "gme",
+        formatExtension: "spc",
+        supportsArchiveMembers: true,
+        supportsMultiTrack: false
+    )
+
+    #expect(LibraryConsoleResolver.browserSystem(
+        metadataSystem: "Super Nintendo",
+        route: route,
+        sourcePath: "/music/JoshW/Nintendo DS/Example/Game.spc",
+        rootPath: "/music/JoshW"
+    ) == "Super Nintendo")
+}
+
+@Test func databaseMigrationRepairsExistingGENHConsoleBuckets() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("cocoaspice-genh-console-migration-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let rootPath = directory.appendingPathComponent("JoshW", isDirectory: true).path
+    let databaseURL = directory.appendingPathComponent("Library.sqlite")
+    var database: LibraryDatabase? = try LibraryDatabase(databaseURL: databaseURL)
+    try database?.addRoot(path: rootPath)
+    let root = try #require(database?.loadRoots().first)
+    let route = ScanRoute(
+        pluginID: "vgmstream",
+        formatExtension: "genh",
+        supportsArchiveMembers: true,
+        supportsMultiTrack: false
+    )
+    let candidate = ScanCandidate(
+        identity: ScanItemIdentity(
+            rootID: root.id,
+            path: rootPath + "/Sega Saturn/Panzer Dragoon.tar.zst",
+            archiveEntry: "SPECIAL.genh"
+        ),
+        fingerprint: ScanFingerprint(fileSize: 1, modifiedAt: .distantPast),
+        sourceURL: URL(fileURLWithPath: rootPath + "/Sega Saturn/Panzer Dragoon.tar.zst"),
+        route: route
+    )
+    let inspection = ScanInspection(
+        route: route,
+        tracks: [
+            ScanTrackMetadata(
+                trackIndex: 0,
+                trackCount: 1,
+                metadata: TrackMetadata(game: "", song: "SPECIAL", system: "3DO", author: "", comment: "GENH", introLengthMs: 0, loopLengthMs: 0, playLengthMs: 1, fadeLengthMs: 0)
+            )
+        ]
+    )
+    try database?.persistScanTrackResults([.success(candidate, inspection)])
+    try database?.markScanCompleted(rootID: root.id)
+    try database?.execute("UPDATE tracks SET browser_system = '3DO';")
+    try database?.execute("PRAGMA user_version = 17;")
+    database = nil
+
+    let migrated = try LibraryDatabase(databaseURL: databaseURL)
+    let games = try migrated.loadGameItems()
+    #expect(games.map(\.systemName) == ["Sega Saturn"])
 }
 
 @Test func deadLinksStayReusableUntilExplicitlyDeleted() throws {

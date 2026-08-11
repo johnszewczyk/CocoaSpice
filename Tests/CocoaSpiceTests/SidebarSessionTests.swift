@@ -118,6 +118,37 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
 }
 
 @MainActor
+@Test func databaseFileSidebarKeepsTheCachedTreeOnAnUnchangedEmptySearch() {
+    let rootPath = "/music/Library"
+    let item = DatabaseFileItem(
+        rootID: 1,
+        rootPath: rootPath,
+        folderPath: rootPath,
+        path: "/music/Library/Actraiser.nsf",
+        isArchive: false,
+        trackCount: 18
+    )
+    let sidebar = DatabaseFileSidebarState()
+    let secondItem = DatabaseFileItem(
+        rootID: 1,
+        rootPath: rootPath,
+        folderPath: rootPath,
+        path: "/music/Library/ChronoTrigger.spc",
+        isArchive: false,
+        trackCount: 1
+    )
+    let items = [item, secondItem]
+    sidebar.replaceFileItems(items, treeIndex: DatabaseFileSidebarTree.Index(items: items))
+    let revision = sidebar.contentRevision
+
+    sidebar.applySearchResult(query: "", items: items, treeIndex: nil)
+
+    #expect(sidebar.contentRevision == revision)
+    let rootID = DatabaseFileSidebarTree.folderID(rootID: 1, path: rootPath)
+    #expect(sidebar.folder(forID: rootID) == DatabaseFileSidebarFolder(rootID: 1, rootPath: rootPath, path: rootPath))
+}
+
+@MainActor
 @Test func databaseFileSidebarPublishesBackgroundSearchResult() {
     let rootPath = "/music/Library"
     let matching = DatabaseFileItem(

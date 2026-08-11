@@ -370,6 +370,18 @@ final class PlayerViewModel {
     }
     var isLoadingDatabaseSidebar: Bool { databaseSidebarLoader.isLoadingGames }
     var isLoadingDatabaseFileSidebar: Bool { databaseSidebarLoader.isLoadingFiles }
+    var databaseSidebarLoadingStatus: String {
+        switch sidebarBrowserMode {
+        case .games:
+            databaseSidebarLoader.gameLoadingStatus.isEmpty
+                ? "Reading indexed games…"
+                : databaseSidebarLoader.gameLoadingStatus
+        case .files:
+            databaseSidebarLoader.fileLoadingStatus.isEmpty
+                ? "Preparing the folder tree…"
+                : databaseSidebarLoader.fileLoadingStatus
+        }
+    }
 
     var enabledLibraryRootURLs: [URL] {
         libraryScanRoots
@@ -1028,7 +1040,9 @@ final class PlayerViewModel {
         selectedDatabaseFileIDs = Set(fileIDs)
         selectedDatabaseFileID = primaryFileID
         selectedDatabaseFileFolders = Set(folders)
-        let selectedItems = databaseFileItems.filter { selectedDatabaseFileIDs.contains($0.id) }
+        let selectedItems = selectedDatabaseFileIDs.isEmpty
+            ? []
+            : databaseFileItems.filter { selectedDatabaseFileIDs.contains($0.id) }
         if folders.count == 1, selectedItems.isEmpty, let folder = folders.first {
             statusText = "\(URL(fileURLWithPath: folder.path).lastPathComponent) • folder"
         } else if !selectedItems.isEmpty || !folders.isEmpty {
@@ -1145,10 +1159,21 @@ final class PlayerViewModel {
 
         let task = Task { [weak self] in
             guard let self else { return }
-            let loaded = await PlaylistQueueLoader.loadLibraryTracks(
-                databaseURL: databaseURL,
-                request: request
-            )
+            let loaded: LoadedPlaylistData
+            do {
+                loaded = try await PlaylistQueueLoader.loadLibraryTracks(
+                    databaseURL: databaseURL,
+                    request: request
+                )
+            } catch {
+                guard !Task.isCancelled, self.queueBuildTaskOwner.isCurrent(generation) else { return }
+                Self.playlistLoadLogger.error(
+                    "sidebar database load failed for \(label, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                )
+                self.statusText = "Could not load \(label): \(error.localizedDescription)"
+                self.queueBuildTaskOwner.finish(generation: generation)
+                return
+            }
             guard !Task.isCancelled, self.queueBuildTaskOwner.isCurrent(generation) else { return }
             let databaseElapsed = startedAt.duration(to: .now)
             Self.playlistLoadLogger.info(
@@ -2098,7 +2123,26 @@ final class PlayerViewModel {
         }
         let generation = randomLibraryLoadTaskOwner.begin()
         let task = Task { [weak self] in
-            let loaded = await PlaylistQueueLoader.loadLibraryTracksForGames(databaseURL: databaseURL, gameItems: [item])
+            let loaded: LoadedPlaylistData
+            do {
+                loaded = try await PlaylistQueueLoader.loadLibraryTracksForGames(
+                    databaseURL: databaseURL,
+                    gameItems: [item]
+                )
+            } catch {
+                guard let self,
+                      self.randomPlaybackScope == .library,
+                      self.randomLibraryLoadTaskOwner.isCurrent(generation) else { return }
+                Self.playlistLoadLogger.error(
+                    "random library load failed: \(error.localizedDescription, privacy: .public)"
+                )
+                self.randomLibraryLoadTaskOwner.finish(generation: generation)
+                if self.randomLibraryPlaybackPending {
+                    self.randomLibraryPlaybackPending = false
+                    self.statusText = "Could not load Random Library: \(error.localizedDescription)"
+                }
+                return
+            }
             guard let self,
                   self.randomPlaybackScope == .library,
                   self.randomLibraryLoadTaskOwner.isCurrent(generation) else { return }
@@ -2624,11 +2668,22 @@ final class PlayerViewModel {
 
         let task = Task { [weak self] in
             guard let self else { return }
-            let loaded = await PlaylistQueueLoader.loadLibraryTracksForFolder(
-                databaseURL: databaseURL,
-                rootPath: rootPath,
-                folderPath: folderPath
-            )
+            let loaded: LoadedPlaylistData
+            do {
+                loaded = try await PlaylistQueueLoader.loadLibraryTracksForFolder(
+                    databaseURL: databaseURL,
+                    rootPath: rootPath,
+                    folderPath: folderPath
+                )
+            } catch {
+                guard !Task.isCancelled, self.queueBuildTaskOwner.isCurrent(generation) else { return }
+                Self.playlistLoadLogger.error(
+                    "library folder load failed: \(error.localizedDescription, privacy: .public)"
+                )
+                self.statusText = "Could not load \(folderURL.lastPathComponent): \(error.localizedDescription)"
+                self.queueBuildTaskOwner.finish(generation: generation)
+                return
+            }
             guard !Task.isCancelled, self.queueBuildTaskOwner.isCurrent(generation) else { return }
             self.applyQueuedTracks(
                 loaded.tracks,
@@ -2659,10 +2714,21 @@ final class PlayerViewModel {
 
         let task = Task { [weak self] in
             guard let self else { return }
-            let loaded = await PlaylistQueueLoader.loadLibraryTracksForPaths(
-                databaseURL: databaseURL,
-                paths: normalizedPaths
-            )
+            let loaded: LoadedPlaylistData
+            do {
+                loaded = try await PlaylistQueueLoader.loadLibraryTracksForPaths(
+                    databaseURL: databaseURL,
+                    paths: normalizedPaths
+                )
+            } catch {
+                guard !Task.isCancelled, self.queueBuildTaskOwner.isCurrent(generation) else { return }
+                Self.playlistLoadLogger.error(
+                    "library path load failed for \(label, privacy: .public): \(error.localizedDescription, privacy: .public)"
+                )
+                self.statusText = "Could not load \(label): \(error.localizedDescription)"
+                self.queueBuildTaskOwner.finish(generation: generation)
+                return
+            }
             guard !Task.isCancelled, self.queueBuildTaskOwner.isCurrent(generation) else { return }
             self.applyQueuedTracks(
                 loaded.tracks,

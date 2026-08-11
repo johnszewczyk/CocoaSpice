@@ -26,6 +26,7 @@
 - Queue edits include cut, paste, delete, move, and drag-reorder.
 - Background playlist inspection publishes completed metadata incrementally so visible rows update before a large queue has fully hydrated.
 - Background hydration groups unresolved archive members by container and materializes each group once. It feeds prepared files through two bounded workers instead of creating one task and extractor process per playlist row.
+- Database-backed queue loads distinguish a successful empty result from a SQLite failure. A query failure is logged and shown in status without replacing or partially updating the current queue; combined file/folder selections are applied atomically only after every query succeeds.
 - A coalesced metadata batch reloads only the affected metadata cells. Hydration does not reload the whole table, measure every column, animate column widths, or persist width changes.
 - A playback request cancels queued background hydration before opening its decoder. Hydration restarts for unresolved rows after that request settles, preventing a large playlist from sitting ahead of interactive playback on the inspection queue.
 - Cached SPC metadata with no play length is incomplete and is reinspected during playlist hydration.

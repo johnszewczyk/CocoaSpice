@@ -12,6 +12,21 @@ extension LibraryDatabase {
         // inspected library while adding the direct source lookup index.
         if version == 16 {
             try execute("CREATE INDEX IF NOT EXISTS tracks_source_lookup_index ON tracks(root_id, path);")
+            try repairVGMStreamConsoleBuckets()
+            try clearHESFallbackDurations()
+            try setUserVersion(Self.schemaVersion)
+            return
+        }
+
+        if version == 17 {
+            try repairVGMStreamConsoleBuckets()
+            try clearHESFallbackDurations()
+            try setUserVersion(Self.schemaVersion)
+            return
+        }
+
+        if version == 18 {
+            try clearHESFallbackDurations()
             try setUserVersion(Self.schemaVersion)
             return
         }
@@ -52,6 +67,70 @@ extension LibraryDatabase {
             let identifier = tableName.replacingOccurrences(of: "\"", with: "\"\"")
             try execute("DROP TABLE \"\(identifier)\";")
         }
+    }
+
+    /// GENH was originally introduced for 3DO playback and its vgmstream
+    /// metadata default was persisted as though it were an embedded console
+    /// tag. Repair those stored sidebar buckets without discarding the index.
+    private func repairVGMStreamConsoleBuckets() throws {
+        let sql = """
+        SELECT t.id, t.root_id, t.path, r.path
+        FROM tracks t
+        INNER JOIN library_roots r ON r.id = t.root_id
+        WHERE lower(t.extension) = 'genh' AND t.browser_system = '3DO';
+        """
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw databaseError()
+        }
+        defer { sqlite3_finalize(statement) }
+
+        var repairs: [(trackID: Int64, rootID: Int64, system: String)] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            let trackID = sqlite3_column_int64(statement, 0)
+            let rootID = sqlite3_column_int64(statement, 1)
+            let sourcePath = sqliteString(statement, index: 2)
+            let rootPath = sqliteString(statement, index: 3)
+            guard let system = LibraryConsoleResolver.consoleFolder(for: sourcePath, rootPath: rootPath), system != "3DO" else {
+                continue
+            }
+            repairs.append((trackID, rootID, system))
+        }
+        guard !repairs.isEmpty else { return }
+
+        try execute("BEGIN TRANSACTION;")
+        do {
+            for repair in repairs {
+                try execute(
+                    "UPDATE tracks SET browser_system = ? WHERE id = ?;",
+                    bindings: [.text(repair.system), .int(repair.trackID)]
+                )
+            }
+            // This repair changes only the Console/Game grouping. File buckets
+            // contain source paths and track counts, neither of which changes
+            // here. Invalidating them would make the Files sidebar regroup the
+            // entire root from `tracks` on its next display.
+            try markGameSidebarBucketsDirty(rootIDs: Set(repairs.map(\.rootID)))
+            try execute("COMMIT;")
+            try refreshDirtyGameSidebarBuckets()
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
+    }
+
+    /// HES has no reliable embedded timing. libgme reports 150 seconds as its
+    /// fallback, which must not be presented as an authored duration.
+    private func clearHESFallbackDurations() throws {
+        try execute("""
+        UPDATE track_metadata
+        SET intro_length_ms = 0,
+            loop_length_ms = 0,
+            play_length_ms = 0,
+            fade_length_ms = 0
+        WHERE play_length_ms = 150000
+          AND track_id IN (SELECT id FROM tracks WHERE lower(extension) = 'hes');
+        """)
     }
 
     private func createLibraryRootTable() throws {

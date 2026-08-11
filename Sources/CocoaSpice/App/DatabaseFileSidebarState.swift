@@ -10,6 +10,7 @@ final class DatabaseFileSidebarState {
     private var treeIndex: DatabaseFileSidebarTree.Index?
     private var filteredTreeIndex: DatabaseFileSidebarTree.Index?
     @ObservationIgnored private(set) var searchIndex: DatabaseFileSidebarTree.SearchIndex?
+    @ObservationIgnored private var rootPaths: [Int64: String] = [:]
     private(set) var contentRevision = 0
     var selectedFileID: String?
     var selectedFileIDs: Set<String> = []
@@ -39,6 +40,13 @@ final class DatabaseFileSidebarState {
         searchIndex: DatabaseFileSidebarTree.SearchIndex?
     ) {
         fileItems = items
+        // Each root has many source rows. Retain one canonical root path
+        // without assuming the input is unique by root ID.
+        rootPaths = [:]
+        rootPaths.reserveCapacity(items.count)
+        for item in items where rootPaths[item.rootID] == nil {
+            rootPaths[item.rootID] = item.rootPath
+        }
         self.treeIndex = treeIndex
         self.searchIndex = searchIndex
         filteredTreeIndex = nil
@@ -59,6 +67,7 @@ final class DatabaseFileSidebarState {
         treeIndex = nil
         filteredTreeIndex = nil
         searchIndex = nil
+        rootPaths = [:]
         searchText = ""
         expandedFolderIDs = []
         expandedFolderIDsBeforeSearch = nil
@@ -84,6 +93,16 @@ final class DatabaseFileSidebarState {
         expandedFolderIDs.insert(folderID)
     }
 
+    func folder(forID folderID: String) -> DatabaseFileSidebarFolder? {
+        guard let separator = folderID.firstIndex(of: "|"),
+              let rootID = Int64(folderID[..<separator]),
+              let rootPath = rootPaths[rootID] else {
+            return nil
+        }
+        let path = String(folderID[folderID.index(after: separator)...])
+        return DatabaseFileSidebarFolder(rootID: rootID, rootPath: rootPath, path: path)
+    }
+
     func rows() -> [DatabaseFileSidebarTree.Row] {
         guard searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               let treeIndex else {
@@ -102,6 +121,10 @@ final class DatabaseFileSidebarState {
     ) {
         let wasSearching = !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         let isSearching = !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        // Switching back to Files with an unchanged empty search must leave
+        // the cached tree and its table rows intact. Otherwise each view
+        // switch looks like new content and triggers a full table reload.
+        guard wasSearching || isSearching else { return }
         if isSearching, !wasSearching {
             expandedFolderIDsBeforeSearch = expandedFolderIDs
         }

@@ -109,9 +109,11 @@ struct MainView: View {
                         : model.isLoadingDatabaseFileSidebar {
                         VStack(spacing: 10) {
                             ProgressView()
-                            Text("Loading Library…")
+                                .progressViewStyle(.linear)
+                                .frame(width: 180)
+                            Text(model.sidebarBrowserMode == .games ? "Loading Games Library" : "Loading Files Library")
                                 .font(.headline)
-                            Text("Preparing the \(model.sidebarBrowserMode == .games ? "game" : "file") sidebar.")
+                            Text(model.databaseSidebarLoadingStatus)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -401,8 +403,13 @@ private enum DatabaseSidebarTableChrome {
     }
 
     static func reloadVisibleRows(in tableView: NSTableView) {
+        let visibleRange = tableView.rows(in: tableView.visibleRect)
+        guard visibleRange.length > 0 else { return }
+        let firstRow = max(0, visibleRange.location)
+        let lastRow = min(tableView.numberOfRows, NSMaxRange(visibleRange))
+        guard firstRow < lastRow else { return }
         tableView.reloadData(
-            forRowIndexes: IndexSet(integersIn: 0..<tableView.numberOfRows),
+            forRowIndexes: IndexSet(integersIn: firstRow..<lastRow),
             columnIndexes: IndexSet(integersIn: 0..<tableView.numberOfColumns)
         )
     }
@@ -1065,17 +1072,8 @@ private struct DatabaseFileListView: NSViewRepresentable {
         }
 
         private func folder(for row: DatabaseFileSidebarTree.Row) -> DatabaseFileSidebarFolder? {
-            guard case .folder(_, _, _, _) = row else { return nil }
-            guard case .folder(let id, _, _, _) = row,
-                  let separator = id.firstIndex(of: "|"),
-                  let rootID = Int64(id[..<separator]) else { return nil }
-            let path = String(id[id.index(after: separator)...])
-            guard let item = model.databaseFileItems.first(where: {
-                $0.rootID == rootID && ($0.path == path || $0.path.hasPrefix(path + "/"))
-            }) else {
-                return nil
-            }
-            return DatabaseFileSidebarFolder(rootID: rootID, rootPath: item.rootPath, path: path)
+            guard case .folder(let id, _, _, _) = row else { return nil }
+            return model.databaseFileSidebar.folder(forID: id)
         }
 
         private func displayedFilename(for item: DatabaseFileItem) -> String {

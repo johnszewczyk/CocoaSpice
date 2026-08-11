@@ -7,6 +7,10 @@ DIST_DIR="$ROOT_DIR/dist"
 APP_NAME="CocoaSpice"
 CONFIGURATION="${1:-debug}"
 APP_DIR="$DIST_DIR/$APP_NAME.app"
+# Use the certificate fingerprint, not its display name: this keychain has
+# older certificates with the same display name, which makes codesign reject
+# a name-only identity as ambiguous.
+DEVELOPMENT_SIGNING_IDENTITY="${COCOASPICE_SIGNING_IDENTITY:-1D46142A0CE920B12207A97C60E9DD3C389E4144}"
 LIBGME_SOURCE="/opt/homebrew/lib/libgme.0.dylib"
 OPENMPT_SOURCE="/opt/homebrew/opt/libopenmpt/lib/libopenmpt.0.dylib"
 MPG123_SOURCE="/opt/homebrew/opt/mpg123/lib/libmpg123.0.dylib"
@@ -204,7 +208,15 @@ done
 # Clear the full bundle recursively after all file copies and install-name edits.
 xattr -cr "$STAGING_APP_DIR" 2>/dev/null || true
 xattr -c "$STAGING_APP_DIR" 2>/dev/null || true
-codesign --force --deep --sign - "$STAGING_APP_DIR" >/dev/null
+if security find-identity -v -p codesigning | grep -Fq "$DEVELOPMENT_SIGNING_IDENTITY"; then
+  SIGNING_IDENTITY="$DEVELOPMENT_SIGNING_IDENTITY"
+else
+  # Keep the script usable on another developer's machine, but an ad-hoc
+  # signature does not retain macOS permission identity between rebuilds.
+  SIGNING_IDENTITY="-"
+  echo "No configured development signing identity; using ad-hoc signing."
+fi
+codesign --force --deep --sign "$SIGNING_IDENTITY" "$STAGING_APP_DIR" >/dev/null
 xattr -cr "$STAGING_APP_DIR" 2>/dev/null || true
 xattr -c "$STAGING_APP_DIR" 2>/dev/null || true
 codesign --verify --deep --strict "$STAGING_APP_DIR" >/dev/null
