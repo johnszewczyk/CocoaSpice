@@ -405,16 +405,20 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(chunks.allSatisfy { $0.frameCount > 0 })
 }
 
-@Test func joshWNintendoDSTXTPNormalizesWindowsSiblingPaths() throws {
-    let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/JoshW/Nintendo DS/Jenga World Tour (2007-11-13)(Atomic Planet)(Atari)[NDS].tar.zst")
+private func assertNintendoDSTXTPDecodes(
+    archivePath: String,
+    entryPath: String,
+    expectedFormat: String
+) throws {
+    let archiveURL = URL(fileURLWithPath: archivePath)
     guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }
 
     let decoder = try VGMStreamDecoder(
-        track: TrackItem(archiveURL: archiveURL, entryPath: "arcade.txtp"),
+        track: TrackItem(archiveURL: archiveURL, entryPath: entryPath),
         sampleRate: 44_100
     )
     let metadata = try decoder.metadata()
-    #expect(metadata.comment.contains("Nintendo SWAV"))
+    #expect(metadata.comment.contains(expectedFormat))
     #expect(metadata.playLengthMs > 0)
 
     let chunks = try (0..<4).map { _ in try decoder.decode(frameCount: 2_048) }
@@ -422,6 +426,30 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(chunks.contains { chunk in
         chunk.left.contains(where: { abs($0) > 0.0001 }) || chunk.right.contains(where: { abs($0) > 0.0001 })
     })
+}
+
+@Test func jengaTXTPNormalizesWindowsSiblingPaths() throws {
+    try assertNintendoDSTXTPDecodes(
+        archivePath: "/Users/john/Downloads/audio/JoshW/Nintendo DS/Jenga World Tour (2007-11-13)(Atomic Planet)(Atari)[NDS].tar.zst",
+        entryPath: "arcade.txtp",
+        expectedFormat: "Nintendo SWAV"
+    )
+}
+
+@Test func katamariTXTPDecodesS14Layers() throws {
+    try assertNintendoDSTXTPDecodes(
+        archivePath: "/Users/john/Downloads/audio/JoshW/Nintendo DS/Korogashi Puzzle Katamari Damacy [DSiWare](2009-03-25)(Noise)(Bandai Namco)[NDS].tar.zst",
+        entryPath: "M09_RESULT2.txtp",
+        expectedFormat: "Namco .S14 raw header"
+    )
+}
+
+@Test func toyStoryTXTPNormalizesWindowsSiblingPaths() throws {
+    try assertNintendoDSTXTPDecodes(
+        archivePath: "/Users/john/Downloads/audio/JoshW/Nintendo DS/Toy Story 3 (2010-06-15)(n-Space)(Disney)[NDS].tar.zst",
+        entryPath: "Bonnie's Bedroom.txtp",
+        expectedFormat: "Nintendo STRM"
+    )
 }
 
 @Test func joshWPCStandardAudioArchivesDecodeWAVAndMP3() throws {

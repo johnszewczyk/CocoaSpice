@@ -19,8 +19,8 @@ fi
 
 input_signature() {
   {
-    printf '%s\n' 'CocoaSpice vgmstream build inputs v1'
-    printf '%s\n' 'BUILD_CLI=OFF BUILD_STATIC=ON BUILD_SHARED_LIBS=OFF USE_FFMPEG=ON USE_MPEG=OFF USE_VORBIS=ON USE_G7221=OFF USE_G719=OFF USE_ATRAC9=OFF USE_CELT=OFF USE_SPEEX=OFF'
+    printf '%s\n' 'CocoaSpice vgmstream build inputs v2'
+    printf '%s\n' 'BUILD_CLI=OFF BUILD_STATIC=ON BUILD_SHARED_LIBS=OFF USE_FFMPEG=ON USE_MPEG=OFF USE_VORBIS=ON USE_G7221=ON USE_G719=OFF USE_ATRAC9=OFF USE_CELT=OFF USE_SPEEX=OFF'
     shasum -a 256 "$0" "$patch"
     git -C "$source_dir" rev-parse HEAD
     git -C "$source_dir" diff --name-only -z HEAD |
@@ -58,7 +58,7 @@ cmake -S "$source_dir" -B "$build_dir" \
   -DVORBISFILE_ROOT=/opt/homebrew/opt/libvorbis \
   -DVORBIS_ROOT=/opt/homebrew/opt/libvorbis \
   -DOGG_ROOT=/opt/homebrew/opt/libogg \
-  -DUSE_G7221=OFF \
+  -DUSE_G7221=ON \
   -DUSE_G719=OFF \
   -DUSE_ATRAC9=OFF \
   -DUSE_CELT=OFF \
