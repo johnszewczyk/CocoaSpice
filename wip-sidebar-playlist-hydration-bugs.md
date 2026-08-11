@@ -34,7 +34,7 @@ The GENH console repair now dirties only the Games projection, because it does n
 
 ## Database publication safety
 
-Full rescans now persist into a disabled staging root while the last committed sidebar remains readable. Publish reassigns the staged rows in a short transaction, refreshes both sidebar projections, and removes the staging root. Failed scans delete only staged rows; startup removes abandoned staging roots after a crash. Incremental scans retain the existing changed-source transaction.
+Full rescans now persist into a disabled staging root while the last committed sidebar remains readable. Publish reassigns the staged rows in a short transaction, refreshes both sidebar projections, and removes the staging root. Failed scans delete only staged rows; the primary startup connection removes abandoned staging roots after a crash, while secondary connections deliberately leave active stages alone. Incremental scans retain the existing changed-source transaction. Metrics report staging, publication, projection, and WAL growth separately.
 
 Relevant code:
 

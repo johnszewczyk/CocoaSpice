@@ -711,6 +711,9 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(try LibraryDatabase.loadGameSidebarItems(databaseURL: database.databaseURL).map(\.name) == ["Old"])
     try database.persistScanTrackResults([result(name: "Uncommitted")])
     #expect(try stagedTrackCount(databaseURL: database.databaseURL) == 1)
+    let secondaryConnection = try LibraryDatabase(databaseURL: database.databaseURL)
+    #expect(try secondaryConnection.trackCount() == 1)
+    #expect(try stagedTrackCount(databaseURL: database.databaseURL) == 1)
     database.rollbackAtomicScan()
     #expect(try database.loadGameItems().map(\.name) == ["Old"])
     #expect(try stagedTrackCount(databaseURL: database.databaseURL) == 0)
@@ -721,6 +724,8 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     try database.commitAtomicScan()
     #expect(try database.loadGameItems().map(\.name) == ["New"])
     #expect(database.lastAtomicScanMetrics?.durationMilliseconds ?? -1 >= 0)
+    #expect(database.lastAtomicScanMetrics?.publicationDurationMilliseconds ?? -1 >= 0)
+    #expect(database.lastAtomicScanMetrics?.projectionDurationMilliseconds ?? -1 >= 0)
     #expect(database.lastAtomicScanMetrics?.databaseBytes ?? 0 > 0)
 }
 
@@ -764,7 +769,7 @@ private func stagedTrackCount(databaseURL: URL) throws -> Int {
     try database?.execute("PRAGMA user_version = 19;")
     database = nil
 
-    database = try LibraryDatabase(databaseURL: databaseURL)
+    database = try LibraryDatabase(databaseURL: databaseURL, recoverAbandonedStages: true)
     #expect(try database?.trackCount() == 1)
     try database?.beginAtomicScan(rootID: root.id, replacingLiveData: true)
     database = nil

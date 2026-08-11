@@ -4,8 +4,12 @@ import SQLite3
 
 struct LibraryDatabaseScanMetrics: Equatable, Sendable {
     let durationMilliseconds: Int
+    let stagingDurationMilliseconds: Int
+    let publicationDurationMilliseconds: Int
+    let projectionDurationMilliseconds: Int
     let databaseBytes: Int64
     let walBytes: Int64
+    let walGrowthBytes: Int64
 }
 
 final class LibraryDatabase: @unchecked Sendable {
@@ -14,6 +18,7 @@ final class LibraryDatabase: @unchecked Sendable {
     let db: OpaquePointer?
     private let dbURL: URL
     private var atomicScanStartedAt: Date?
+    private var atomicScanInitialWALBytes: Int64 = 0
     private var atomicScanRootID: Int64?
     private var atomicScanStagingRootID: Int64?
     private(set) var lastAtomicScanMetrics: LibraryDatabaseScanMetrics?
@@ -24,10 +29,10 @@ final class LibraryDatabase: @unchecked Sendable {
         let supportURL = try Self.applicationSupportDirectory()
         try FileManager.default.createDirectory(at: supportURL, withIntermediateDirectories: true)
         let dbURL = supportURL.appendingPathComponent("Library.sqlite", isDirectory: false)
-        try self.init(databaseURL: dbURL)
+        try self.init(databaseURL: dbURL, recoverAbandonedStages: true)
     }
 
-    init(databaseURL: URL) throws {
+    init(databaseURL: URL, recoverAbandonedStages: Bool = false) throws {
         try FileManager.default.createDirectory(
             at: databaseURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -53,7 +58,9 @@ final class LibraryDatabase: @unchecked Sendable {
         // of misreporting a healthy member as a persistence failure.
         sqlite3_busy_timeout(handle, 5_000)
         try migrateSchemaIfNeeded()
-        try cleanupAbandonedScanStagingRoots()
+        if recoverAbandonedStages {
+            try cleanupAbandonedScanStagingRoots()
+        }
     }
 
     deinit {
@@ -83,12 +90,14 @@ final class LibraryDatabase: @unchecked Sendable {
             )
         }
         atomicScanStartedAt = Date()
+        atomicScanInitialWALBytes = fileSize(at: URL(fileURLWithPath: dbURL.path + "-wal"))
         atomicScanRootID = rootID
         if replacingLiveData {
             do {
                 atomicScanStagingRootID = try createScanStagingRoot(targetRootID: rootID)
             } catch {
                 atomicScanStartedAt = nil
+                atomicScanInitialWALBytes = 0
                 atomicScanRootID = nil
                 throw error
             }
@@ -97,6 +106,7 @@ final class LibraryDatabase: @unchecked Sendable {
                 try execute("BEGIN IMMEDIATE;")
             } catch {
                 atomicScanStartedAt = nil
+                atomicScanInitialWALBytes = 0
                 atomicScanRootID = nil
                 throw error
             }
@@ -107,25 +117,54 @@ final class LibraryDatabase: @unchecked Sendable {
         guard let rootID = atomicScanRootID else {
             throw NSError(domain: "LibraryDatabase", code: 3, userInfo: [NSLocalizedDescriptionKey: "No atomic library scan is active."])
         }
+        let publicationStartedAt = Date()
+        var projectionDurationMilliseconds = 0
         if let stagingRootID = atomicScanStagingRootID {
             try publishScanStagingRoot(stagingRootID, targetRootID: rootID)
+            let publicationCompletedAt = Date()
             atomicScanStagingRootID = nil
             atomicScanRootID = nil
+            let projectionStartedAt = Date()
             try refreshDirtySidebarBuckets()
             try markScanCompleted(rootID: rootID)
+            projectionDurationMilliseconds = Self.milliseconds(from: projectionStartedAt, to: Date())
+            let elapsed = atomicScanStartedAt.map { Date().timeIntervalSince($0) } ?? 0
+            let walBytes = fileSize(at: URL(fileURLWithPath: dbURL.path + "-wal"))
+            let metrics = LibraryDatabaseScanMetrics(
+                durationMilliseconds: Int((elapsed * 1_000).rounded()),
+                stagingDurationMilliseconds: atomicScanStartedAt.map { Self.milliseconds(from: $0, to: publicationStartedAt) } ?? 0,
+                publicationDurationMilliseconds: Self.milliseconds(from: publicationStartedAt, to: publicationCompletedAt),
+                projectionDurationMilliseconds: projectionDurationMilliseconds,
+                databaseBytes: fileSize(at: dbURL),
+                walBytes: walBytes,
+                walGrowthBytes: walBytes - atomicScanInitialWALBytes
+            )
+            finishAtomicScan(metrics: metrics)
+            return
         } else {
             try execute("COMMIT;")
             atomicScanRootID = nil
         }
+        let publicationCompletedAt = Date()
         let elapsed = atomicScanStartedAt.map { Date().timeIntervalSince($0) } ?? 0
-        atomicScanStartedAt = nil
+        let walBytes = fileSize(at: URL(fileURLWithPath: dbURL.path + "-wal"))
         let metrics = LibraryDatabaseScanMetrics(
             durationMilliseconds: Int((elapsed * 1_000).rounded()),
+            stagingDurationMilliseconds: atomicScanStartedAt.map { Self.milliseconds(from: $0, to: publicationStartedAt) } ?? 0,
+            publicationDurationMilliseconds: Self.milliseconds(from: publicationStartedAt, to: publicationCompletedAt),
+            projectionDurationMilliseconds: projectionDurationMilliseconds,
             databaseBytes: fileSize(at: dbURL),
-            walBytes: fileSize(at: URL(fileURLWithPath: dbURL.path + "-wal"))
+            walBytes: walBytes,
+            walGrowthBytes: walBytes - atomicScanInitialWALBytes
         )
+        finishAtomicScan(metrics: metrics)
+    }
+
+    private func finishAtomicScan(metrics: LibraryDatabaseScanMetrics) {
+        atomicScanStartedAt = nil
+        atomicScanInitialWALBytes = 0
         lastAtomicScanMetrics = metrics
-        Self.performanceLogger.info("Database scan published in \(metrics.durationMilliseconds) ms; WAL \(metrics.walBytes) bytes")
+        Self.performanceLogger.info("Database scan: stage \(metrics.stagingDurationMilliseconds) ms, publish \(metrics.publicationDurationMilliseconds) ms, projections \(metrics.projectionDurationMilliseconds) ms, WAL growth \(metrics.walGrowthBytes) bytes")
     }
 
     func rollbackAtomicScan() {
@@ -137,6 +176,7 @@ final class LibraryDatabase: @unchecked Sendable {
         atomicScanRootID = nil
         atomicScanStagingRootID = nil
         atomicScanStartedAt = nil
+        atomicScanInitialWALBytes = 0
     }
 
     func isStagingFullScan(rootID: Int64) -> Bool {
@@ -193,6 +233,10 @@ final class LibraryDatabase: @unchecked Sendable {
 
     private func fileSize(at url: URL) -> Int64 {
         Int64((try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+    }
+
+    private static func milliseconds(from start: Date, to end: Date) -> Int {
+        Int((end.timeIntervalSince(start) * 1_000).rounded())
     }
 
     func loadScanInventory(rootID: Int64) throws -> [ScanInventoryItem] {

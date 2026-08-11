@@ -12,6 +12,8 @@
 
 - The sidebar database browser is a scanned persistent browser, not a raw filesystem tree.
 - A full scan writes bounded committed batches into a disabled staging root while sidebar readers continue seeing the previous root and projections. Publish reassigns the staged rows to the real root in one short transaction, then refreshes the projections; cancellation removes only the staging root. Incremental scans retain one outer WAL transaction because they write only selected changed sources.
+- Abandoned staging-root recovery is a primary-connection startup responsibility. Short-lived scan, maintenance, and root-management connections must never run recovery, because they can coexist with an active full scan.
+- Scan metrics separate staging, publication, and projection time and record WAL growth. Use those measurements before replacing the shadow-root design with broader generation-scoped queries.
 - The normal sidebar displays a dense flat list of games derived from scanned metadata. Optional System Mode groups the same game leaves below expandable root-level system rows.
 - Sidebar game buckets and game-row identities are root-scoped: `root_id + game title + system`. This keeps same-title/same-system entries from separate library paths distinct and makes game activation bind the full `tracks_browser_bucket_index` key.
 - The scanned database now stores one playable row per discovered subtrack for loose or archived multi-track `libgme` containers such as NSF, GBS, and KSS.
