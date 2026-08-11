@@ -15,6 +15,10 @@ enum ZipArchiveSupport {
     // seven complete concurrently.
     static let archiveProcessConcurrency = max(1, ProcessInfo.processInfo.activeProcessorCount - 1)
     private static let processGate = DispatchSemaphore(value: archiveProcessConcurrency)
+    private static let cacheMaintenanceQueue = DispatchQueue(
+        label: "com.cocoaspice.archive-cache-maintenance",
+        qos: .utility
+    )
     private static let playbackLease = PlaybackLease()
 
     private enum ArchiveKind {
@@ -296,7 +300,7 @@ enum ZipArchiveSupport {
             return destinationURL
         }
         try fileManager.moveItem(at: temporaryURL, to: destinationURL)
-        try enforceDurableCacheLimit(preserving: archiveCacheURL(for: archiveURL))
+        scheduleDurableCacheMaintenance(preserving: archiveCacheURL(for: archiveURL))
         return destinationURL
     }
 
@@ -392,7 +396,10 @@ enum ZipArchiveSupport {
         if !FileManager.default.fileExists(atPath: rootURL.path) {
             try FileManager.default.moveItem(at: stagingURL, to: rootURL)
         }
-        try enforceDurableCacheLimit(preserving: archiveCacheURL(for: archiveURL))
+        // The extracted selection is now complete and protected from eviction.
+        // LRU accounting walks the whole durable cache, so it must not delay
+        // decoder startup for a cold archive member.
+        scheduleDurableCacheMaintenance(preserving: archiveCacheURL(for: archiveURL))
         return rootURL
     }
 
@@ -658,7 +665,6 @@ enum ZipArchiveSupport {
         guard available >= ArchiveCachePolicy.requiredFreeBytes else {
             throw ArchiveError.insufficientStorage(requiredBytes: ArchiveCachePolicy.requiredFreeBytes)
         }
-        try enforceDurableCacheLimit(preserving: archiveCacheURL(for: archiveURL))
     }
 
     private static func enforceDurableCacheLimit(preserving protectedRoot: URL) throws {
@@ -670,6 +676,13 @@ enum ZipArchiveSupport {
         )
         if !fits {
             throw ArchiveError.cacheLimitExceeded(limitBytes: limit)
+        }
+    }
+
+    private static func scheduleDurableCacheMaintenance(preserving protectedRoot: URL) {
+        guard ArchiveCachePolicy.load().isEnabled else { return }
+        cacheMaintenanceQueue.async {
+            try? enforceDurableCacheLimit(preserving: protectedRoot)
         }
     }
 
@@ -850,43 +863,25 @@ enum ZipArchiveSupport {
     }
 
     private static func materializeTarZstandardArchive(_ archiveURL: URL, into destinationURL: URL) throws {
-        let rawTarURL = destinationURL.deletingLastPathComponent()
-            .appendingPathComponent(".\(UUID().uuidString).tar", isDirectory: false)
-        defer { try? FileManager.default.removeItem(at: rawTarURL) }
-
-        try runProcessWritingOutput(
-            executable: try executable(named: "zstd"),
-            arguments: ["-d", "-q", "-c", archiveURL.path],
-            outputURL: rawTarURL
-        )
-        _ = try runProcess(
-            executable: try executable(named: "tar"),
-            arguments: ["-xf", rawTarURL.path, "-C", destinationURL.path]
+        try runZstandardTarPipeline(
+            archiveURL: archiveURL,
+            tarArguments: ["-xf", "-", "-C", destinationURL.path]
         )
     }
 
     /// BSD tar's built-in Zstandard helper is unreliable for selected-member
-    /// extraction. Decompress the container ourselves so every TAR+Zstandard
-    /// path uses the same stable `tar` input.
+    /// extraction. Stream zstd into tar ourselves so a cold selection never
+    /// writes and rereads a complete temporary TAR just to obtain one member.
     private static func extractTarZstandardEntries(
         from archiveURL: URL,
         entryPaths: [String],
         into destinationURL: URL
     ) throws {
-        let rawTarURL = destinationURL.deletingLastPathComponent()
-            .appendingPathComponent(".\(UUID().uuidString).tar", isDirectory: false)
-        defer { try? FileManager.default.removeItem(at: rawTarURL) }
-
-        try runProcessWritingOutput(
-            executable: try executable(named: "zstd"),
-            arguments: ["-d", "-q", "-c", archiveURL.path],
-            outputURL: rawTarURL
-        )
         let literalPaths = entryPaths.filter { !containsTarOctalEscape($0) }
         if !literalPaths.isEmpty {
-            _ = try runProcess(
-                executable: try executable(named: "tar"),
-                arguments: ["-xf", rawTarURL.path, "-C", destinationURL.path]
+            try runZstandardTarPipeline(
+                archiveURL: archiveURL,
+                tarArguments: ["-xf", "-", "-C", destinationURL.path]
                     + tarMemberSelectionPatterns(literalPaths)
             )
         }
@@ -908,9 +903,9 @@ enum ZipArchiveSupport {
                 at: outputURL.deletingLastPathComponent(),
                 withIntermediateDirectories: true
             )
-            try runProcessWritingOutput(
-                executable: try executable(named: "tar"),
-                arguments: ["-xOf", rawTarURL.path, "--null", "-T", selectionURL.path],
+            try runZstandardTarPipelineWritingOutput(
+                archiveURL: archiveURL,
+                tarArguments: ["-xOf", "-", "--null", "-T", selectionURL.path],
                 outputURL: outputURL
             )
         }
@@ -1244,6 +1239,142 @@ enum ZipArchiveSupport {
         }
 
         return try Data(contentsOf: outputURL)
+    }
+
+    private static func runZstandardTarPipeline(
+        archiveURL: URL,
+        tarArguments: [String]
+    ) throws {
+        try runZstandardTarPipeline(
+            archiveURL: archiveURL,
+            tarArguments: tarArguments,
+            outputURL: nil
+        )
+    }
+
+    private static func runZstandardTarPipelineWritingOutput(
+        archiveURL: URL,
+        tarArguments: [String],
+        outputURL: URL
+    ) throws {
+        try runZstandardTarPipeline(
+            archiveURL: archiveURL,
+            tarArguments: tarArguments,
+            outputURL: outputURL
+        )
+    }
+
+    /// Runs `zstd -d -c` directly into BSD tar. TAR+Zstandard is necessarily
+    /// sequential, but it does not need a second full disk pass through a
+    /// temporary TAR before playback can begin.
+    private static func runZstandardTarPipeline(
+        archiveURL: URL,
+        tarArguments: [String],
+        outputURL: URL?
+    ) throws {
+        while processGate.wait(timeout: .now() + .milliseconds(100)) != .success {
+            if Task.isCancelled { throw CancellationError() }
+        }
+        defer { processGate.signal() }
+
+        let zstdExecutable = try executable(named: "zstd")
+        let tarExecutable = try executable(named: "tar")
+        let transport = Pipe()
+        let zstd = Process()
+        zstd.executableURL = URL(fileURLWithPath: zstdExecutable)
+        zstd.arguments = ["-d", "-q", "-c", archiveURL.path]
+        zstd.environment = archiveProcessEnvironment()
+        zstd.standardOutput = transport
+
+        let tar = Process()
+        tar.executableURL = URL(fileURLWithPath: tarExecutable)
+        tar.arguments = tarArguments
+        tar.environment = archiveProcessEnvironment()
+        tar.standardInput = transport
+
+        var outputHandle: FileHandle?
+        if let outputURL {
+            FileManager.default.createFile(atPath: outputURL.path, contents: nil)
+            let handle = try FileHandle(forWritingTo: outputURL)
+            tar.standardOutput = handle
+            outputHandle = handle
+        }
+        defer { try? outputHandle?.close() }
+
+        let zstdError = Pipe()
+        let tarError = Pipe()
+        zstd.standardError = zstdError
+        tar.standardError = tarError
+
+        let zstdCompletion = DispatchSemaphore(value: 0)
+        let tarCompletion = DispatchSemaphore(value: 0)
+        zstd.terminationHandler = { _ in zstdCompletion.signal() }
+        tar.terminationHandler = { _ in tarCompletion.signal() }
+        defer {
+            zstd.terminationHandler = nil
+            tar.terminationHandler = nil
+        }
+
+        let zstdErrorHandle = zstdError.fileHandleForReading
+        let tarErrorHandle = tarError.fileHandleForReading
+        let zstdCollector = ProcessOutputCollector()
+        let tarCollector = ProcessOutputCollector()
+        let readers = DispatchGroup()
+        for (handle, collector) in [(zstdErrorHandle, zstdCollector), (tarErrorHandle, tarCollector)] {
+            readers.enter()
+            DispatchQueue.global(qos: .utility).async {
+                collector.set(handle.readDataToEndOfFile())
+                try? handle.close()
+                readers.leave()
+            }
+        }
+
+        do {
+            // Start tar first: it is ready to consume as soon as zstd emits
+            // the first block, so the pipe never becomes a startup bottleneck.
+            try tar.run()
+            try zstd.run()
+            try transport.fileHandleForWriting.close()
+            try zstdError.fileHandleForWriting.close()
+            try tarError.fileHandleForWriting.close()
+            try waitForProcess(
+                zstd,
+                completion: zstdCompletion,
+                executable: zstdExecutable,
+                timeout: archiveExtractionTimeout
+            )
+            try waitForProcess(
+                tar,
+                completion: tarCompletion,
+                executable: tarExecutable,
+                timeout: archiveExtractionTimeout
+            )
+        } catch {
+            if zstd.isRunning { zstd.terminate() }
+            if tar.isRunning { tar.terminate() }
+            readers.wait()
+            throw error
+        }
+        readers.wait()
+
+        guard zstd.terminationStatus == 0 else {
+            throw ArchiveError.processFailed(
+                executable: "zstd",
+                message: processErrorText(zstdCollector.value, status: zstd.terminationStatus)
+            )
+        }
+        guard tar.terminationStatus == 0 else {
+            throw ArchiveError.processFailed(
+                executable: "tar",
+                message: processErrorText(tarCollector.value, status: tar.terminationStatus)
+            )
+        }
+    }
+
+    private static func processErrorText(_ data: Data, status: Int32) -> String {
+        let text = String(decoding: data, as: UTF8.self)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return text.isEmpty ? "exit code \(status)" : text
     }
 
     private static func runProcessWritingOutput(
