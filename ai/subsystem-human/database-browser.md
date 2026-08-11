@@ -11,6 +11,8 @@
 - Rows: show track counts and scan-root status. The same game/system scanned from different library paths remains separate; only those duplicate rows include their compact source-root name (for example, `JoshW` or `SNESMusicOrg`).
 - Incremental scans retain successful unchanged ZIP, 7z, and TAR+Zstandard archive results instead of re-inspecting their playable members.
 - When a changed archive is rescanned, its stored member set is replaced as a whole. Renamed or removed members therefore cannot remain in the Database after a repack.
+- During any scan, Games and Files continue showing the last completed library. The replacement becomes visible only after its tracks, sidebar groups, and counts all commit; a cancelled or failed scan keeps the previous library.
+- If a database sidebar read fails, the existing list remains available and an inline Retry message shows the error instead of presenting an empty library.
 
 ## Search
 

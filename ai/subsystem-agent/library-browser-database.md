@@ -11,6 +11,7 @@
 - Track identity is root-scoped: `tracks` is unique on root, source path, archive member, and subtrack index. This permits an intentionally overlapping root (for example, `JoshW` and `JoshW/USF`) to index the same archive without turning valid tracks into persistence failures.
 
 - The sidebar database browser is a scanned persistent browser, not a raw filesystem tree.
+- Every scan runs as one outer SQLite transaction in WAL mode. Bounded result batches use nested savepoints, so sidebar readers continue seeing the previous committed games/files projection until the replacement, bucket rebuilds, and root statistics commit together. Cancellation or failure rolls the complete scan back and records the error without publishing a partial library.
 - The normal sidebar displays a dense flat list of games derived from scanned metadata. Optional System Mode groups the same game leaves below expandable root-level system rows.
 - Sidebar game buckets and game-row identities are root-scoped: `root_id + game title + system`. This keeps same-title/same-system entries from separate library paths distinct and makes game activation bind the full `tracks_browser_bucket_index` key.
 - The scanned database now stores one playable row per discovered subtrack for loose or archived multi-track `libgme` containers such as NSF, GBS, and KSS.
@@ -33,6 +34,7 @@
 - A file-tree folder double-click resolves tracks by the indexed folder path and all descendant folder paths. File activation replaces the playlist only on double-click or Return.
 - File-tree drags use the app-owned `databaseFileSidebarDragType` payload. The playlist consumes selected file rows through the library database and appends them; it must not treat the drag as a filesystem import or rescan archive members.
 - Database-backed queue loading now lives in a dedicated queue-loader helper rather than inline throughout the main view model.
+- Sidebar snapshot reads never translate a SQLite failure into an empty library. `DatabaseSidebarLoader` retains the last valid snapshot, publishes the exact failure, and exposes Retry in the sidebar.
 - Sidebar context-menu invocation does not mutate selection or trigger playlist-follow activation by itself. File-tree menu actions carry the clicked row's typed file/folder payload rather than reading the table selection, because folder rows are deliberately nonselectable.
 
 ## Rules

@@ -24,14 +24,9 @@ final class LibraryScanCoordinator {
     ) async throws -> ScanSummary {
         report("Starting scan: \(root.standardizedURL.lastPathComponent)")
         try database.markScanStarted(rootID: root.id)
-        if mode == .newScan {
-            // Replace live inventory while preserving sources explicitly
-            // marked dead by Fix Missing. They may return later with their
-            // complete metadata and archive identity intact.
-            try database.clearLiveScanInventory(rootID: root.id)
-            try database.clearLiveTracks(rootID: root.id)
-        }
-        report("Discovering supported files recursively: \(root.standardizedURL.lastPathComponent)…")
+        try database.beginAtomicScan(rootID: root.id, replacingLiveData: mode == .newScan)
+        do {
+            report("Discovering supported files recursively: \(root.standardizedURL.lastPathComponent)…")
         let discovered = await ScanFilesystemDiscovery.discover(
             rootID: root.id,
             rootURL: root.standardizedURL,
@@ -126,6 +121,7 @@ final class LibraryScanCoordinator {
         await issueReporter.flush()
         let summary = await accumulator.summary
         try database.markScanCompleted(rootID: root.id)
+        try database.commitAtomicScan()
         let issues = summary.failures.map {
             "\($0.identity.path)\($0.identity.archiveEntry.map { "#\($0)" } ?? ""): \($0.stage.rawValue): \($0.message)"
         }
@@ -136,6 +132,11 @@ final class LibraryScanCoordinator {
             issues: issues
         )
         return summary
+        } catch {
+            database.rollbackAtomicScan()
+            try? database.markScanFailed(rootID: root.id, error: error.localizedDescription)
+            throw error
+        }
     }
 }
 

@@ -382,6 +382,16 @@ final class PlayerViewModel {
                 : databaseSidebarLoader.fileLoadingStatus
         }
     }
+    var databaseSidebarLoadError: String? {
+        switch sidebarBrowserMode {
+        case .games: databaseSidebarLoader.gameLoadError
+        case .files: databaseSidebarLoader.fileLoadError
+        }
+    }
+
+    func retryDatabaseSidebarLoad() {
+        loadDatabaseSidebarIfNeeded()
+    }
 
     var enabledLibraryRootURLs: [URL] {
         libraryScanRoots

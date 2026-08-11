@@ -32,6 +32,9 @@ final class LibraryDatabase: @unchecked Sendable {
 
         db = handle
         sqlite3_extended_result_codes(handle, 1)
+        guard sqlite3_exec(handle, "PRAGMA journal_mode = WAL;", nil, nil, nil) == SQLITE_OK else {
+            throw Self.databaseError(handle: handle)
+        }
         try execute("PRAGMA foreign_keys = ON;")
         // The scan writes many short transactions while sidebar readers may
         // still hold a statement. Wait for that ordinary contention instead
@@ -42,6 +45,48 @@ final class LibraryDatabase: @unchecked Sendable {
 
     deinit {
         sqlite3_close(db)
+    }
+
+    func withSavepoint<T>(_ body: () throws -> T) throws -> T {
+        let name = "cocoa_tx_\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+        try execute("SAVEPOINT \(name);")
+        do {
+            let result = try body()
+            try execute("RELEASE SAVEPOINT \(name);")
+            return result
+        } catch {
+            try? execute("ROLLBACK TO SAVEPOINT \(name);")
+            try? execute("RELEASE SAVEPOINT \(name);")
+            throw error
+        }
+    }
+
+    func beginAtomicScan(rootID: Int64, replacingLiveData: Bool) throws {
+        guard sqlite3_get_autocommit(db) != 0 else {
+            throw NSError(
+                domain: "LibraryDatabase",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: "Cannot start an atomic scan while another database transaction is active."]
+            )
+        }
+        try execute("BEGIN IMMEDIATE;")
+        do {
+            if replacingLiveData {
+                try clearLiveScanInventory(rootID: rootID)
+                try clearLiveTracks(rootID: rootID)
+            }
+        } catch {
+            try? execute("ROLLBACK;")
+            throw error
+        }
+    }
+
+    func commitAtomicScan() throws {
+        try execute("COMMIT;")
+    }
+
+    func rollbackAtomicScan() {
+        try? execute("ROLLBACK;")
     }
 
     func loadScanInventory(rootID: Int64) throws -> [ScanInventoryItem] {
@@ -304,8 +349,7 @@ final class LibraryDatabase: @unchecked Sendable {
 
     func restoreSources(_ sources: [LibraryIndexedSource]) throws {
         guard !sources.isEmpty else { return }
-        try execute("BEGIN TRANSACTION;")
-        do {
+        try withSavepoint {
             var restoredRootIDs = Set<Int64>()
             for source in Set(sources) {
                 try execute(
@@ -317,10 +361,6 @@ final class LibraryDatabase: @unchecked Sendable {
                 }
             }
             try markSidebarBucketsDirty(rootIDs: restoredRootIDs)
-            try execute("COMMIT;")
-        } catch {
-            try? execute("ROLLBACK;")
-            throw error
         }
     }
 
@@ -378,15 +418,10 @@ final class LibraryDatabase: @unchecked Sendable {
     func persistScanTrackResults(
         _ results: [ScanPipelineResult]
     ) throws {
-        try execute("BEGIN TRANSACTION;")
-        do {
+        try withSavepoint {
             try persistScanTrackResultsInCurrentTransaction(
                 results
             )
-            try execute("COMMIT;")
-        } catch {
-            try? execute("ROLLBACK;")
-            throw error
         }
     }
 
@@ -395,8 +430,7 @@ final class LibraryDatabase: @unchecked Sendable {
     /// example, adding a leading `./`), so replacing members one-by-one can
     /// otherwise leave obsolete tracks and metadata visible in the library.
     func resetArchiveMembers(rootID: Int64, path: String) throws {
-        try execute("BEGIN TRANSACTION;")
-        do {
+        try withSavepoint {
             try execute(
                 "DELETE FROM tracks WHERE root_id = ? AND path = ? AND archive_entry IS NOT NULL;",
                 bindings: [.int(rootID), .text(path)]
@@ -406,10 +440,6 @@ final class LibraryDatabase: @unchecked Sendable {
                 bindings: [.int(rootID), .text(path)]
             )
             try markSidebarBucketsDirty(rootIDs: [rootID])
-            try execute("COMMIT;")
-        } catch {
-            try? execute("ROLLBACK;")
-            throw error
         }
     }
 
@@ -417,18 +447,13 @@ final class LibraryDatabase: @unchecked Sendable {
         _ results: [ScanPipelineResult]
     ) throws {
         guard !results.isEmpty else { return }
-        try execute("BEGIN TRANSACTION;")
-        do {
+        try withSavepoint {
             for result in results {
                 try persistScanResult(result)
             }
             try persistScanTrackResultsInCurrentTransaction(
                 results
             )
-            try execute("COMMIT;")
-        } catch {
-            try? execute("ROLLBACK;")
-            throw error
         }
     }
 

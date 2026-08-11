@@ -675,6 +675,51 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(try database.loadGameItems().isEmpty)
 }
 
+@Test func atomicScanKeepsLastCommittedLibraryUntilCommitAndRestoresItOnFailure() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("cocoaspice-atomic-scan-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    try database.addRoot(path: directory.path)
+    let root = try #require(database.loadRoots().first)
+    let route = ScanRoute(pluginID: "gme", formatExtension: "spc", supportsArchiveMembers: true, supportsMultiTrack: false)
+    func result(name: String) -> ScanPipelineResult {
+        let path = directory.appendingPathComponent("\(name).spc").path
+        let candidate = ScanCandidate(
+            identity: ScanItemIdentity(rootID: root.id, path: path, archiveEntry: nil),
+            fingerprint: ScanFingerprint(fileSize: 1, modifiedAt: .now),
+            sourceURL: URL(fileURLWithPath: path),
+            route: route
+        )
+        let inspection = ScanInspection(
+            route: route,
+            tracks: [ScanTrackMetadata(
+                trackIndex: 0,
+                trackCount: 1,
+                metadata: TrackMetadata(game: name, song: "Theme", system: "SNES", author: "", comment: "", introLengthMs: 0, loopLengthMs: 0, playLengthMs: 1, fadeLengthMs: 0)
+            )]
+        )
+        return .success(candidate, inspection)
+    }
+
+    try database.persistScanTrackResults([result(name: "Old")])
+    try database.markScanCompleted(rootID: root.id)
+
+    try database.beginAtomicScan(rootID: root.id, replacingLiveData: true)
+    #expect(try database.trackCount() == 0)
+    #expect(try LibraryDatabase.loadGameSidebarItems(databaseURL: database.databaseURL).map(\.name) == ["Old"])
+    try database.persistScanTrackResults([result(name: "Uncommitted")])
+    database.rollbackAtomicScan()
+    #expect(try database.loadGameItems().map(\.name) == ["Old"])
+
+    try database.beginAtomicScan(rootID: root.id, replacingLiveData: true)
+    try database.persistScanTrackResults([result(name: "New")])
+    try database.markScanCompleted(rootID: root.id)
+    try database.commitAtomicScan()
+    #expect(try database.loadGameItems().map(\.name) == ["New"])
+}
+
 @Test func scanPlannerOnlySchedulesSelectedItemsInStableOrder() {
     let fingerprint = ScanFingerprint(fileSize: 1, modifiedAt: Date(timeIntervalSince1970: 1))
     let first = ScanItemIdentity(rootID: 1, path: "/music/z.7z", archiveEntry: "z.gbs")

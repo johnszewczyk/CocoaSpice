@@ -280,6 +280,25 @@ import Testing
     }
     #expect(fileLoadCount == 2)
     #expect(files.contentRevision > initialRevision)
+
+    var failureMessage = ""
+    await withCheckedContinuation { continuation in
+        loader.invalidateAndLoad(
+            databaseURL: directory.appendingPathComponent("missing/Library.sqlite"),
+            mode: .files,
+            didLoadGames: {},
+            didLoadFiles: {},
+            didFail: { message in
+                failureMessage = message
+                continuation.resume()
+            }
+        )
+    }
+    #expect(failureMessage.contains("Could not read the scanned source records"))
+    #expect(loader.fileLoadError == failureMessage)
+    #expect(!loader.hasLoadedFiles)
+    #expect(!loader.isLoadingFiles)
+    #expect(files.fileItems.count == 1)
 }
 
 private func gameBucketCount(database: LibraryDatabase, rootID: Int64) throws -> Int {

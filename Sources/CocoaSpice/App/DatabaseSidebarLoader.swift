@@ -15,6 +15,8 @@ final class DatabaseSidebarLoader {
     private(set) var hasLoadedFiles = false
     private(set) var gameLoadingStatus = ""
     private(set) var fileLoadingStatus = ""
+    private(set) var gameLoadError: String?
+    private(set) var fileLoadError: String?
     private(set) var isLoadingGames = false
     private(set) var isLoadingFiles = false
 
@@ -27,7 +29,8 @@ final class DatabaseSidebarLoader {
         databaseURL: URL?,
         mode: SidebarBrowserMode,
         didLoadGames: @escaping @MainActor () -> Void,
-        didLoadFiles: @escaping @MainActor () -> Void
+        didLoadFiles: @escaping @MainActor () -> Void,
+        didFail: @escaping @MainActor (String) -> Void = { _ in }
     ) {
         gameLoadTaskOwner.cancel()
         fileLoadTaskOwner.cancel()
@@ -35,15 +38,20 @@ final class DatabaseSidebarLoader {
         hasLoadedFiles = false
         isLoadingGames = false
         isLoadingFiles = false
-        gameSidebar.clear()
-        fileSidebar.clear()
         gameLoadingStatus = ""
         fileLoadingStatus = ""
+        gameLoadError = nil
+        fileLoadError = nil
+        if databaseURL == nil {
+            gameSidebar.clear()
+            fileSidebar.clear()
+        }
         loadIfNeeded(
             databaseURL: databaseURL,
             mode: mode,
             didLoadGames: didLoadGames,
-            didLoadFiles: didLoadFiles
+            didLoadFiles: didLoadFiles,
+            didFail: didFail
         )
     }
 
@@ -51,14 +59,15 @@ final class DatabaseSidebarLoader {
         databaseURL: URL?,
         mode: SidebarBrowserMode,
         didLoadGames: @escaping @MainActor () -> Void,
-        didLoadFiles: @escaping @MainActor () -> Void
+        didLoadFiles: @escaping @MainActor () -> Void,
+        didFail: @escaping @MainActor (String) -> Void = { _ in }
     ) {
         guard let databaseURL else { return }
         switch mode {
         case .games:
-            loadGamesIfNeeded(databaseURL: databaseURL, didLoad: didLoadGames)
+            loadGamesIfNeeded(databaseURL: databaseURL, didLoad: didLoadGames, didFail: didFail)
         case .files:
-            loadFilesIfNeeded(databaseURL: databaseURL, didLoad: didLoadFiles)
+            loadFilesIfNeeded(databaseURL: databaseURL, didLoad: didLoadFiles, didFail: didFail)
         }
     }
 
@@ -73,42 +82,75 @@ final class DatabaseSidebarLoader {
         fileSidebar.clear()
         gameLoadingStatus = ""
         fileLoadingStatus = ""
+        gameLoadError = nil
+        fileLoadError = nil
     }
 
-    private func loadGamesIfNeeded(databaseURL: URL, didLoad: @escaping @MainActor () -> Void) {
+    private func loadGamesIfNeeded(
+        databaseURL: URL,
+        didLoad: @escaping @MainActor () -> Void,
+        didFail: @escaping @MainActor (String) -> Void
+    ) {
         guard !hasLoadedGames, !isLoadingGames else { return }
         let generation = gameLoadTaskOwner.begin()
         isLoadingGames = true
         gameLoadingStatus = "Reading indexed games…"
+        gameLoadError = nil
         let task = Task { [weak self] in
-            let items = await Task.detached(priority: .utility) {
-                (try? LibraryDatabase.loadGameSidebarItems(databaseURL: databaseURL)) ?? []
+            let result = await Task.detached(priority: .utility) { () -> Result<[DatabaseGameItem], Error> in
+                Result { try LibraryDatabase.loadGameSidebarItems(databaseURL: databaseURL) }
             }.value
             guard !Task.isCancelled,
                   let self,
                   self.gameLoadTaskOwner.isCurrent(generation) else { return }
-            self.gameSidebar.replaceGameItems(items)
-            self.hasLoadedGames = true
             self.gameLoadingStatus = ""
             self.gameLoadTaskOwner.finish(generation: generation)
             self.isLoadingGames = false
-            didLoad()
+            switch result {
+            case .success(let items):
+                self.gameSidebar.replaceGameItems(items)
+                self.hasLoadedGames = true
+                didLoad()
+            case .failure(let error):
+                let message = "Could not read the indexed games: \(error.localizedDescription)"
+                self.gameLoadError = message
+                didFail(message)
+            }
         }
         gameLoadTaskOwner.install(task, generation: generation)
     }
 
-    private func loadFilesIfNeeded(databaseURL: URL, didLoad: @escaping @MainActor () -> Void) {
+    private func loadFilesIfNeeded(
+        databaseURL: URL,
+        didLoad: @escaping @MainActor () -> Void,
+        didFail: @escaping @MainActor (String) -> Void
+    ) {
         guard !hasLoadedFiles, !isLoadingFiles else { return }
         let generation = fileLoadTaskOwner.begin()
         isLoadingFiles = true
         fileLoadingStatus = "Reading scanned source records…"
+        fileLoadError = nil
         let task = Task { [weak self] in
-            let items = await Task.detached(priority: .utility) {
-                (try? LibraryDatabase.loadFileSidebarItems(databaseURL: databaseURL)) ?? []
+            let result = await Task.detached(priority: .utility) { () -> Result<[DatabaseFileItem], Error> in
+                Result { try LibraryDatabase.loadFileSidebarItems(databaseURL: databaseURL) }
             }.value
             guard !Task.isCancelled,
                   let self,
                   self.fileLoadTaskOwner.isCurrent(generation) else { return }
+            guard case .success(let items) = result else {
+                let message: String
+                if case .failure(let error) = result {
+                    message = "Could not read the scanned source records: \(error.localizedDescription)"
+                } else {
+                    preconditionFailure("Unexpected database sidebar load result")
+                }
+                self.fileLoadingStatus = ""
+                self.fileLoadTaskOwner.finish(generation: generation)
+                self.isLoadingFiles = false
+                self.fileLoadError = message
+                didFail(message)
+                return
+            }
             self.fileLoadingStatus = "Building the folder tree…"
             let indexes = await Task.detached(priority: .utility) {
                 (

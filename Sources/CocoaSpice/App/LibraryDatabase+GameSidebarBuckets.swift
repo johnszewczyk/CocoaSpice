@@ -50,8 +50,7 @@ extension LibraryDatabase {
         guard !rootIDs.isEmpty else { return }
         let placeholders = Array(repeating: "?", count: rootIDs.count).joined(separator: ", ")
         let bindings = rootIDs.map(SQLiteValue.int)
-        try execute("BEGIN TRANSACTION;")
-        do {
+        try withSavepoint {
             try execute(
                 "DELETE FROM game_sidebar_buckets WHERE root_id IN (\(placeholders));",
                 bindings: bindings
@@ -74,10 +73,6 @@ extension LibraryDatabase {
                 "UPDATE library_roots SET game_sidebar_buckets_dirty = 0 WHERE id IN (\(placeholders));",
                 bindings: bindings
             )
-            try execute("COMMIT;")
-        } catch {
-            try? execute("ROLLBACK;")
-            throw error
         }
     }
 }

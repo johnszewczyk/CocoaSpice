@@ -103,6 +103,23 @@ struct MainView: View {
                 .padding(.top, 0)
                 .padding(.bottom, 2)
 
+                if let error = model.databaseSidebarLoadError {
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
+                        Text(error)
+                            .font(.caption)
+                            .lineLimit(3)
+                        Spacer(minLength: 4)
+                        Button("Retry") {
+                            model.retryDatabaseSidebarLoad()
+                        }
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(.orange.opacity(0.12))
+                }
+
                 Group {
                     if model.sidebarBrowserMode == .games
                         ? model.isLoadingDatabaseSidebar
