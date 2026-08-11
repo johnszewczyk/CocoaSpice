@@ -798,17 +798,7 @@ struct PlaylistTableView: NSViewRepresentable {
 
         private func fittedWidth(for columnIndex: Int, in tableView: NSTableView) -> CGFloat {
             let tableColumn = tableView.tableColumns[columnIndex]
-            guard let column = Column(rawValue: tableColumn.identifier.rawValue) else {
-                return tableColumn.width
-            }
-            // `sizeToFitWidthOfColumn` can make AppKit walk and realize a
-            // complete table. Running it after every database selection kept
-            // a small, already-loaded playlist from reaching first paint.
-            // Use the bounded in-memory sample and database width hints
-            // instead; manual column sizing remains available from the menu.
-            let measuredWidth = column == .fileSize
-                ? tableColumn.width
-                : widestWidth(for: column) + 16
+            let measuredWidth = self.tableView(tableView, sizeToFitWidthOfColumn: columnIndex)
             let upperBound = tableColumn.maxWidth > 0 ? tableColumn.maxWidth : measuredWidth
             return min(max(measuredWidth, tableColumn.minWidth), upperBound)
         }
