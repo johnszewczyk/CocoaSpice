@@ -4,6 +4,27 @@ import OSLog
 import Observation
 import UniformTypeIdentifiers
 
+enum SidebarBrowserMode: String, CaseIterable, Identifiable {
+    case games
+    case files
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .games: "Games"
+        case .files: "Files"
+        }
+    }
+
+    var iconName: String {
+        switch self {
+        case .games: "square.grid.2x2"
+        case .files: "folder"
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class PlayerViewModel {
@@ -39,27 +60,6 @@ final class PlayerViewModel {
             switch self {
             case .playNow: "Set as Playlist"
             case .enqueue: "Add to Playlist"
-            }
-        }
-    }
-
-    enum SidebarBrowserMode: String, CaseIterable, Identifiable {
-        case games
-        case files
-
-        var id: String { rawValue }
-
-        var title: String {
-            switch self {
-            case .games: "Games"
-            case .files: "Files"
-            }
-        }
-
-        var iconName: String {
-            switch self {
-            case .games: "square.grid.2x2"
-            case .files: "folder"
             }
         }
     }
@@ -366,10 +366,8 @@ final class PlayerViewModel {
         get { libraryOperations.isDeletingDeadLinks }
         set { libraryOperations.isDeletingDeadLinks = newValue }
     }
-    private(set) var isLoadingDatabaseSidebar: Bool {
-        get { libraryOperations.isLoadingDatabaseSidebar }
-        set { libraryOperations.isLoadingDatabaseSidebar = newValue }
-    }
+    var isLoadingDatabaseSidebar: Bool { databaseSidebarLoader.isLoadingGames }
+    var isLoadingDatabaseFileSidebar: Bool { databaseSidebarLoader.isLoadingFiles }
 
     var enabledLibraryRootURLs: [URL] {
         libraryScanRoots
@@ -400,13 +398,12 @@ final class PlayerViewModel {
     private var archiveCacheClearTask: Task<Void, Never>?
     private let deadLinkSummaryTaskOwner = LatestTaskOwner()
     private var deadLinkCleanupTask: Task<Void, Never>?
-    private let databaseSidebarLoadTaskOwner = LatestTaskOwner()
-    private let databaseFileSidebarLoadTaskOwner = LatestTaskOwner()
     private let databaseFileSidebarSearchTaskOwner = LatestTaskOwner()
     private let libraryRootEnableTaskOwner = LatestTaskOwner()
-    private var hasLoadedDatabaseGameSidebar = false
-    private(set) var isLoadingDatabaseFileSidebar = false
-    private var hasLoadedDatabaseFileSidebar = false
+    @ObservationIgnored private lazy var databaseSidebarLoader = DatabaseSidebarLoader(
+        gameSidebar: databaseSidebar,
+        fileSidebar: databaseFileSidebar
+    )
     private var playlistMetadataRefreshWorkItem: DispatchWorkItem?
     private var randomLibraryPlaybackPending = false
     private var didAutoAdvanceForCurrentTrack: Bool {
@@ -504,7 +501,7 @@ final class PlayerViewModel {
                     self.trimmedLibraryScanRootIDs.remove(root.id)
                     self.persistTrimmedLibraryRootIDs()
                     self.reloadLibraryScanRoots()
-                    self.reloadDatabaseGameItems()
+                    self.reloadDatabaseSidebar()
                     self.refreshDeadLinkSummary()
                 },
                 didFailRoot: { [weak self] _ in
@@ -527,7 +524,7 @@ final class PlayerViewModel {
             self?.statusText = "Recovered \(recovery.rootCount) abandoned CocoaSpice cache items (\(ByteCountFormatter.string(fromByteCount: recovery.byteCount, countStyle: .file)))."
         }
         reloadLibraryScanRoots()
-        reloadDatabaseGameItems()
+        reloadDatabaseSidebar()
         restorePersistedPlaylist(restoredState.sessionState)
         restorePlaylistColumnState(restoredState.playlistColumnState)
         sidebarSearchText = restoredState.sidebarSearchText
@@ -579,7 +576,7 @@ final class PlayerViewModel {
 
             guard self.libraryOperations.isCurrentTask(generation), !Task.isCancelled else { return }
             self.reloadLibraryScanRoots()
-            self.reloadDatabaseGameItems()
+            self.reloadDatabaseSidebar()
             self.syncActiveRootToLibraryScanRoots(preferredRoot: addedURLs.first)
             let addedPaths = Set(addedURLs.map(\.path))
             let addedRoots = self.libraryScanRoots.filter {
@@ -666,7 +663,7 @@ final class PlayerViewModel {
             }
             self.libraryScanController?.closeLiveLog(rootID: id)
             self.reloadLibraryScanRoots()
-            self.reloadDatabaseGameItems()
+            self.reloadDatabaseSidebar()
             self.syncActiveRootToLibraryScanRoots()
             self.libraryScanStatus = "Removed \(root.standardizedURL.lastPathComponent)"
         }
@@ -782,7 +779,7 @@ final class PlayerViewModel {
             self.trimmedLibraryScanRootIDs.formUnion(result.missingSources.map(\.rootID))
             self.persistTrimmedLibraryRootIDs()
             self.reloadLibraryScanRoots()
-            self.reloadDatabaseGameItems()
+            self.reloadDatabaseSidebar()
             self.refreshDeadLinkSummary()
             self.libraryScanStatus = "Test Links • \(result.checkedCount) sources checked • \(result.missingSources.count) unlinked sources found"
         }
@@ -803,7 +800,7 @@ final class PlayerViewModel {
             trimmedLibraryScanRootIDs.removeAll()
             persistTrimmedLibraryRootIDs()
             reloadLibraryScanRoots()
-            reloadDatabaseGameItems()
+            reloadDatabaseSidebar()
             resetSidebarContext(message: "Database reset")
             refreshDeadLinkSummary()
             libraryScanStatus = "Database reset"
@@ -1586,11 +1583,7 @@ final class PlayerViewModel {
     func setSidebarBrowserMode(_ mode: SidebarBrowserMode) {
         sidebarBrowserMode = mode
         applySidebarSearch()
-        if mode == .files {
-            loadDatabaseFileItemsIfNeeded()
-        } else {
-            loadDatabaseGameItemsIfNeeded()
-        }
+        loadDatabaseSidebarIfNeeded()
         savePreferencesNow()
     }
 
@@ -1686,7 +1679,7 @@ final class PlayerViewModel {
             switch result {
             case .success(let clearedCount):
                 self.reloadLibraryScanRoots()
-                self.reloadDatabaseGameItems()
+                self.reloadDatabaseSidebar()
                 self.refreshDeadLinkSummary()
                 self.libraryScanStatus = clearedCount == 1
                     ? "Database cleanup • 1 unlinked source cleared"
@@ -2943,105 +2936,45 @@ final class PlayerViewModel {
             }
 
             self.reloadLibraryScanRoots()
-            self.reloadDatabaseGameItems()
+            self.reloadDatabaseSidebar()
             self.syncActiveRootToLibraryScanRoots()
             self.libraryRootEnableTaskOwner.finish(generation: generation)
         }
         libraryRootEnableTaskOwner.install(task, generation: generation)
     }
 
-    private func reloadDatabaseGameItems() {
-        guard libraryDatabase?.databaseURL != nil else {
-            databaseSidebarLoadTaskOwner.cancel()
-            databaseFileSidebarLoadTaskOwner.cancel()
-            isLoadingDatabaseSidebar = false
-            isLoadingDatabaseFileSidebar = false
-            hasLoadedDatabaseGameSidebar = false
-            hasLoadedDatabaseFileSidebar = false
-            databaseSidebar.clear()
-            databaseFileSidebar.clear()
-            return
-        }
-        databaseSidebarLoadTaskOwner.cancel()
-        databaseFileSidebarLoadTaskOwner.cancel()
-        isLoadingDatabaseSidebar = false
-        isLoadingDatabaseFileSidebar = false
-        hasLoadedDatabaseGameSidebar = false
-        hasLoadedDatabaseFileSidebar = false
-        databaseSidebar.clear()
-        databaseFileSidebar.clear()
+    private func reloadDatabaseSidebar() {
+        databaseSidebarLoader.invalidateAndLoad(
+            databaseURL: libraryDatabase?.databaseURL,
+            mode: sidebarBrowserMode,
+            didLoadGames: { [weak self] in self?.databaseGamesDidLoad() },
+            didLoadFiles: { [weak self] in self?.databaseFilesDidLoad() }
+        )
+    }
 
-        switch sidebarBrowserMode {
-        case .games:
-            loadDatabaseGameItemsIfNeeded()
-        case .files:
-            loadDatabaseFileItemsIfNeeded()
+    private func loadDatabaseSidebarIfNeeded() {
+        databaseSidebarLoader.loadIfNeeded(
+            databaseURL: libraryDatabase?.databaseURL,
+            mode: sidebarBrowserMode,
+            didLoadGames: { [weak self] in self?.databaseGamesDidLoad() },
+            didLoadFiles: { [weak self] in self?.databaseFilesDidLoad() }
+        )
+    }
+
+    private func databaseGamesDidLoad() {
+        if sidebarSystemMode,
+           !sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            expandedDatabaseSystems = Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
+        }
+        if randomPlaybackScope == .library {
+            randomLibraryTracks = []
+            randomLibraryLoadTaskOwner.cancel()
+            loadRandomLibraryTracks()
         }
     }
 
-    private func loadDatabaseGameItemsIfNeeded() {
-        guard !hasLoadedDatabaseGameSidebar,
-              !isLoadingDatabaseSidebar,
-              let databaseURL = libraryDatabase?.databaseURL else {
-            return
-        }
-        let generation = databaseSidebarLoadTaskOwner.begin()
-        isLoadingDatabaseSidebar = true
-        let task = Task { [weak self] in
-            let content = await Task.detached(priority: .utility) {
-                (try? LibraryDatabase.loadGameSidebarItems(databaseURL: databaseURL)) ?? []
-            }.value
-            guard !Task.isCancelled,
-                  let self,
-                  self.databaseSidebarLoadTaskOwner.isCurrent(generation) else { return }
-            self.isLoadingDatabaseSidebar = false
-            self.databaseSidebar.replaceGameItems(content)
-            self.hasLoadedDatabaseGameSidebar = true
-            if self.sidebarSystemMode,
-               !self.sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                self.expandedDatabaseSystems = Set(self.visibleDatabaseGameItems.map { self.sidebarSystemName(for: $0) })
-            }
-            if self.randomPlaybackScope == .library {
-                self.randomLibraryTracks = []
-                self.randomLibraryLoadTaskOwner.cancel()
-                self.loadRandomLibraryTracks()
-            }
-            self.databaseSidebarLoadTaskOwner.finish(generation: generation)
-        }
-        databaseSidebarLoadTaskOwner.install(task, generation: generation)
-    }
-
-    private func loadDatabaseFileItemsIfNeeded() {
-        guard !hasLoadedDatabaseFileSidebar,
-              !isLoadingDatabaseFileSidebar,
-              let databaseURL = libraryDatabase?.databaseURL else {
-            return
-        }
-        let generation = databaseFileSidebarLoadTaskOwner.begin()
-        isLoadingDatabaseFileSidebar = true
-        let task = Task { [weak self] in
-            let loaded = await Task.detached(priority: .utility) {
-                let items = (try? LibraryDatabase.loadFileSidebarItems(databaseURL: databaseURL)) ?? []
-                return (
-                    items,
-                    DatabaseFileSidebarTree.Index(items: items),
-                    DatabaseFileSidebarTree.SearchIndex(items: items)
-                )
-            }.value
-            guard !Task.isCancelled,
-                  let self,
-                  self.databaseFileSidebarLoadTaskOwner.isCurrent(generation) else { return }
-            self.databaseFileSidebar.replaceFileItems(
-                loaded.0,
-                treeIndex: loaded.1,
-                searchIndex: loaded.2
-            )
-            self.hasLoadedDatabaseFileSidebar = true
-            self.isLoadingDatabaseFileSidebar = false
-            self.applyDatabaseFileSidebarSearch()
-            self.databaseFileSidebarLoadTaskOwner.finish(generation: generation)
-        }
-        databaseFileSidebarLoadTaskOwner.install(task, generation: generation)
+    private func databaseFilesDidLoad() {
+        applyDatabaseFileSidebarSearch()
     }
 
     private func persistLibraryScanRootOrder() {
@@ -3083,8 +3016,7 @@ final class PlayerViewModel {
         queueBuildTaskOwner.cancel()
         rootURL = nil
         selectedFolderPath = nil
-        databaseSidebar.clear()
-        databaseFileSidebar.clear()
+        databaseSidebarLoader.clear()
         browsedFolderTracks = []
         playlist = []
         syncManualPlaylistOrder()
@@ -3229,7 +3161,7 @@ final class PlayerViewModel {
     }
 
     private func applyDatabaseFileSidebarSearch() {
-        guard hasLoadedDatabaseFileSidebar else { return }
+        guard databaseSidebarLoader.hasLoadedFiles else { return }
         let query = sidebarSearchQuery
         let items = databaseFileItems
         let searchIndex = databaseFileSidebar.searchIndex
@@ -3459,7 +3391,7 @@ final class PlayerViewModel {
             rootURL = nil
             selectedFolderPath = nil
             librarySelectedFolderPath = nil
-            databaseSidebar.clear()
+            databaseSidebarLoader.clear()
             browsedFolderTracks = []
             if playlist.isEmpty {
                 statusText = "No library paths configured."

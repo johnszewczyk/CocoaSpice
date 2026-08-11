@@ -199,6 +199,86 @@ import Testing
     #expect(try fileSidebarBucketCount(database: database, rootID: root.id) == 0)
 }
 
+@MainActor
+@Test func databaseSidebarLoaderRetainsFilesUntilExplicitInvalidation() async throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("cocoaspice-sidebar-loader-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    try database.addRoot(path: directory.path)
+    let root = try #require(database.loadRoots().first)
+    let path = directory.appendingPathComponent("Theme.spc").path
+    let route = ScanRoute(pluginID: "gme", formatExtension: "spc", supportsArchiveMembers: true, supportsMultiTrack: false)
+    let candidate = ScanCandidate(
+        identity: ScanItemIdentity(rootID: root.id, path: path, archiveEntry: nil),
+        fingerprint: ScanFingerprint(fileSize: 1, modifiedAt: Date(timeIntervalSince1970: 1)),
+        sourceURL: URL(fileURLWithPath: path),
+        route: route
+    )
+    try database.persistScanTrackResults([.success(candidate, ScanInspection(
+        route: route,
+        tracks: [ScanTrackMetadata(
+            trackIndex: 0,
+            trackCount: 1,
+            metadata: TrackMetadata(
+                game: "Game",
+                song: "Theme",
+                system: "SNES",
+                author: "",
+                comment: "",
+                introLengthMs: 0,
+                loopLengthMs: 0,
+                playLengthMs: 60_000,
+                fadeLengthMs: 0
+            )
+        )]
+    ))])
+    try database.markScanCompleted(rootID: root.id)
+
+    let games = DatabaseSidebarState()
+    let files = DatabaseFileSidebarState()
+    let loader = DatabaseSidebarLoader(gameSidebar: games, fileSidebar: files)
+    var fileLoadCount = 0
+
+    await withCheckedContinuation { continuation in
+        loader.loadIfNeeded(
+            databaseURL: database.databaseURL,
+            mode: .files,
+            didLoadGames: {},
+            didLoadFiles: {
+                fileLoadCount += 1
+                continuation.resume()
+            }
+        )
+    }
+    #expect(files.fileItems.count == 1)
+    let initialRevision = files.contentRevision
+
+    loader.loadIfNeeded(
+        databaseURL: database.databaseURL,
+        mode: .files,
+        didLoadGames: {},
+        didLoadFiles: { fileLoadCount += 1 }
+    )
+    #expect(fileLoadCount == 1)
+    #expect(files.contentRevision == initialRevision)
+
+    await withCheckedContinuation { continuation in
+        loader.invalidateAndLoad(
+            databaseURL: database.databaseURL,
+            mode: .files,
+            didLoadGames: {},
+            didLoadFiles: {
+                fileLoadCount += 1
+                continuation.resume()
+            }
+        )
+    }
+    #expect(fileLoadCount == 2)
+    #expect(files.contentRevision > initialRevision)
+}
+
 private func gameBucketCount(database: LibraryDatabase, rootID: Int64) throws -> Int {
     var statement: OpaquePointer?
     guard sqlite3_prepare_v2(

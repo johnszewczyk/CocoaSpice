@@ -19,6 +19,7 @@
 - Folder-selection browsing uses its own `LatestTaskOwner`; selecting another folder, changing the root, or clearing sidebar context invalidates pending folder results.
 - Files-sidebar search uses its own `LatestTaskOwner`; new search text cancels the prior utility filter/index task and only the current query may update the native tree.
 - Queue construction uses its own `LatestTaskOwner` across database activation, folder loading, dropped imports, and sidebar-path activation. A newer queue request or cleared library/sidebar context invalidates older loading results.
+- `DatabaseSidebarLoader` owns independent latest-task lifecycles for Games and Files reads. It owns cached snapshot invalidation and stale-result rejection; `PlayerViewModel` supplies only mode policy and post-load behavior.
 - Random-library loading uses its own `LatestTaskOwner`; changing random scope or refreshing the database sidebar invalidates a pending random-game load before it can start playback.
 - Sidebar search uses a dedicated task owner.
 - Task completion and cancellation both advance the library-operation generation so late detached callbacks cannot overwrite a completed or newer operation's UI state.
