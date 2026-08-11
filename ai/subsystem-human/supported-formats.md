@@ -28,7 +28,7 @@ These formats use the built-in vgmstream decoder. This includes `.stream` files 
 
 `.aif`, `.aiff`, `.flac`, `.m4a`, `.mp3`, and `.wav` play through macOS audio support. The verified `.m4a` route includes AAC audio. Archive `.m3u` playlists expand their supported sibling tracks in the order declared by the playlist. Nintendo DS SWAV audio that is incorrectly named `.wav` is recognized by its file header and played through the game-audio decoder. Known Nintendo DS `_22.wav` assets with no WAV header are recognized as signed 8-bit, 22 kHz mono PCM rather than sent to macOS as malformed WAV files.
 
-`.fsb` banks and `.txtp` manifests play through vgmstream. TXTP manifests use their complete archive dependency set; CocoaSpice restores flat archive paths inside its playback cache only. Doom `.mus` is not supported because it requires a MIDI-event synthesizer backend, not an extension-only route.
+`.fsb` banks and `.txtp` manifests play through vgmstream. TXTP manifests use their complete archive dependency set for both scanning and playback; CocoaSpice restores flat archive paths, including Windows-style manifest paths, inside its cache only. Doom `.mus` is not supported because it requires a MIDI-event synthesizer backend, not an extension-only route.
 
 ## Archive Containers
 

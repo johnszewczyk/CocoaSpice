@@ -201,7 +201,8 @@ enum PlaybackFormatRegistry {
         PlaybackDecoderModule(
             pluginID: "vgmstream-txtp", displayName: "vgmstream", backend: .vgmstream,
             supportedExtensions: ["txtp"], requiresTrackEnumeration: true,
-            archiveMaterialization: .completeSet, supportsLongPlay: true
+            archiveMaterialization: .completeSet, scanArchiveMaterialization: .completeSet,
+            supportsLongPlay: true
         ),
         PlaybackDecoderModule(
             pluginID: "vgmstream", displayName: "vgmstream", backend: .vgmstream,

@@ -161,6 +161,37 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     })
 }
 
+@Test func joshWNintendoDSTXTPScanMaterializesWindowsDeclaredSiblings() async throws {
+    let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/JoshW/Nintendo DS/Jenga World Tour (2007-11-13)(Atomic Planet)(Atari)[NDS].tar.zst")
+    guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }
+
+    let values = try archiveURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+    let candidate = ScanCandidate(
+        identity: ScanItemIdentity(rootID: 1, path: archiveURL.path, archiveEntry: nil),
+        fingerprint: ScanFingerprint(
+            fileSize: Int64(values.fileSize ?? 0),
+            modifiedAt: values.contentModificationDate ?? .distantPast,
+            contentSignature: try ZipArchiveSupport.scanSignature(for: archiveURL)
+        ),
+        sourceURL: archiveURL,
+        route: nil
+    )
+
+    let accumulator = try await ScanPipelineExecutor().process(
+        plan: ScanPlan(mode: .newScan, candidates: [candidate]),
+        persist: { _ in }
+    )
+    let results = await accumulator.results
+    #expect(results.contains { result in
+        guard case .success(let member, let inspection) = result else { return false }
+        return member.identity.archiveEntry == "arcade.txtp"
+            && inspection.tracks.contains { track in
+                track.metadata?.comment.contains("Nintendo SWAV") == true
+                    && (track.metadata?.playLengthMs ?? 0) > 0
+            }
+    })
+}
+
 @MainActor
 @Test func archiveCompletionPersistsItsSignatureForIncrementalSkipping() throws {
     let directory = FileManager.default.temporaryDirectory

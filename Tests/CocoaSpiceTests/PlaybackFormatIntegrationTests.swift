@@ -390,6 +390,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     let module = try #require(GMEFormatSupport.module(forPathExtension: "txtp"))
     #expect(module.backend == .vgmstream)
     #expect(module.archiveMaterialization == .completeSet)
+    #expect(module.scanArchiveMaterialization == .completeSet)
     let entries = try ZipArchiveSupport.listPlayableEntries(
         in: archiveURL,
         supportedExtensions: SPCFileScanner.supportedExtensions
@@ -402,6 +403,25 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     )
     let chunks = try (0..<4).map { _ in try decoder.decode(frameCount: 2_048) }
     #expect(chunks.allSatisfy { $0.frameCount > 0 })
+}
+
+@Test func joshWNintendoDSTXTPNormalizesWindowsSiblingPaths() throws {
+    let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/JoshW/Nintendo DS/Jenga World Tour (2007-11-13)(Atomic Planet)(Atari)[NDS].tar.zst")
+    guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }
+
+    let decoder = try VGMStreamDecoder(
+        track: TrackItem(archiveURL: archiveURL, entryPath: "arcade.txtp"),
+        sampleRate: 44_100
+    )
+    let metadata = try decoder.metadata()
+    #expect(metadata.comment.contains("Nintendo SWAV"))
+    #expect(metadata.playLengthMs > 0)
+
+    let chunks = try (0..<4).map { _ in try decoder.decode(frameCount: 2_048) }
+    #expect(chunks.allSatisfy { $0.frameCount > 0 })
+    #expect(chunks.contains { chunk in
+        chunk.left.contains(where: { abs($0) > 0.0001 }) || chunk.right.contains(where: { abs($0) > 0.0001 })
+    })
 }
 
 @Test func joshWPCStandardAudioArchivesDecodeWAVAndMP3() throws {

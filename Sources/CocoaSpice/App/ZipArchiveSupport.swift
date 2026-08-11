@@ -514,11 +514,15 @@ enum ZipArchiveSupport {
         for txtpURL in txtpFiles {
             guard let contents = try? String(contentsOf: txtpURL, encoding: .utf8) else { continue }
             for rawLine in contents.split(whereSeparator: \.isNewline) {
-                let reference = rawLine
+                let rawReference = rawLine
                     .split(separator: "#", maxSplits: 1, omittingEmptySubsequences: false)
                     .first
                     .map(String.init)?
                     .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                // TXTP manifests are commonly authored on Windows. Normalize
+                // their separators before both resolving a sibling leaf and
+                // creating the matching cache-only directory hierarchy.
+                let reference = rawReference.replacingOccurrences(of: "\\", with: "/")
                 guard !reference.isEmpty,
                       !reference.hasPrefix("/"),
                       !reference.contains(".."),
