@@ -373,20 +373,16 @@ struct OptionsView: View {
                             .foregroundStyle(.secondary)
                     }
                     Spacer(minLength: 16)
-                    VStack(alignment: .trailing, spacing: 4) {
-                        Slider(
-                            value: Binding(
-                                get: { Double(model.databaseSidebarDisclosureGapPoints) },
-                                set: { model.setDatabaseSidebarDisclosureGapPoints(CGFloat($0)) }
-                            ),
-                            in: 0...16,
-                            step: 1
-                        )
-                        .frame(width: 140)
-                        Text("\(Int(model.databaseSidebarDisclosureGapPoints)) pt")
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                    }
+                    TextField(
+                        "6",
+                        value: Binding(
+                            get: { Double(model.databaseSidebarDisclosureGapPoints) },
+                            set: { model.setDatabaseSidebarDisclosureGapPoints(CGFloat($0)) }
+                        ),
+                        format: .number.precision(.fractionLength(0))
+                    )
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 56)
                 }
 
                 HStack {
@@ -407,9 +403,6 @@ struct OptionsView: View {
                     )
                     .multilineTextAlignment(.trailing)
                     .frame(width: 56)
-                    Text("pt")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
                 }
             }
 
