@@ -143,11 +143,84 @@ import Testing
     #expect(secondLoaded.tracks.map(\.url.path) == [secondPath])
 }
 
+@Test func fileSidebarBucketsServeStoredSourceLeavesAndDirtyRootFallbacks() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("cocoaspice-file-sidebar-buckets-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    try database.addRoot(path: directory.path)
+    let root = try #require(database.loadRoots().first)
+    let path = directory.appendingPathComponent("Soundtrack.nsf").path
+    let route = ScanRoute(pluginID: "gme", formatExtension: "nsf", supportsArchiveMembers: true, supportsMultiTrack: true)
+    let candidate = ScanCandidate(
+        identity: ScanItemIdentity(rootID: root.id, path: path, archiveEntry: nil),
+        fingerprint: ScanFingerprint(fileSize: 1, modifiedAt: Date(timeIntervalSince1970: 1)),
+        sourceURL: URL(fileURLWithPath: path),
+        route: route
+    )
+    let metadata = TrackMetadata(
+        game: "Game",
+        song: "Theme",
+        system: "NES",
+        author: "",
+        comment: "",
+        introLengthMs: 0,
+        loopLengthMs: 0,
+        playLengthMs: 60_000,
+        fadeLengthMs: 0
+    )
+    let inspection = ScanInspection(
+        route: route,
+        tracks: [
+            ScanTrackMetadata(trackIndex: 0, trackCount: 2, metadata: metadata),
+            ScanTrackMetadata(trackIndex: 1, trackCount: 2, metadata: metadata)
+        ]
+    )
+    try database.persistScanTrackResults([.success(candidate, inspection)])
+    try database.markScanCompleted(rootID: root.id)
+
+    #expect(try database.loadFileItems() == [
+        DatabaseFileItem(
+            rootID: root.id,
+            rootPath: directory.path,
+            folderPath: directory.path,
+            path: path,
+            isArchive: false,
+            trackCount: 2
+        )
+    ])
+    #expect(try fileSidebarBucketCount(database: database, rootID: root.id) == 1)
+
+    try database.markSourcesDead([LibraryIndexedSource(rootID: root.id, path: path, archiveEntry: nil)])
+    #expect(try database.loadFileItems().isEmpty)
+
+    try database.markScanCompleted(rootID: root.id)
+    #expect(try fileSidebarBucketCount(database: database, rootID: root.id) == 0)
+}
+
 private func gameBucketCount(database: LibraryDatabase, rootID: Int64) throws -> Int {
     var statement: OpaquePointer?
     guard sqlite3_prepare_v2(
         database.db,
         "SELECT COALESCE(SUM(track_count), 0) FROM game_sidebar_buckets WHERE root_id = ?;",
+        -1,
+        &statement,
+        nil
+    ) == SQLITE_OK else {
+        throw database.databaseError()
+    }
+    defer { sqlite3_finalize(statement) }
+    sqliteBind(.int(rootID), to: statement, at: 1)
+    guard sqlite3_step(statement) == SQLITE_ROW else { throw database.databaseError() }
+    return Int(sqlite3_column_int(statement, 0))
+}
+
+private func fileSidebarBucketCount(database: LibraryDatabase, rootID: Int64) throws -> Int {
+    var statement: OpaquePointer?
+    guard sqlite3_prepare_v2(
+        database.db,
+        "SELECT COUNT(*) FROM file_sidebar_buckets WHERE root_id = ?;",
         -1,
         &statement,
         nil

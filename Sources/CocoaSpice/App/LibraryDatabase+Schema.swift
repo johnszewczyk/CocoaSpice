@@ -14,6 +14,7 @@ extension LibraryDatabase {
             try createScanTables()
             try createDeadSourceTable()
             try createGameSidebarBucketTable()
+            try createFileSidebarBucketTable()
             try setUserVersion(Self.schemaVersion)
             try execute("COMMIT;")
             try execute("PRAGMA foreign_keys = ON;")
@@ -55,7 +56,8 @@ extension LibraryDatabase {
             last_scan_track_count INTEGER NOT NULL DEFAULT 0,
             last_scan_error TEXT,
             is_attached INTEGER NOT NULL DEFAULT 1,
-            game_sidebar_buckets_dirty INTEGER NOT NULL DEFAULT 1
+            game_sidebar_buckets_dirty INTEGER NOT NULL DEFAULT 1,
+            file_sidebar_buckets_dirty INTEGER NOT NULL DEFAULT 1
         );
         """)
     }
@@ -84,6 +86,21 @@ extension LibraryDatabase {
             FOREIGN KEY(root_id) REFERENCES library_roots(id) ON DELETE CASCADE
         );
         """)
+    }
+
+    private func createFileSidebarBucketTable() throws {
+        try execute("""
+        CREATE TABLE file_sidebar_buckets (
+            root_id INTEGER NOT NULL,
+            folder_path TEXT NOT NULL,
+            path TEXT NOT NULL,
+            is_archive INTEGER NOT NULL,
+            track_count INTEGER NOT NULL,
+            PRIMARY KEY(root_id, path),
+            FOREIGN KEY(root_id) REFERENCES library_roots(id) ON DELETE CASCADE
+        );
+        """)
+        try execute("CREATE INDEX file_sidebar_buckets_tree_index ON file_sidebar_buckets(root_id, folder_path, path);")
     }
 
     /// Repairs rows written before archive refresh replaced a source's entire

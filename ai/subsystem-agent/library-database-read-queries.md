@@ -17,6 +17,7 @@
 - Files-mode rows remain deferred until that sidebar mode is requested; they must not delay the initial Games sidebar.
 - Files-row SQL does not apply a redundant display sort. The background Files-tree index applies the user-visible localized root, folder, and filename order after the read, avoiding SQLite's temporary sort tree.
 - Clean enabled roots load Games from `game_sidebar_buckets`; the exact `tracks` grouping remains a correctness fallback only while an enabled root is dirty after an interrupted write or schema upgrade.
+- Clean enabled roots load Files from `file_sidebar_buckets`; the exact source grouping over `tracks` is a dirty-root fallback only. The normal Files path must stay proportional to source-file leaves, not playable subtracks.
 - Games rows retain `root_id`, and playlist activation binds `root_id + browser_game + browser_system`. Never merge roots during either projection or activation.
 - Startup batches every dirty enabled root into one utility-task rebuild. Disabled roots are repaired only when they are scanned directly or enabled again.
 - Scan completion rebuilds dirty root buckets before deriving its displayed track count from that same projection. Test Links, source restoration, force clears, archive member replacement, and normal scan writes mark only their affected roots dirty.

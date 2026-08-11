@@ -152,6 +152,45 @@ extension LibraryDatabase {
     }
 
     private static func loadFileItems(handle: OpaquePointer) throws -> [DatabaseFileItem] {
+        if try fileSidebarBucketsAreCurrent(handle: handle) {
+            return try loadFileItemsFromBuckets(handle: handle)
+        }
+        return try loadFileItemsFromTracks(handle: handle)
+    }
+
+    /// Files must stay exact during an interrupted scan or a maintenance
+    /// write. The durable source projection is rebuilt at normal write
+    /// boundaries, while this direct grouping is only the dirty-root fallback.
+    private static func fileSidebarBucketsAreCurrent(handle: OpaquePointer) throws -> Bool {
+        let sql = "SELECT NOT EXISTS (SELECT 1 FROM library_roots WHERE is_enabled = 1 AND file_sidebar_buckets_dirty = 1);"
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw databaseError(handle: handle)
+        }
+        defer { sqlite3_finalize(statement) }
+        guard sqlite3_step(statement) == SQLITE_ROW else {
+            throw databaseError(handle: handle)
+        }
+        return sqlite3_column_int(statement, 0) != 0
+    }
+
+    private static func loadFileItemsFromBuckets(handle: OpaquePointer) throws -> [DatabaseFileItem] {
+        let sql = """
+        SELECT
+            b.root_id,
+            r.path,
+            b.folder_path,
+            b.path,
+            b.is_archive,
+            b.track_count
+        FROM file_sidebar_buckets b
+        INNER JOIN library_roots r ON r.id = b.root_id
+        WHERE r.is_enabled = 1;
+        """
+        return try readFileItems(handle: handle, sql: sql)
+    }
+
+    private static func loadFileItemsFromTracks(handle: OpaquePointer) throws -> [DatabaseFileItem] {
         let sql = """
         SELECT
             t.root_id,
@@ -168,12 +207,15 @@ extension LibraryDatabase {
         ;
         """
 
+        return try readFileItems(handle: handle, sql: sql)
+    }
+
+    private static func readFileItems(handle: OpaquePointer, sql: String) throws -> [DatabaseFileItem] {
         var statement: OpaquePointer?
         guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {
             throw databaseError(handle: handle)
         }
         defer { sqlite3_finalize(statement) }
-
         var items: [DatabaseFileItem] = []
         while sqlite3_step(statement) == SQLITE_ROW {
             items.append(DatabaseFileItem(

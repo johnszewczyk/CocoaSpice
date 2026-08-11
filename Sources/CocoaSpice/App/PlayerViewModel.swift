@@ -766,7 +766,9 @@ final class PlayerViewModel {
             guard self.libraryOperations.isCurrentTask(generation), !Task.isCancelled else { return }
             let writeError = await Task.detached(priority: .utility) { () -> String? in
                 do {
-                    try LibraryDatabase(databaseURL: databaseURL).markSourcesDead(result.missingSources)
+                    let database = try LibraryDatabase(databaseURL: databaseURL)
+                    try database.markSourcesDead(result.missingSources)
+                    try database.refreshDirtySidebarBuckets()
                     return nil
                 } catch {
                     return error.localizedDescription

@@ -64,7 +64,7 @@
 - Keep scan-root persistence in SQLite, not `UserDefaults`.
 - Keep scan-root management separate from playlist behavior and playback behavior.
 - Keep automatic scan behavior explicit.
-- Keep scanning complete and database-oriented: archive member listing and decoder metadata inspection happen during scanning, while playlist activation reads the stored rows directly.
+- Keep scanning complete and database-oriented: archive member listing and decoder metadata inspection happen during scanning, while playlist activation and Files-sidebar source leaves read the stored projections directly.
 
 ## Files
 

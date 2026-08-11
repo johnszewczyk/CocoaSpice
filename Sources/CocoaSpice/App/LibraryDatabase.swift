@@ -2,7 +2,7 @@ import Foundation
 import SQLite3
 
 final class LibraryDatabase: @unchecked Sendable {
-    static let schemaVersion = 15
+    static let schemaVersion = 16
     let db: OpaquePointer?
     private let dbURL: URL
 
@@ -187,7 +187,7 @@ final class LibraryDatabase: @unchecked Sendable {
 
     func clearTracks(rootID: Int64) throws {
         try execute("DELETE FROM tracks WHERE root_id = ?;", bindings: [.int(rootID)])
-        try markGameSidebarBucketsDirty(rootIDs: [rootID])
+        try markSidebarBucketsDirty(rootIDs: [rootID])
     }
 
     func clearLiveScanInventory(rootID: Int64) throws {
@@ -210,7 +210,7 @@ final class LibraryDatabase: @unchecked Sendable {
               WHERE d.root_id = tracks.root_id AND d.path = tracks.path
           );
         """, bindings: [.int(rootID)])
-        try markGameSidebarBucketsDirty(rootIDs: [rootID])
+        try markSidebarBucketsDirty(rootIDs: [rootID])
     }
 
     func purgeIndexedLibrary() throws {
@@ -220,6 +220,7 @@ final class LibraryDatabase: @unchecked Sendable {
             try execute("DELETE FROM scan_items;")
             try execute("DELETE FROM dead_sources;")
             try execute("DELETE FROM game_sidebar_buckets;")
+            try execute("DELETE FROM file_sidebar_buckets;")
             try execute("DELETE FROM library_roots WHERE is_attached = 0;")
             try execute("""
             UPDATE library_roots
@@ -227,7 +228,8 @@ final class LibraryDatabase: @unchecked Sendable {
                 last_scan_completed_at = NULL,
                 last_scan_track_count = 0,
                 last_scan_error = NULL,
-                game_sidebar_buckets_dirty = 0;
+                game_sidebar_buckets_dirty = 0,
+                file_sidebar_buckets_dirty = 0;
             """)
             try execute("COMMIT;")
         } catch {
@@ -292,7 +294,7 @@ final class LibraryDatabase: @unchecked Sendable {
                     bindings: [.int(rootID), .int(rootID)]
                 )
             }
-            try markGameSidebarBucketsDirty(rootIDs: rootIDs)
+            try markSidebarBucketsDirty(rootIDs: rootIDs)
             try execute("COMMIT;")
         } catch {
             try? execute("ROLLBACK;")
@@ -314,7 +316,7 @@ final class LibraryDatabase: @unchecked Sendable {
                     restoredRootIDs.insert(source.rootID)
                 }
             }
-            try markGameSidebarBucketsDirty(rootIDs: restoredRootIDs)
+            try markSidebarBucketsDirty(rootIDs: restoredRootIDs)
             try execute("COMMIT;")
         } catch {
             try? execute("ROLLBACK;")
@@ -360,9 +362,12 @@ final class LibraryDatabase: @unchecked Sendable {
             try execute("DELETE FROM dead_sources;")
             try execute("""
             UPDATE library_roots
-            SET last_scan_track_count = (SELECT COUNT(*) FROM tracks WHERE tracks.root_id = library_roots.id);
+            SET last_scan_track_count = (SELECT COUNT(*) FROM tracks WHERE tracks.root_id = library_roots.id),
+                game_sidebar_buckets_dirty = 1,
+                file_sidebar_buckets_dirty = 1;
             """)
             try execute("COMMIT;")
+            try refreshDirtySidebarBuckets()
             return count
         } catch {
             try? execute("ROLLBACK;")
@@ -400,7 +405,7 @@ final class LibraryDatabase: @unchecked Sendable {
                 "DELETE FROM scan_items WHERE root_id = ? AND path = ? AND archive_entry <> '';",
                 bindings: [.int(rootID), .text(path)]
             )
-            try markGameSidebarBucketsDirty(rootIDs: [rootID])
+            try markSidebarBucketsDirty(rootIDs: [rootID])
             try execute("COMMIT;")
         } catch {
             try? execute("ROLLBACK;")
@@ -510,7 +515,7 @@ final class LibraryDatabase: @unchecked Sendable {
                 )
             }
         }
-        try markGameSidebarBucketsDirty(rootIDs: touchedRootIDs)
+        try markSidebarBucketsDirty(rootIDs: touchedRootIDs)
     }
 
     func markScanFailed(rootID: Int64, error: String) throws {

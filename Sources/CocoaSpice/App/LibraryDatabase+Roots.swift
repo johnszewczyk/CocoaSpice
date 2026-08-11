@@ -38,8 +38,8 @@ extension LibraryDatabase {
         let nextOrder = try loadRoots().count
         try execute(
             """
-            INSERT INTO library_roots (path, is_enabled, display_order, created_at, game_sidebar_buckets_dirty)
-            VALUES (?, 1, ?, ?, 0)
+            INSERT INTO library_roots (path, is_enabled, display_order, created_at, game_sidebar_buckets_dirty, file_sidebar_buckets_dirty)
+            VALUES (?, 1, ?, ?, 0, 0)
             ON CONFLICT(path) DO UPDATE SET
                 is_enabled = 1,
                 is_attached = 1,
@@ -58,6 +58,10 @@ extension LibraryDatabase {
             "UPDATE library_roots SET is_enabled = ? WHERE id = ?;",
             bindings: [.int(isEnabled ? 1 : 0), .int(id)]
         )
+        if isEnabled {
+            try rebuildGameSidebarBucketsIfDirty(rootID: id)
+            try rebuildFileSidebarBucketsIfDirty(rootID: id)
+        }
     }
 
     /// Persists a burst of checkbox changes as one short transaction. The
@@ -74,6 +78,7 @@ extension LibraryDatabase {
                 )
             }
             try execute("COMMIT;")
+            try refreshDirtySidebarBuckets()
         } catch {
             try? execute("ROLLBACK;")
             throw error
@@ -111,6 +116,7 @@ extension LibraryDatabase {
 
     func markScanCompleted(rootID: Int64) throws {
         try rebuildGameSidebarBucketsIfDirty(rootID: rootID)
+        try rebuildFileSidebarBucketsIfDirty(rootID: rootID)
         try execute(
             """
             UPDATE library_roots
