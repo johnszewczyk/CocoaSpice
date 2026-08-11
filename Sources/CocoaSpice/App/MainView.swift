@@ -168,6 +168,7 @@ struct MainView: View {
                                 sidebarTextColor: model.databaseSidebarTextColor,
                                 sidebarMonospace: model.databaseSidebarMonospaceFont,
                                 sidebarDisclosureGap: model.databaseSidebarDisclosureGapPoints,
+                                sidebarChildIndent: model.databaseSidebarChildIndentPoints,
                                 hideFileExtensions: model.databaseSidebarHidesFileExtensions
                             )
                             .opacity(model.sidebarBrowserMode == .files ? 1 : 0)
@@ -696,6 +697,7 @@ private struct DatabaseFileListView: NSViewRepresentable {
     let sidebarTextColor: PlayerViewModel.DatabaseSidebarTextColor
     let sidebarMonospace: Bool
     let sidebarDisclosureGap: CGFloat
+    let sidebarChildIndent: CGFloat
     let hideFileExtensions: Bool
 
     func makeCoordinator() -> Coordinator {
@@ -705,6 +707,7 @@ private struct DatabaseFileListView: NSViewRepresentable {
             sidebarTextColor: sidebarTextColor,
             sidebarMonospace: sidebarMonospace,
             sidebarDisclosureGap: sidebarDisclosureGap,
+            sidebarChildIndent: sidebarChildIndent,
             hideFileExtensions: hideFileExtensions
         )
     }
@@ -736,6 +739,7 @@ private struct DatabaseFileListView: NSViewRepresentable {
         context.coordinator.sidebarTextColor = sidebarTextColor
         context.coordinator.sidebarMonospace = sidebarMonospace
         context.coordinator.sidebarDisclosureGap = sidebarDisclosureGap
+        context.coordinator.sidebarChildIndent = sidebarChildIndent
         context.coordinator.hideFileExtensions = hideFileExtensions
         context.coordinator.reload()
     }
@@ -747,6 +751,7 @@ private struct DatabaseFileListView: NSViewRepresentable {
         var sidebarTextColor: PlayerViewModel.DatabaseSidebarTextColor
         var sidebarMonospace: Bool
         var sidebarDisclosureGap: CGFloat
+        var sidebarChildIndent: CGFloat
         var hideFileExtensions: Bool
         private weak var tableView: DatabaseSidebarNativeTableView?
         private var reloadScheduled = false
@@ -760,6 +765,7 @@ private struct DatabaseFileListView: NSViewRepresentable {
         private var lastTextColor: PlayerViewModel.DatabaseSidebarTextColor?
         private var lastMonospace: Bool?
         private var lastDisclosureGap: CGFloat?
+        private var lastChildIndent: CGFloat?
         private var lastHideFileExtensions: Bool?
 
         private final class ContextMenuAction: NSObject {
@@ -776,6 +782,7 @@ private struct DatabaseFileListView: NSViewRepresentable {
             sidebarTextColor: PlayerViewModel.DatabaseSidebarTextColor,
             sidebarMonospace: Bool,
             sidebarDisclosureGap: CGFloat,
+            sidebarChildIndent: CGFloat,
             hideFileExtensions: Bool
         ) {
             self._model = Bindable(model)
@@ -783,6 +790,7 @@ private struct DatabaseFileListView: NSViewRepresentable {
             self.sidebarTextColor = sidebarTextColor
             self.sidebarMonospace = sidebarMonospace
             self.sidebarDisclosureGap = sidebarDisclosureGap
+            self.sidebarChildIndent = sidebarChildIndent
             self.hideFileExtensions = hideFileExtensions
         }
 
@@ -808,6 +816,7 @@ private struct DatabaseFileListView: NSViewRepresentable {
                 || sidebarTextColor != lastTextColor
                 || sidebarMonospace != lastMonospace
                 || sidebarDisclosureGap != lastDisclosureGap
+                || sidebarChildIndent != lastChildIndent
                 || hideFileExtensions != lastHideFileExtensions
             let selectionChanged = model.selectedDatabaseFileIDs != lastSelectionIDs
                 || model.selectedDatabaseFileFolders != lastSelectedFolders
@@ -819,6 +828,7 @@ private struct DatabaseFileListView: NSViewRepresentable {
             lastTextColor = sidebarTextColor
             lastMonospace = sidebarMonospace
             lastDisclosureGap = sidebarDisclosureGap
+            lastChildIndent = sidebarChildIndent
             lastHideFileExtensions = hideFileExtensions
             if treeChanged {
                 cachedRows = model.databaseFileSidebar.rows()
@@ -899,7 +909,8 @@ private struct DatabaseFileListView: NSViewRepresentable {
                     font: font,
                     color: DatabaseSidebarTableChrome.textColor(sidebarTextColor),
                     fontSize: sidebarFontSize,
-                    disclosureGap: sidebarDisclosureGap
+                    disclosureGap: sidebarDisclosureGap,
+                    childIndent: sidebarChildIndent
                 )
             case .file(let item, let depth):
                 let font: NSFont = sidebarMonospace
@@ -911,7 +922,8 @@ private struct DatabaseFileListView: NSViewRepresentable {
                     font: font,
                     color: DatabaseSidebarTableChrome.textColor(sidebarTextColor),
                     fontSize: sidebarFontSize,
-                    disclosureGap: sidebarDisclosureGap
+                    disclosureGap: sidebarDisclosureGap,
+                    childIndent: sidebarChildIndent
                 )
             }
             return cell
@@ -1032,7 +1044,8 @@ private struct DatabaseFileListView: NSViewRepresentable {
                 locationX: locationX,
                 depth: depth,
                 fontSize: sidebarFontSize,
-                gap: sidebarDisclosureGap
+                gap: sidebarDisclosureGap,
+                childIndent: sidebarChildIndent
             )
             guard clickedDisclosure || wasSelected else { return false }
             model.toggleDatabaseFileFolder(id)
@@ -1137,7 +1150,8 @@ private final class DatabaseFileSidebarCellView: NSTableCellView {
         font: NSFont,
         color: NSColor,
         fontSize: CGFloat,
-        disclosureGap: CGFloat
+        disclosureGap: CGFloat,
+        childIndent: CGFloat
     ) {
         disclosureField.isHidden = false
         disclosureField.stringValue = isExpanded ? "▾" : "▸"
@@ -1150,12 +1164,14 @@ private final class DatabaseFileSidebarCellView: NSTableCellView {
         disclosureLeadingConstraint.constant = DatabaseFileSidebarInteraction.disclosureOrigin(
             depth: depth,
             fontSize: fontSize,
-            gap: disclosureGap
+            gap: disclosureGap,
+            childIndent: childIndent
         )
         titleLeadingConstraint.constant = DatabaseFileSidebarInteraction.titleLeading(
             depth: depth,
             fontSize: fontSize,
-            gap: disclosureGap
+            gap: disclosureGap,
+            childIndent: childIndent
         )
     }
 
@@ -1165,7 +1181,8 @@ private final class DatabaseFileSidebarCellView: NSTableCellView {
         font: NSFont,
         color: NSColor,
         fontSize: CGFloat,
-        disclosureGap: CGFloat
+        disclosureGap: CGFloat,
+        childIndent: CGFloat
     ) {
         disclosureField.isHidden = true
         disclosureWidthConstraint.constant = 0
@@ -1175,7 +1192,8 @@ private final class DatabaseFileSidebarCellView: NSTableCellView {
         titleLeadingConstraint.constant = DatabaseFileSidebarInteraction.disclosureOrigin(
             depth: depth,
             fontSize: fontSize,
-            gap: disclosureGap
+            gap: disclosureGap,
+            childIndent: childIndent
         )
     }
 }

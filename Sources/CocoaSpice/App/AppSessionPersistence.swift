@@ -38,6 +38,7 @@ enum AppDefaultsKey {
     static let databaseSidebarMonospaceFont = "CocoaSpice.databaseSidebarMonospaceFont"
     static let databaseSidebarDisclosureGap = "CocoaSpice.databaseSidebarDisclosureGap"
     static let databaseSidebarDisclosureGapPoints = "CocoaSpice.databaseSidebarDisclosureGapPoints"
+    static let databaseSidebarChildIndentPoints = "CocoaSpice.databaseSidebarChildIndentPoints"
     static let databaseSidebarHidesFileExtensions = "CocoaSpice.databaseSidebarHidesFileExtensions"
     static let playlistFontSize = "CocoaSpice.playlistFontSize"
     static let playlistTextColor = "CocoaSpice.playlistTextColor"
@@ -74,6 +75,7 @@ struct RestoredPlaybackPreferences {
     let databaseSidebarMonospaceFont: Bool
     let databaseSidebarDisclosureGap: Double?
     let databaseSidebarDisclosureGapPoints: Double?
+    let databaseSidebarChildIndentPoints: Double?
     let databaseSidebarHidesFileExtensions: Bool
     let playlistFontSize: Double?
     let playlistTextColor: String?
@@ -146,6 +148,7 @@ enum AppSessionPersistence {
             databaseSidebarMonospaceFont: defaults.object(forKey: AppDefaultsKey.databaseSidebarMonospaceFont) as? Bool ?? false,
             databaseSidebarDisclosureGap: defaults.object(forKey: AppDefaultsKey.databaseSidebarDisclosureGap) as? Double,
             databaseSidebarDisclosureGapPoints: defaults.object(forKey: AppDefaultsKey.databaseSidebarDisclosureGapPoints) as? Double,
+            databaseSidebarChildIndentPoints: defaults.object(forKey: AppDefaultsKey.databaseSidebarChildIndentPoints) as? Double,
             databaseSidebarHidesFileExtensions: defaults.object(forKey: AppDefaultsKey.databaseSidebarHidesFileExtensions) as? Bool ?? false,
             playlistFontSize: defaults.object(forKey: AppDefaultsKey.playlistFontSize) as? Double,
             playlistTextColor: defaults.string(forKey: AppDefaultsKey.playlistTextColor),
@@ -199,6 +202,7 @@ enum AppSessionPersistence {
         databaseSidebarTextColor: String,
         databaseSidebarMonospaceFont: Bool,
         databaseSidebarDisclosureGapPoints: CGFloat,
+        databaseSidebarChildIndentPoints: CGFloat,
         databaseSidebarHidesFileExtensions: Bool,
         playlistFontSize: CGFloat,
         playlistTextColor: String,
@@ -229,6 +233,7 @@ enum AppSessionPersistence {
         defaults.set(databaseSidebarTextColor, forKey: AppDefaultsKey.databaseSidebarTextColor)
         defaults.set(databaseSidebarMonospaceFont, forKey: AppDefaultsKey.databaseSidebarMonospaceFont)
         defaults.set(Double(databaseSidebarDisclosureGapPoints), forKey: AppDefaultsKey.databaseSidebarDisclosureGapPoints)
+        defaults.set(Double(databaseSidebarChildIndentPoints), forKey: AppDefaultsKey.databaseSidebarChildIndentPoints)
         defaults.set(databaseSidebarHidesFileExtensions, forKey: AppDefaultsKey.databaseSidebarHidesFileExtensions)
         defaults.set(Double(playlistFontSize), forKey: AppDefaultsKey.playlistFontSize)
         defaults.set(playlistTextColor, forKey: AppDefaultsKey.playlistTextColor)

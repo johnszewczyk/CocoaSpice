@@ -232,15 +232,20 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     ) == [.folder(id: rootID, title: "Library", depth: 0, isExpanded: false)])
 }
 
-@Test func fileSidebarDisclosureUsesPointGap() {
+@Test func fileSidebarDisclosureUsesPointGapAndChildIndent() {
     let fontSize: CGFloat = 12
     let gap: CGFloat = 6
+    let childIndent: CGFloat = 8
     #expect(DatabaseFileSidebarInteraction.indentationStep(fontSize: fontSize, gap: gap) == 17)
-    #expect(DatabaseFileSidebarInteraction.isDisclosureHit(locationX: 4, depth: 0, fontSize: fontSize, gap: gap))
-    #expect(DatabaseFileSidebarInteraction.isDisclosureHit(locationX: 21, depth: 1, fontSize: fontSize, gap: gap))
-    #expect(!DatabaseFileSidebarInteraction.isDisclosureHit(locationX: 20, depth: 1, fontSize: fontSize, gap: gap))
-    #expect(!DatabaseFileSidebarInteraction.isDisclosureHit(locationX: 32, depth: 1, fontSize: fontSize, gap: gap))
+    #expect(DatabaseFileSidebarInteraction.titleLeading(depth: 0, fontSize: fontSize, gap: gap, childIndent: childIndent) == 21)
+    #expect(DatabaseFileSidebarInteraction.disclosureOrigin(depth: 1, fontSize: fontSize, gap: gap, childIndent: childIndent) == 29)
+    #expect(DatabaseFileSidebarInteraction.titleLeading(depth: 0, fontSize: fontSize, gap: gap, childIndent: childIndent) + childIndent == DatabaseFileSidebarInteraction.disclosureOrigin(depth: 1, fontSize: fontSize, gap: gap, childIndent: childIndent))
+    #expect(DatabaseFileSidebarInteraction.isDisclosureHit(locationX: 4, depth: 0, fontSize: fontSize, gap: gap, childIndent: childIndent))
+    #expect(DatabaseFileSidebarInteraction.isDisclosureHit(locationX: 29, depth: 1, fontSize: fontSize, gap: gap, childIndent: childIndent))
+    #expect(!DatabaseFileSidebarInteraction.isDisclosureHit(locationX: 28, depth: 1, fontSize: fontSize, gap: gap, childIndent: childIndent))
+    #expect(!DatabaseFileSidebarInteraction.isDisclosureHit(locationX: 40, depth: 1, fontSize: fontSize, gap: gap, childIndent: childIndent))
     #expect(DatabaseFileSidebarInteraction.indentationStep(fontSize: 18, gap: gap) == 23)
+    #expect(DatabaseFileSidebarInteraction.childIndentWidth(99) == 32)
 }
 
 @MainActor

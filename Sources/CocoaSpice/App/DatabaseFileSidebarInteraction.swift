@@ -8,19 +8,25 @@ enum DatabaseFileSidebarInteraction {
     }
 
     static func disclosureGapWidth(gap: CGFloat) -> CGFloat {
-        min(max(gap, 0), 48)
+        min(max(gap, 0), 16)
     }
 
     static func indentationStep(fontSize: CGFloat, gap: CGFloat) -> CGFloat {
         disclosureGlyphWidth(fontSize: fontSize) + disclosureGapWidth(gap: gap)
     }
 
-    static func disclosureOrigin(depth: Int, fontSize: CGFloat, gap: CGFloat) -> CGFloat {
-        disclosureLeading + (CGFloat(depth) * indentationStep(fontSize: fontSize, gap: gap))
+    static func childIndentWidth(_ indent: CGFloat) -> CGFloat {
+        min(max(indent, 0), 32)
     }
 
-    static func titleLeading(depth: Int, fontSize: CGFloat, gap: CGFloat) -> CGFloat {
-        disclosureOrigin(depth: depth, fontSize: fontSize, gap: gap)
+    static func disclosureOrigin(depth: Int, fontSize: CGFloat, gap: CGFloat, childIndent: CGFloat) -> CGFloat {
+        disclosureLeading
+            + (CGFloat(depth) * indentationStep(fontSize: fontSize, gap: gap))
+            + (CGFloat(depth) * childIndentWidth(childIndent))
+    }
+
+    static func titleLeading(depth: Int, fontSize: CGFloat, gap: CGFloat, childIndent: CGFloat) -> CGFloat {
+        disclosureOrigin(depth: depth, fontSize: fontSize, gap: gap, childIndent: childIndent)
             + indentationStep(fontSize: fontSize, gap: gap)
     }
 
@@ -30,8 +36,8 @@ enum DatabaseFileSidebarInteraction {
         modifierFlags.intersection([.shift, .command, .control]).isEmpty
     }
 
-    static func isDisclosureHit(locationX: CGFloat, depth: Int, fontSize: CGFloat, gap: CGFloat) -> Bool {
-        let leading = disclosureOrigin(depth: depth, fontSize: fontSize, gap: gap)
+    static func isDisclosureHit(locationX: CGFloat, depth: Int, fontSize: CGFloat, gap: CGFloat, childIndent: CGFloat) -> Bool {
+        let leading = disclosureOrigin(depth: depth, fontSize: fontSize, gap: gap, childIndent: childIndent)
         return locationX >= leading && locationX < leading + disclosureGlyphWidth(fontSize: fontSize)
     }
 }

@@ -46,7 +46,7 @@
 - Database sidebar: set 6–18pt font size, primary/secondary/tertiary color, and system fixed-width text.
 - Playlist: set 6–18pt font size, primary/secondary/tertiary color, and system fixed-width text for every track-table text column.
 - Each appearance card Reset restores its own default primary 12pt appearance.
-- Sidebar Options: Group by Console sorts the Database game list into consoles using metadata and parent-folder information. Files Disclosure Gap sets 0–16 pt spacing between folder triangles and names in Files view. Hide File Extensions changes only Files-view labels, never filenames stored by the database or passed to playback.
+- Sidebar Options: Group by Console sorts the Database game list into consoles using metadata and parent-folder information. Files Disclosure Gap sets 0–16 pt spacing between folder triangles and names in Files view. Files Child Indent is a numeric 0–32 pt field that offsets every Files-view child level; its default 8 pt is about one character at the default font size. Hide File Extensions changes only Files-view labels, never filenames stored by the database or passed to playback.
 - Every Options panel places a horizontal rule below its heading. Checkbox options use a leading checkbox with any explanatory text aligned beneath its label.
 
 ## Window

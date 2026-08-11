@@ -155,6 +155,8 @@ final class PlayerViewModel {
     }
     /// Space between a Files-mode disclosure triangle and its label, in points.
     var databaseSidebarDisclosureGapPoints: CGFloat = 6
+    /// Extra hierarchy offset applied for each Files-mode child depth, in points.
+    var databaseSidebarChildIndentPoints: CGFloat = 8
     var databaseSidebarHidesFileExtensions = false
     var playlistFontSize: CGFloat {
         get { interfaceFontSize }
@@ -1474,6 +1476,7 @@ final class PlayerViewModel {
             databaseSidebarTextColor: databaseSidebarTextColor.rawValue,
             databaseSidebarMonospaceFont: databaseSidebarMonospaceFont,
             databaseSidebarDisclosureGapPoints: databaseSidebarDisclosureGapPoints,
+            databaseSidebarChildIndentPoints: databaseSidebarChildIndentPoints,
             databaseSidebarHidesFileExtensions: databaseSidebarHidesFileExtensions,
             playlistFontSize: playlistFontSize,
             playlistTextColor: playlistTextColor.rawValue,
@@ -1552,6 +1555,11 @@ final class PlayerViewModel {
 
     func setDatabaseSidebarDisclosureGapPoints(_ gap: CGFloat) {
         databaseSidebarDisclosureGapPoints = min(max(gap, 0), 16)
+        savePreferencesNow()
+    }
+
+    func setDatabaseSidebarChildIndentPoints(_ indent: CGFloat) {
+        databaseSidebarChildIndentPoints = min(max(indent.rounded(), 0), 32)
         savePreferencesNow()
     }
 
@@ -3094,6 +3102,9 @@ final class PlayerViewModel {
             // The brief pre-release implementation stored a font-relative value.
             // Preserve its visual distance once, then persist future edits in points.
             databaseSidebarDisclosureGapPoints = min(max(CGFloat(legacyEmGap) * databaseSidebarFontSize, 0), 16)
+        }
+        if let storedSidebarChildIndentPoints = preferences.databaseSidebarChildIndentPoints {
+            databaseSidebarChildIndentPoints = min(max(CGFloat(storedSidebarChildIndentPoints).rounded(), 0), 32)
         }
         databaseSidebarHidesFileExtensions = preferences.databaseSidebarHidesFileExtensions
         sidebarSystemMode = preferences.sidebarSystemMode

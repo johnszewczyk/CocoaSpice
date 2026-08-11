@@ -388,6 +388,29 @@ struct OptionsView: View {
                             .foregroundStyle(.secondary)
                     }
                 }
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Files Child Indent")
+                        Text("Extra indent for each Files-view child level, measured in points. Default 8 pt is roughly one character at the default font size.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 16)
+                    TextField(
+                        "8",
+                        value: Binding(
+                            get: { Double(model.databaseSidebarChildIndentPoints) },
+                            set: { model.setDatabaseSidebarChildIndentPoints(CGFloat($0)) }
+                        ),
+                        format: .number.precision(.fractionLength(0))
+                    )
+                    .multilineTextAlignment(.trailing)
+                    .frame(width: 56)
+                    Text("pt")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
             }
 
             sectionCard(title: "Windows") {
