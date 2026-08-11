@@ -3454,7 +3454,22 @@ final class PlayerViewModel {
         PlaylistPresentation.lengthText(for: metadataCache[track.id])
     }
 
-    func pathText(for track: TrackItem) -> String { track.fullPathText }
+    func pathText(for track: TrackItem) -> String {
+        let fullPath = track.fullPathText
+        let roots = libraryScanRoots
+            .map(\.standardizedURL)
+            .sorted { $0.path.count > $1.path.count }
+        guard let root = roots.first(where: {
+            fullPath == $0.path || fullPath.hasPrefix($0.path + "/")
+        }) else {
+            return fullPath
+        }
+        let suffix = String(fullPath.dropFirst(root.path.count))
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        return suffix.isEmpty
+            ? root.lastPathComponent
+            : "\(root.lastPathComponent)/\(suffix)"
+    }
 
     func indexText(for track: TrackItem) -> String {
         guard let index = playlist.firstIndex(of: track) else { return "—" }

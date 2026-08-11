@@ -19,12 +19,13 @@ enum PlaylistQueueLoader {
         subsystem: "com.local.cocoaspice",
         category: "playlist-load"
     )
-    /// Sidebar selection is interactive database work. Keep it off Swift's
-    /// cooperative executor so decoder, archive, and scan jobs cannot delay a
-    /// small indexed playlist read.
+    /// Sidebar selection is interactive database work. Each request opens a
+    /// read-only SQLite connection, so requests must not queue behind stale
+    /// clicks; PlayerViewModel's generation guard discards their old results.
     private static let databaseReadQueue = DispatchQueue(
         label: "com.local.cocoaspice.playlist-database-read",
-        qos: .userInitiated
+        qos: .userInitiated,
+        attributes: .concurrent
     )
     static func loadTracks(in folderURL: URL) async -> [TrackItem] {
         let loaded = await loadDroppedTracks(from: [folderURL])
