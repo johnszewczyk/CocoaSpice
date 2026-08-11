@@ -2,7 +2,7 @@ import Foundation
 import SQLite3
 
 final class LibraryDatabase: @unchecked Sendable {
-    static let schemaVersion = 16
+    static let schemaVersion = 17
     let db: OpaquePointer?
     private let dbURL: URL
 

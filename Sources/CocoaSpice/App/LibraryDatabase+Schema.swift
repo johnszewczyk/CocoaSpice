@@ -5,6 +5,17 @@ extension LibraryDatabase {
         let version = try userVersion()
         guard version != Self.schemaVersion else { return }
 
+        // Files-sidebar archive activation addresses a source by exactly its
+        // library root and path. The former tree index inserted `folder_path`
+        // between those fields, which forced SQLite to walk a whole large
+        // root before it could find one selected archive. Preserve the
+        // inspected library while adding the direct source lookup index.
+        if version == 16 {
+            try execute("CREATE INDEX IF NOT EXISTS tracks_source_lookup_index ON tracks(root_id, path);")
+            try setUserVersion(Self.schemaVersion)
+            return
+        }
+
         try execute("PRAGMA foreign_keys = OFF;")
         try execute("BEGIN TRANSACTION;")
         do {
@@ -187,6 +198,7 @@ extension LibraryDatabase {
         """)
         try execute("CREATE INDEX tracks_browser_bucket_index ON tracks(browser_game, browser_system, root_id);")
         try execute("CREATE INDEX tracks_file_tree_index ON tracks(root_id, folder_path, path);")
+        try execute("CREATE INDEX tracks_source_lookup_index ON tracks(root_id, path);")
         try execute("CREATE INDEX tracks_game_sidebar_index ON tracks(browser_game, browser_system, root_id, path);")
     }
 
