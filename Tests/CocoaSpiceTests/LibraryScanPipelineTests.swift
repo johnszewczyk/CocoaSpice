@@ -557,7 +557,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     ) == "3DO")
 }
 
-@Test func databaseConsoleKeepsAnExplicitNonVGMStreamSystemTag() {
+@Test func databaseConsoleUsesCollectionFoldersUnlessEmbeddedTagsArePreferred() {
     let route = ScanRoute(
         pluginID: "gme",
         formatExtension: "spc",
@@ -570,7 +570,36 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
         route: route,
         sourcePath: "/music/JoshW/Nintendo DS/Example/Game.spc",
         rootPath: "/music/JoshW"
+    ) == "Nintendo DS")
+    #expect(LibraryConsoleResolver.browserSystem(
+        metadataSystem: "Super Nintendo",
+        route: route,
+        sourcePath: "/music/JoshW/Nintendo DS/Example/Game.spc",
+        rootPath: "/music/JoshW",
+        preferEmbeddedMetadata: true
     ) == "Super Nintendo")
+    #expect(LibraryConsoleResolver.consoleFolder(
+        for: "/music/JoshW/Playstation/Castlevania/track.psf",
+        rootPath: "/music/JoshW"
+    ) == "Sony PlayStation")
+}
+
+@Test func databaseGameUsesTagsThenArchiveOrParentFolderFallbacks() {
+    #expect(LibraryConsoleResolver.browserGame(
+        metadataGame: "Castlevania",
+        sourcePath: "/music/Sony PlayStation/Unexpected Archive.tar.zst",
+        archiveEntry: "track.psf"
+    ) == "Castlevania")
+    #expect(LibraryConsoleResolver.browserGame(
+        metadataGame: "",
+        sourcePath: "/music/Sony PlayStation/Castlevania - Symphony of the Night.tar.zst",
+        archiveEntry: "track.psf"
+    ) == "Castlevania - Symphony of the Night")
+    #expect(LibraryConsoleResolver.browserGame(
+        metadataGame: "",
+        sourcePath: "/music/Sony PlayStation 2/Castlevania - Lament of Innocence/track.psf2",
+        archiveEntry: nil
+    ) == "Castlevania - Lament of Innocence")
 }
 
 @Test func databaseMigrationRepairsExistingGENHConsoleBuckets() throws {

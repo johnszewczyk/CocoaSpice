@@ -40,6 +40,7 @@ This is not ordinary “repeat the file” behavior. Long Play uses the decoder�
 
 - A source is identified by its library root, source path, archive member, and subtrack index. One source does not produce duplicate database rows.
 - A Games row is identified by its library root, game, and system. Matching titles from separate roots remain separate and load only that root's stored playlist rows.
+- Game tags are used when present; otherwise archives use their filename and loose tracks use their parent folder. Console folders are preferred by default, with an Options switch for embedded console tags.
 - Incremental scans reuse unchanged results. A changed archive replaces its complete stored member set, so removed or renamed members cannot remain visible.
 - Disabled paths are excluded from the active database and Scan All, yet remain available for a deliberate per-path scan.
 - Reset Database clears indexed state. The next scan recreates it from the chosen paths.
@@ -49,7 +50,7 @@ This is not ordinary “repeat the file” behavior. Long Play uses the decoder�
 | Feature | Behavior |
 | --- | --- |
 | Playlist | Native multi-selection, keyboard activation, sortable columns, optional monospace display, and total-duration status. |
-| Sidebar search | The first character waits 250 ms; follow-up typing waits 100 ms. Games reuse prefix candidates; Files filtering runs off the main actor and opens matching folder branches. |
+| Sidebar search | The first character waits 250 ms and follow-up typing waits 100 ms. A query temporarily shows the same indexed game results from either underlying Games or Files mode; clearing it restores that mode. |
 | Long Play | Only loop-aware decoder modules participate. Ordinary finite media—WAV, AIFF, FLAC, MP3, M4A/AAC, and APE—always keep their native duration. |
 | Audio controls | Ten-band EQ, app-level attenuation-only volume, mono output, and optional 10/20/40-band spectrum. Spectrum is off by default because it uses additional CPU while playing. |
 | Transitions | Transport, seek, track changes, and Long Play reconfiguration use a brief output duck to reduce device-change clicks without altering the music stream or macOS system volume. |

@@ -351,6 +351,21 @@ struct OptionsView: View {
                     }
                 }
                 .toggleStyle(.checkbox)
+                .disabled(model.isLibraryScanInProgress)
+
+                Toggle(isOn: Binding(
+                    get: { model.preferEmbeddedConsoleTags },
+                    set: { model.setPreferEmbeddedConsoleTags($0) }
+                )) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Prefer Embedded Console Tags")
+                        Text("Use decoded console metadata before the collection's console folder when grouping games.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .toggleStyle(.checkbox)
+                .disabled(model.isLibraryScanInProgress)
 
                 Toggle(isOn: Binding(
                     get: { model.databaseSidebarHidesFileExtensions },

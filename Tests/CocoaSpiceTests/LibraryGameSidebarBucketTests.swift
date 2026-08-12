@@ -3,6 +3,59 @@ import SQLite3
 import Testing
 @testable import CocoaSpice
 
+@Test func consoleSourcePreferenceRewritesExistingSidebarBucketsWithoutRescanning() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("cocoaspice-console-source-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let rootPath = directory.appendingPathComponent("JoshW", isDirectory: true)
+    let gameFolder = rootPath
+        .appendingPathComponent("Sony PlayStation", isDirectory: true)
+        .appendingPathComponent("Castlevania", isDirectory: true)
+    try FileManager.default.createDirectory(at: gameFolder, withIntermediateDirectories: true)
+
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    try database.addRoot(path: rootPath.path)
+    let root = try #require(database.loadRoots().first)
+    let trackPath = gameFolder.appendingPathComponent("track.psf").path
+    let route = ScanRoute(
+        pluginID: "play-psf1",
+        formatExtension: "psf",
+        supportsArchiveMembers: true,
+        supportsMultiTrack: false
+    )
+    let candidate = ScanCandidate(
+        identity: ScanItemIdentity(rootID: root.id, path: trackPath, archiveEntry: nil),
+        fingerprint: ScanFingerprint(fileSize: 1, modifiedAt: Date(timeIntervalSince1970: 1)),
+        sourceURL: URL(fileURLWithPath: trackPath),
+        route: route
+    )
+    try database.persistScanTrackResults([.success(candidate, ScanInspection(
+        route: route,
+        tracks: [ScanTrackMetadata(
+            trackIndex: 0,
+            trackCount: 1,
+            metadata: TrackMetadata(
+                game: "Castlevania",
+                song: "Theme",
+                system: "Playstation",
+                author: "",
+                comment: "",
+                introLengthMs: 0,
+                loopLengthMs: 0,
+                playLengthMs: 60_000,
+                fadeLengthMs: 0
+            )
+        )]
+    ))])
+    try database.markScanCompleted(rootID: root.id)
+
+    #expect(try database.loadGameItems().map(\.systemName) == ["Sony PlayStation"])
+    try database.rewriteSidebarIdentity(preferEmbeddedMetadata: true)
+    #expect(try database.loadGameItems().map(\.systemName) == ["Playstation"])
+    try database.rewriteSidebarIdentity(preferEmbeddedMetadata: false)
+    #expect(try database.loadGameItems().map(\.systemName) == ["Sony PlayStation"])
+}
+
 @Test func gameSidebarBucketsServeCleanRootsAndDirtyRootsFallBackToTracks() throws {
     let directory = FileManager.default.temporaryDirectory
         .appendingPathComponent("cocoaspice-game-sidebar-buckets-\(UUID().uuidString)", isDirectory: true)

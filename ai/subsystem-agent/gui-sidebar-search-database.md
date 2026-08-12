@@ -9,19 +9,18 @@
 ## Current State
 
 - Sidebar search uses the single database search field.
-- Sidebar placeholder text is `Search Database` in Games and `Search Files` in Files.
+- Sidebar placeholder text is `Search Library`.
 - The native field delays a new non-empty query 250 ms, then follow-up edits 100 ms. Pending AppKit text is never overwritten by unrelated SwiftUI refreshes.
-- Games filter the loaded database list. Files filter a prebuilt normalized index on a utility task; stale tasks are cancelled by `LatestTaskOwner`.
-- Search results stay inside the same dense sidebar list or folder tree instead of switching to an older result view.
+- A non-empty query is a temporary third view that always filters the indexed Games list, independent of the underlying Games/Files selection. Clearing the query restores that underlying view unchanged.
+- Search results stay inside the same dense database list; `Group by Console` applies to those results.
 - Search should not interrupt playback.
-- Files search matches stored filename and path, preserving the folder hierarchy that reaches matching source files.
-- A non-empty Files query expands all folders in the filtered tree. Clear restores the pre-search expanded-folder set.
+- The Files tree is not searched while the third search view is active.
 
 ## Rules
 
 - Database-mode search must remain effectively instant.
 - Search must remain database-oriented, not filesystem-recursive.
-- Do not swap into a separate legacy search-results surface without a product reason.
+- Do not branch search semantics on the underlying Games/Files selection.
 
 ## Files
 

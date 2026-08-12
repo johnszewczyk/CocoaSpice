@@ -143,25 +143,30 @@ final class NativePlaybackSession: @unchecked Sendable {
         }
     }
 
-    func togglePause() throws -> Bool {
+    func setPlaying(_ shouldPlay: Bool) throws -> Bool {
         try refillQueue.sync {
-            let isPlaying = output.snapshot.transportState == .playing
-            if isPlaying {
-                output.duckForTransition()
-                output.pause()
-                stream?.setSuspended(true)
-                refillTimer?.cancel()
-                refillTimer = nil
-                outputHeartbeat.reset(expectingRenderRequests: false)
-                return false
-            }
-
-            stream?.setSuspended(false)
-            try output.start()
-            outputHeartbeat.reset(expectingRenderRequests: true)
-            startRefillTimer()
-            return true
+            try setPlayingLocked(shouldPlay)
         }
+    }
+
+    private func setPlayingLocked(_ shouldPlay: Bool) throws -> Bool {
+        let isPlaying = output.snapshot.transportState == .playing
+        guard shouldPlay != isPlaying else { return isPlaying }
+        if isPlaying {
+            output.duckForTransition()
+            output.pause()
+            stream?.setSuspended(true)
+            refillTimer?.cancel()
+            refillTimer = nil
+            outputHeartbeat.reset(expectingRenderRequests: false)
+            return false
+        }
+
+        stream?.setSuspended(false)
+        try output.start()
+        outputHeartbeat.reset(expectingRenderRequests: true)
+        startRefillTimer()
+        return true
     }
 
     func seek(to seconds: TimeInterval) throws {

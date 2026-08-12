@@ -18,6 +18,7 @@
 - The last row stops in Off mode, wraps only in Playlist repeat mode, and repeats only in Song repeat mode.
 - Remote media commands integrate with the same playback flow as the toolbar.
 - Explicit remote play and remote pause commands are handled separately rather than both feeding a toggle path.
+- Explicit play and pause are serialized desired-state commands at the native session boundary. Repeated or delayed Play cannot invert a resumed track back to Paused, including after an audio-route interruption.
 - Queue-navigation policy for previous, next, resume fallback, and completion advance now lives in a dedicated helper rather than inline throughout the view model.
 - Rapid previous or next commands are not throttled by a same-key time gate.
 - A newer playback request cancels stale request tasks before they enter decoder loading.

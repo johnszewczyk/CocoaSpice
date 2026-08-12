@@ -44,6 +44,7 @@ enum AppDefaultsKey {
     static let playlistTextColor = "CocoaSpice.playlistTextColor"
     static let playlistMonospaceFont = "CocoaSpice.playlistMonospaceFont"
     static let sidebarSystemMode = "CocoaSpice.sidebarSystemMode"
+    static let preferEmbeddedConsoleTags = "CocoaSpice.preferEmbeddedConsoleTags"
     static let sidebarBrowserMode = "CocoaSpice.sidebarBrowserMode"
     static let archiveCacheMode = "CocoaSpice.archiveCacheMode"
     static let archiveCacheLimitBytes = "CocoaSpice.archiveCacheLimitBytes"
@@ -81,6 +82,7 @@ struct RestoredPlaybackPreferences {
     let playlistTextColor: String?
     let playlistMonospaceFont: Bool
     let sidebarSystemMode: Bool
+    let preferEmbeddedConsoleTags: Bool
     let sidebarBrowserModeRawValue: String?
 }
 
@@ -154,6 +156,7 @@ enum AppSessionPersistence {
             playlistTextColor: defaults.string(forKey: AppDefaultsKey.playlistTextColor),
             playlistMonospaceFont: defaults.object(forKey: AppDefaultsKey.playlistMonospaceFont) as? Bool ?? false,
             sidebarSystemMode: defaults.object(forKey: AppDefaultsKey.sidebarSystemMode) as? Bool ?? false,
+            preferEmbeddedConsoleTags: defaults.object(forKey: AppDefaultsKey.preferEmbeddedConsoleTags) as? Bool ?? false,
             sidebarBrowserModeRawValue: defaults.string(forKey: AppDefaultsKey.sidebarBrowserMode)
         )
     }
@@ -208,6 +211,7 @@ enum AppSessionPersistence {
         playlistTextColor: String,
         playlistMonospaceFont: Bool,
         sidebarSystemMode: Bool,
+        preferEmbeddedConsoleTags: Bool,
         sidebarBrowserModeRawValue: String,
         defaults: UserDefaults = .standard
     ) {
@@ -239,6 +243,7 @@ enum AppSessionPersistence {
         defaults.set(playlistTextColor, forKey: AppDefaultsKey.playlistTextColor)
         defaults.set(playlistMonospaceFont, forKey: AppDefaultsKey.playlistMonospaceFont)
         defaults.set(sidebarSystemMode, forKey: AppDefaultsKey.sidebarSystemMode)
+        defaults.set(preferEmbeddedConsoleTags, forKey: AppDefaultsKey.preferEmbeddedConsoleTags)
         defaults.set(sidebarBrowserModeRawValue, forKey: AppDefaultsKey.sidebarBrowserMode)
     }
 

@@ -13,7 +13,7 @@ struct LibraryDatabaseScanMetrics: Equatable, Sendable {
 }
 
 final class LibraryDatabase: @unchecked Sendable {
-    static let schemaVersion = 20
+    static let schemaVersion = 21
     static let performanceLogger = Logger(subsystem: "com.local.cocoaspice", category: "library-database")
     let db: OpaquePointer?
     private let dbURL: URL
@@ -22,6 +22,7 @@ final class LibraryDatabase: @unchecked Sendable {
     private var atomicScanRootID: Int64?
     private var atomicScanStagingRootID: Int64?
     private(set) var lastAtomicScanMetrics: LibraryDatabaseScanMetrics?
+    var preferEmbeddedConsoleTags: Bool
 
     var databaseURL: URL { dbURL }
 
@@ -29,16 +30,25 @@ final class LibraryDatabase: @unchecked Sendable {
         let supportURL = try Self.applicationSupportDirectory()
         try FileManager.default.createDirectory(at: supportURL, withIntermediateDirectories: true)
         let dbURL = supportURL.appendingPathComponent("Library.sqlite", isDirectory: false)
-        try self.init(databaseURL: dbURL, recoverAbandonedStages: true)
+        try self.init(
+            databaseURL: dbURL,
+            recoverAbandonedStages: true,
+            preferEmbeddedConsoleTags: UserDefaults.standard.bool(forKey: AppDefaultsKey.preferEmbeddedConsoleTags)
+        )
     }
 
-    init(databaseURL: URL, recoverAbandonedStages: Bool = false) throws {
+    init(
+        databaseURL: URL,
+        recoverAbandonedStages: Bool = false,
+        preferEmbeddedConsoleTags: Bool = false
+    ) throws {
         try FileManager.default.createDirectory(
             at: databaseURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
         let dbURL = databaseURL.standardizedFileURL
         self.dbURL = dbURL
+        self.preferEmbeddedConsoleTags = preferEmbeddedConsoleTags
 
         var handle: OpaquePointer?
         if sqlite3_open(dbURL.path, &handle) != SQLITE_OK {
@@ -696,16 +706,18 @@ final class LibraryDatabase: @unchecked Sendable {
                 let extensionName = inspection.route.formatExtension
                 let archivePath = candidate.identity.archiveEntry == nil ? nil : path
                 let metadata = track.metadata
-                let browserGame = metadata?.game.trimmingCharacters(in: .whitespacesAndNewlines)
+                let browserGame = LibraryConsoleResolver.browserGame(
+                    metadataGame: metadata?.game ?? "",
+                    sourcePath: path,
+                    archiveEntry: candidate.identity.archiveEntry
+                )
                 let browserSystem = LibraryConsoleResolver.browserSystem(
                     metadataSystem: metadata?.system ?? "",
                     route: inspection.route,
                     sourcePath: path,
-                    rootPath: rootPaths[candidate.identity.rootID]
+                    rootPath: rootPaths[candidate.identity.rootID],
+                    preferEmbeddedMetadata: preferEmbeddedConsoleTags
                 )
-                let resolvedBrowserGame = browserGame.flatMap { $0.isEmpty ? nil : $0 }
-                    ?? archivePath
-                    ?? folderPath
                 try executePrepared(
                     insertTrack,
                     bindings: [
@@ -714,7 +726,7 @@ final class LibraryDatabase: @unchecked Sendable {
                         .text(path),
                         .text(filename),
                         .text(extensionName),
-                        .text(resolvedBrowserGame),
+                        .text(browserGame),
                         .text(browserSystem),
                         .int(Int64(track.trackIndex)),
                         .int(Int64(track.trackCount)),

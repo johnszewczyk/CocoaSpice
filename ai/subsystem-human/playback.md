@@ -9,6 +9,7 @@
 
 - Controls: play, pause, stop, previous, and next.
 - Controls: media keys and standard transport commands.
+- Controls: Play and Pause are explicit desired states. Repeated Play after an output-device reconnect cannot toggle a resumed track back to Paused.
 - Repeat: the toolbar cycles Off, Repeat Playlist, and Repeat Song.
 - Controls: rapid previous or next commands use the newest requested track.
 - Playback: starts through a streamed audio path.

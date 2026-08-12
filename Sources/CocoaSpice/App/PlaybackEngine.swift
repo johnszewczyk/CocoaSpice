@@ -147,10 +147,10 @@ final class PlaybackEngine: @unchecked Sendable {
         return requestID == latestPlaybackRequest
     }
 
-    func togglePause() async -> Bool {
+    func setPlaying(_ shouldPlay: Bool) async -> Bool {
         await enqueue {
             do {
-                self.isPlaying = try self.nativeSession.togglePause()
+                self.isPlaying = try self.nativeSession.setPlaying(shouldPlay)
             } catch {
                 self.resetPlaybackState()
             }

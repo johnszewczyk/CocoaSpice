@@ -171,7 +171,18 @@ final class PlayerViewModel {
         set { interfaceMonospaceFont = newValue }
     }
     var sidebarBrowserMode: SidebarBrowserMode = .games
+    var effectiveSidebarBrowserMode: SidebarBrowserMode {
+        Self.effectiveSidebarBrowserMode(storedMode: sidebarBrowserMode, searchText: sidebarSearchQuery)
+    }
     var sidebarSystemMode = false
+    var preferEmbeddedConsoleTags = false
+
+    nonisolated static func effectiveSidebarBrowserMode(
+        storedMode: SidebarBrowserMode,
+        searchText: String
+    ) -> SidebarBrowserMode {
+        searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? storedMode : .games
+    }
     private(set) var expandedDatabaseSystems: Set<String> = []
     var databaseGameItems: [DatabaseGameItem] { databaseSidebar.gameItems }
     var visibleDatabaseGameItems: [DatabaseGameItem] { databaseSidebar.visibleGameItems }
@@ -371,7 +382,7 @@ final class PlayerViewModel {
     var isLoadingDatabaseSidebar: Bool { databaseSidebarLoader.isLoadingGames }
     var isLoadingDatabaseFileSidebar: Bool { databaseSidebarLoader.isLoadingFiles }
     var databaseSidebarLoadingStatus: String {
-        switch sidebarBrowserMode {
+        switch effectiveSidebarBrowserMode {
         case .games:
             databaseSidebarLoader.gameLoadingStatus.isEmpty
                 ? "Reading indexed games…"
@@ -383,7 +394,7 @@ final class PlayerViewModel {
         }
     }
     var databaseSidebarLoadError: String? {
-        switch sidebarBrowserMode {
+        switch effectiveSidebarBrowserMode {
         case .games: databaseSidebarLoader.gameLoadError
         case .files: databaseSidebarLoader.fileLoadError
         }
@@ -990,7 +1001,7 @@ final class PlayerViewModel {
         playlistFollowsCursor = enabled
 
         if enabled {
-            if sidebarBrowserMode != .files {
+            if effectiveSidebarBrowserMode != .files {
                 let selectedItems = databaseGameItems.filter { selectedDatabaseGameIDs.contains($0.id) }
                 if !selectedItems.isEmpty {
                     activateDatabaseGames(selectedItems, replace: true)
@@ -1517,6 +1528,7 @@ final class PlayerViewModel {
             playlistTextColor: playlistTextColor.rawValue,
             playlistMonospaceFont: playlistMonospaceFont,
             sidebarSystemMode: sidebarSystemMode,
+            preferEmbeddedConsoleTags: preferEmbeddedConsoleTags,
             sidebarBrowserModeRawValue: sidebarBrowserMode.rawValue
         )
     }
@@ -1617,10 +1629,52 @@ final class PlayerViewModel {
 
     func setSidebarSystemMode(_ enabled: Bool) {
         sidebarSystemMode = enabled
-        expandedDatabaseSystems = enabled && sidebarBrowserMode == .games && !sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        expandedDatabaseSystems = enabled && effectiveSidebarBrowserMode == .games && !sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
             : []
         savePreferencesNow()
+    }
+
+    func setPreferEmbeddedConsoleTags(_ enabled: Bool) {
+        guard !libraryScanInProgress,
+              preferEmbeddedConsoleTags != enabled,
+              let databaseURL = libraryDatabase?.databaseURL else { return }
+        let previous = preferEmbeddedConsoleTags
+        let generation = libraryOperations.beginTask()
+        libraryScanInProgress = true
+        preferEmbeddedConsoleTags = enabled
+        libraryDatabase?.preferEmbeddedConsoleTags = enabled
+        savePreferencesNow()
+        Task { [weak self] in
+            guard let self else { return }
+            defer {
+                if self.libraryOperations.isCurrentTask(generation) {
+                    self.libraryScanInProgress = false
+                    self.libraryOperations.finishTask(generation: generation)
+                }
+            }
+            let errorDescription = await Task.detached(priority: .utility) {
+                do {
+                    let database = try LibraryDatabase(databaseURL: databaseURL, preferEmbeddedConsoleTags: enabled)
+                    try database.rewriteSidebarIdentity(preferEmbeddedMetadata: enabled)
+                    return nil as String?
+                } catch {
+                    return error.localizedDescription
+                }
+            }.value
+            guard self.libraryOperations.isCurrentTask(generation), !Task.isCancelled else { return }
+            if let errorDescription {
+                self.preferEmbeddedConsoleTags = previous
+                self.libraryDatabase?.preferEmbeddedConsoleTags = previous
+                self.savePreferencesNow()
+                self.libraryScanStatus = "Could not update console grouping: \(errorDescription)"
+                return
+            }
+            self.libraryScanStatus = enabled
+                ? "Database console grouping now prefers embedded tags."
+                : "Database console grouping now prefers collection folders."
+            self.reloadDatabaseSidebar()
+        }
     }
 
     func setSidebarBrowserMode(_ mode: SidebarBrowserMode) {
@@ -2006,12 +2060,12 @@ final class PlayerViewModel {
     }
 
     func pausePlayback() {
-        guard !isLoading, isPlaying else { return }
+        guard !isLoading, currentTrack != nil else { return }
         cancelFadedSkip()
         let playback = self.playback
         Task { @MainActor [weak self] in
             guard let self else { return }
-            self.isPlaying = await playback.togglePause()
+            self.isPlaying = await playback.setPlaying(false)
             self.statusText = "Paused"
             self.updateRemoteTransportState()
         }
@@ -2032,11 +2086,10 @@ final class PlayerViewModel {
             return
         }
 
-        guard !isPlaying else { return }
         let playback = self.playback
         Task { @MainActor [weak self] in
             guard let self else { return }
-            self.isPlaying = await playback.togglePause()
+            self.isPlaying = await playback.setPlaying(true)
             self.statusText = "Playing"
             self.updateRemoteTransportState()
         }
@@ -3030,7 +3083,7 @@ final class PlayerViewModel {
     private func reloadDatabaseSidebar() {
         databaseSidebarLoader.invalidateAndLoad(
             databaseURL: libraryDatabase?.databaseURL,
-            mode: sidebarBrowserMode,
+            mode: effectiveSidebarBrowserMode,
             didLoadGames: { [weak self] in self?.databaseGamesDidLoad() },
             didLoadFiles: { [weak self] in self?.databaseFilesDidLoad() }
         )
@@ -3039,7 +3092,7 @@ final class PlayerViewModel {
     private func loadDatabaseSidebarIfNeeded() {
         databaseSidebarLoader.loadIfNeeded(
             databaseURL: libraryDatabase?.databaseURL,
-            mode: sidebarBrowserMode,
+            mode: effectiveSidebarBrowserMode,
             didLoadGames: { [weak self] in self?.databaseGamesDidLoad() },
             didLoadFiles: { [weak self] in self?.databaseFilesDidLoad() }
         )
@@ -3184,6 +3237,7 @@ final class PlayerViewModel {
         }
         databaseSidebarHidesFileExtensions = preferences.databaseSidebarHidesFileExtensions
         sidebarSystemMode = preferences.sidebarSystemMode
+        preferEmbeddedConsoleTags = preferences.preferEmbeddedConsoleTags
         sidebarBrowserMode = SidebarBrowserMode(rawValue: preferences.sidebarBrowserModeRawValue ?? "games") ?? .games
         applySidebarSearch()
         if sidebarSystemMode,
@@ -3232,19 +3286,20 @@ final class PlayerViewModel {
     }
 
     private func applySidebarSearch() {
-        switch sidebarBrowserMode {
-        case .games:
+        let hasQuery = !sidebarSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if hasQuery || sidebarBrowserMode == .games {
             databaseFileSidebarSearchTaskOwner.cancel()
             databaseSidebar.searchText = sidebarSearchQuery
             if sidebarSystemMode {
-                let hasQuery = !sidebarSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 expandedDatabaseSystems = hasQuery
                     ? Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
                     : []
             }
-        case .files:
+        } else {
+            databaseSidebar.searchText = ""
             applyDatabaseFileSidebarSearch()
         }
+        loadDatabaseSidebarIfNeeded()
     }
 
     private func applyDatabaseFileSidebarSearch() {

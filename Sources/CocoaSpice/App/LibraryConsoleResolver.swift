@@ -14,23 +14,45 @@ enum LibraryConsoleResolver {
 
     private static let canonicalConsoleNames = Dictionary(
         uniqueKeysWithValues: knownConsoleNames.map { ($0.lowercased(), $0) }
-    )
+    ).merging([
+        "playstation": "Sony PlayStation",
+        "playstation 2": "Sony PlayStation 2",
+        "playstation 3": "Sony PlayStation 3",
+        "ps1": "Sony PlayStation",
+        "ps2": "Sony PlayStation 2",
+        "ps3": "Sony PlayStation 3"
+    ]) { current, _ in current }
+
+    static func browserGame(metadataGame: String, sourcePath: String, archiveEntry: String?) -> String {
+        let taggedGame = metadataGame.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let taggedGame = taggedGame.nonEmpty { return taggedGame }
+        let sourceURL = URL(fileURLWithPath: sourcePath, isDirectory: false)
+        if archiveEntry != nil {
+            return FilenamePresentation.withoutDisplayedExtension(sourceURL.lastPathComponent)
+        }
+        return sourceURL.deletingLastPathComponent().lastPathComponent.nonEmpty
+            ?? FilenamePresentation.withoutDisplayedExtension(sourceURL.lastPathComponent)
+    }
 
     static func browserSystem(
         metadataSystem: String,
-        route: ScanRoute,
+        route: ScanRoute?,
         sourcePath: String,
-        rootPath: String?
+        rootPath: String?,
+        preferEmbeddedMetadata: Bool = false
     ) -> String {
         let taggedSystem = metadataSystem.trimmingCharacters(in: .whitespacesAndNewlines)
+        let folderSystem = consoleFolder(for: sourcePath, rootPath: rootPath)
 
         // vgmstream supplies a decoder-family default, not a console tag. In
         // particular, GENH is a header format used by rips from many systems.
-        if route.pluginID == "vgmstream", let folderSystem = consoleFolder(for: sourcePath, rootPath: rootPath) {
+        if !preferEmbeddedMetadata, route?.pluginID == "vgmstream", let folderSystem {
             return folderSystem
         }
 
-        return taggedSystem.nonEmpty ?? consoleFolder(for: sourcePath, rootPath: rootPath) ?? ""
+        return preferEmbeddedMetadata
+            ? taggedSystem.nonEmpty ?? folderSystem ?? ""
+            : folderSystem ?? taggedSystem.nonEmpty ?? ""
     }
 
     static func consoleFolder(for sourcePath: String, rootPath: String?) -> String? {

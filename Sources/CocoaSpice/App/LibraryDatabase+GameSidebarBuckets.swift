@@ -2,6 +2,84 @@ import Foundation
 import SQLite3
 
 extension LibraryDatabase {
+    func rewriteSidebarIdentity(preferEmbeddedMetadata: Bool) throws {
+        let sql = """
+        SELECT t.id, t.root_id, t.path, t.archive_entry, t.extension,
+               r.path, COALESCE(m.game, ''), COALESCE(m.system, '')
+        FROM tracks t
+        INNER JOIN library_roots r ON r.id = t.root_id
+        LEFT JOIN track_metadata m ON m.track_id = t.id
+        WHERE t.id > ?
+        ORDER BY t.id
+        LIMIT 5000;
+        """
+        let updateStatement = try prepareStatement(
+            "UPDATE tracks SET browser_game = ?, browser_system = ? WHERE id = ?;"
+        )
+        defer { sqlite3_finalize(updateStatement) }
+        var lastTrackID: Int64 = 0
+        var touchedRootIDs = Set<Int64>()
+        try withSavepoint {
+            while true {
+                var statement: OpaquePointer?
+                guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+                    throw databaseError()
+                }
+                guard let statement else { throw databaseError() }
+                sqliteBind(.int(lastTrackID), to: statement, at: 1)
+                var updates: [(id: Int64, rootID: Int64, game: String, system: String)] = []
+                var stepResult = sqlite3_step(statement)
+                while stepResult == SQLITE_ROW {
+                    let id = sqlite3_column_int64(statement, 0)
+                    let rootID = sqlite3_column_int64(statement, 1)
+                    let sourcePath = sqliteString(statement, index: 2)
+                    let archiveEntry = sqlite3_column_type(statement, 3) == SQLITE_NULL
+                        ? nil
+                        : sqliteString(statement, index: 3)
+                    let extensionName = sqliteString(statement, index: 4)
+                    let rootPath = sqliteString(statement, index: 5)
+                    let metadataGame = sqliteString(statement, index: 6)
+                    let metadataSystem = sqliteString(statement, index: 7)
+                    let route = ScanCoreHandlers.registry.route(
+                        for: extensionName,
+                        archiveMember: archiveEntry != nil
+                    )
+                    updates.append((
+                        id,
+                        rootID,
+                        LibraryConsoleResolver.browserGame(
+                            metadataGame: metadataGame,
+                            sourcePath: sourcePath,
+                            archiveEntry: archiveEntry
+                        ),
+                        LibraryConsoleResolver.browserSystem(
+                            metadataSystem: metadataSystem,
+                            route: route,
+                            sourcePath: sourcePath,
+                            rootPath: rootPath,
+                            preferEmbeddedMetadata: preferEmbeddedMetadata
+                        )
+                    ))
+                    stepResult = sqlite3_step(statement)
+                }
+                sqlite3_finalize(statement)
+                guard stepResult == SQLITE_DONE else { throw databaseError() }
+                guard !updates.isEmpty else { break }
+                for update in updates {
+                    try executePrepared(
+                        updateStatement,
+                        bindings: [.text(update.game), .text(update.system), .int(update.id)]
+                    )
+                    touchedRootIDs.insert(update.rootID)
+                    lastTrackID = update.id
+                }
+            }
+            try markGameSidebarBucketsDirty(rootIDs: touchedRootIDs)
+        }
+        if !touchedRootIDs.isEmpty { try refreshDirtyGameSidebarBuckets() }
+        preferEmbeddedConsoleTags = preferEmbeddedMetadata
+    }
+
     func refreshDirtyGameSidebarBuckets() throws {
         let sql = """
         SELECT id

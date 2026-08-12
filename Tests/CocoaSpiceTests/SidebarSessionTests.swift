@@ -4,6 +4,12 @@ import Foundation
 import Testing
 @testable import CocoaSpice
 
+@Test func sidebarSearchIsAViewIndependentTemporaryGamesView() {
+    #expect(PlayerViewModel.effectiveSidebarBrowserMode(storedMode: .games, searchText: "Castlevania") == .games)
+    #expect(PlayerViewModel.effectiveSidebarBrowserMode(storedMode: .files, searchText: "Castlevania") == .games)
+    #expect(PlayerViewModel.effectiveSidebarBrowserMode(storedMode: .files, searchText: "  ") == .files)
+}
+
 // Retain historic test names while production code uses the neutral registry.
 private typealias GMEFormatSupport = PlaybackFormatRegistry
 
@@ -346,6 +352,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     let track = TrackItem(archiveURL: archiveURL, entryPath: "Music/song.spc")
     defaults.set([track.persistedValue], forKey: AppDefaultsKey.persistedPlaylistPaths)
     defaults.set(true, forKey: AppDefaultsKey.longPlayEnabled)
+    defaults.set(true, forKey: AppDefaultsKey.preferEmbeddedConsoleTags)
     defaults.set("search", forKey: AppDefaultsKey.sidebarSearchText)
     defaults.set("/Music", forKey: AppDefaultsKey.lastRootPath)
     defaults.set("/Music/SNES", forKey: AppDefaultsKey.lastLibrarySelectedFolderPath)
@@ -364,6 +371,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
         supportedExtensions: ["spc"]
     )
     #expect(startup.playbackPreferences.longPlayEnabled)
+    #expect(startup.playbackPreferences.preferEmbeddedConsoleTags)
     #expect(startup.sessionState?.tracks == [track])
     #expect(startup.playlistColumnState.order == ["title", "file"])
     #expect(startup.sidebarSearchText == "search")

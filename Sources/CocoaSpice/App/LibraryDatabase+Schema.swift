@@ -5,8 +5,15 @@ extension LibraryDatabase {
         let version = try userVersion()
         guard version != Self.schemaVersion else { return }
 
+        if version == 20 {
+            try rewriteSidebarIdentity(preferEmbeddedMetadata: preferEmbeddedConsoleTags)
+            try setUserVersion(Self.schemaVersion)
+            return
+        }
+
         if version == 19 {
             try createScanStagingRootTable()
+            try rewriteSidebarIdentity(preferEmbeddedMetadata: preferEmbeddedConsoleTags)
             try setUserVersion(Self.schemaVersion)
             return
         }
@@ -21,6 +28,7 @@ extension LibraryDatabase {
             try repairVGMStreamConsoleBuckets()
             try clearHESFallbackDurations()
             try createScanStagingRootTable()
+            try rewriteSidebarIdentity(preferEmbeddedMetadata: preferEmbeddedConsoleTags)
             try setUserVersion(Self.schemaVersion)
             return
         }
@@ -29,6 +37,7 @@ extension LibraryDatabase {
             try repairVGMStreamConsoleBuckets()
             try clearHESFallbackDurations()
             try createScanStagingRootTable()
+            try rewriteSidebarIdentity(preferEmbeddedMetadata: preferEmbeddedConsoleTags)
             try setUserVersion(Self.schemaVersion)
             return
         }
@@ -36,6 +45,7 @@ extension LibraryDatabase {
         if version == 18 {
             try clearHESFallbackDurations()
             try createScanStagingRootTable()
+            try rewriteSidebarIdentity(preferEmbeddedMetadata: preferEmbeddedConsoleTags)
             try setUserVersion(Self.schemaVersion)
             return
         }

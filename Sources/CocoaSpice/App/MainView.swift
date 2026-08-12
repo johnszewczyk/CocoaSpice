@@ -95,7 +95,7 @@ struct MainView: View {
             VStack(spacing: 0) {
                 NativeSearchField(
                     text: $model.sidebarSearchText,
-                    placeholder: model.sidebarBrowserMode == .games ? "Search Database" : "Search Files",
+                    placeholder: "Search Library",
                     debounceInterval: 0.1,
                     initialDebounceInterval: 0.25
                 )
@@ -121,21 +121,21 @@ struct MainView: View {
                 }
 
                 Group {
-                    if model.sidebarBrowserMode == .games
+                    if model.effectiveSidebarBrowserMode == .games
                         ? model.isLoadingDatabaseSidebar
                         : model.isLoadingDatabaseFileSidebar {
                         VStack(spacing: 10) {
                             ProgressView()
                                 .progressViewStyle(.linear)
                                 .frame(width: 180)
-                            Text(model.sidebarBrowserMode == .games ? "Loading Games Library" : "Loading Files Library")
+                            Text(model.effectiveSidebarBrowserMode == .games ? "Loading Games Library" : "Loading Files Library")
                                 .font(.headline)
                             Text(model.databaseSidebarLoadingStatus)
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else if model.sidebarBrowserMode == .games && model.databaseGameItems.isEmpty {
+                    } else if model.effectiveSidebarBrowserMode == .games && model.databaseGameItems.isEmpty {
                         if model.isLibraryScanInProgress {
                             ContentUnavailableView(
                                 "Scanning Database",
@@ -149,19 +149,19 @@ struct MainView: View {
                                 description: Text("Add scan roots in Options to populate the database.")
                             )
                         }
-                    } else if model.sidebarBrowserMode == .files && model.databaseFileItems.isEmpty {
+                    } else if model.effectiveSidebarBrowserMode == .files && model.databaseFileItems.isEmpty {
                         ContentUnavailableView(
                             "No Database Files",
                             systemImage: "folder",
                             description: Text("Add scan roots in Options to populate the database.")
                         )
-                    } else if model.sidebarBrowserMode == .games && model.visibleDatabaseGameItems.isEmpty {
+                    } else if model.effectiveSidebarBrowserMode == .games && model.visibleDatabaseGameItems.isEmpty {
                         ContentUnavailableView(
                             "No Matches",
                             systemImage: "magnifyingglass",
                             description: Text("No database games match the current sidebar search.")
                         )
-                    } else if model.sidebarBrowserMode == .files && model.visibleDatabaseFileItems.isEmpty {
+                    } else if model.effectiveSidebarBrowserMode == .files && model.visibleDatabaseFileItems.isEmpty {
                         ContentUnavailableView(
                             "No Matches",
                             systemImage: "magnifyingglass",
@@ -178,8 +178,8 @@ struct MainView: View {
                                 sidebarTextColor: model.databaseSidebarTextColor,
                                 sidebarMonospace: model.databaseSidebarMonospaceFont
                             )
-                            .opacity(model.sidebarBrowserMode == .games ? 1 : 0)
-                            .allowsHitTesting(model.sidebarBrowserMode == .games)
+                            .opacity(model.effectiveSidebarBrowserMode == .games ? 1 : 0)
+                            .allowsHitTesting(model.effectiveSidebarBrowserMode == .games)
 
                             DatabaseFileListView(
                                 model: model,
@@ -190,8 +190,8 @@ struct MainView: View {
                                 sidebarChildIndent: model.databaseSidebarChildIndentPoints,
                                 hideFileExtensions: model.databaseSidebarHidesFileExtensions
                             )
-                            .opacity(model.sidebarBrowserMode == .files ? 1 : 0)
-                            .allowsHitTesting(model.sidebarBrowserMode == .files)
+                            .opacity(model.effectiveSidebarBrowserMode == .files ? 1 : 0)
+                            .allowsHitTesting(model.effectiveSidebarBrowserMode == .files)
                         }
                     }
                 }
