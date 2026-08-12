@@ -117,34 +117,38 @@ final class LibraryDatabase: @unchecked Sendable {
         guard let rootID = atomicScanRootID else {
             throw NSError(domain: "LibraryDatabase", code: 3, userInfo: [NSLocalizedDescriptionKey: "No atomic library scan is active."])
         }
-        let publicationStartedAt = Date()
-        var projectionDurationMilliseconds = 0
         if let stagingRootID = atomicScanStagingRootID {
+            // Build the replacement projections while the staged root is
+            // still hidden. If either rebuild fails, the live root has not
+            // changed and the caller can delete the stage normally.
+            let projectionStartedAt = Date()
+            try rebuildGameSidebarBucketsIfDirty(rootID: stagingRootID)
+            try rebuildFileSidebarBucketsIfDirty(rootID: stagingRootID)
+            let projectionCompletedAt = Date()
+
+            let publicationStartedAt = Date()
             try publishScanStagingRoot(stagingRootID, targetRootID: rootID)
             let publicationCompletedAt = Date()
             atomicScanStagingRootID = nil
             atomicScanRootID = nil
-            let projectionStartedAt = Date()
-            try refreshDirtySidebarBuckets()
-            try markScanCompleted(rootID: rootID)
-            projectionDurationMilliseconds = Self.milliseconds(from: projectionStartedAt, to: Date())
             let elapsed = atomicScanStartedAt.map { Date().timeIntervalSince($0) } ?? 0
             let walBytes = fileSize(at: URL(fileURLWithPath: dbURL.path + "-wal"))
             let metrics = LibraryDatabaseScanMetrics(
                 durationMilliseconds: Int((elapsed * 1_000).rounded()),
-                stagingDurationMilliseconds: atomicScanStartedAt.map { Self.milliseconds(from: $0, to: publicationStartedAt) } ?? 0,
+                stagingDurationMilliseconds: atomicScanStartedAt.map { Self.milliseconds(from: $0, to: projectionStartedAt) } ?? 0,
                 publicationDurationMilliseconds: Self.milliseconds(from: publicationStartedAt, to: publicationCompletedAt),
-                projectionDurationMilliseconds: projectionDurationMilliseconds,
+                projectionDurationMilliseconds: Self.milliseconds(from: projectionStartedAt, to: projectionCompletedAt),
                 databaseBytes: fileSize(at: dbURL),
                 walBytes: walBytes,
                 walGrowthBytes: walBytes - atomicScanInitialWALBytes
             )
             finishAtomicScan(metrics: metrics)
             return
-        } else {
-            try execute("COMMIT;")
-            atomicScanRootID = nil
         }
+
+        let publicationStartedAt = Date()
+        try execute("COMMIT;")
+        atomicScanRootID = nil
         let publicationCompletedAt = Date()
         let elapsed = atomicScanStartedAt.map { Date().timeIntervalSince($0) } ?? 0
         let walBytes = fileSize(at: URL(fileURLWithPath: dbURL.path + "-wal"))
@@ -152,7 +156,7 @@ final class LibraryDatabase: @unchecked Sendable {
             durationMilliseconds: Int((elapsed * 1_000).rounded()),
             stagingDurationMilliseconds: atomicScanStartedAt.map { Self.milliseconds(from: $0, to: publicationStartedAt) } ?? 0,
             publicationDurationMilliseconds: Self.milliseconds(from: publicationStartedAt, to: publicationCompletedAt),
-            projectionDurationMilliseconds: projectionDurationMilliseconds,
+            projectionDurationMilliseconds: 0,
             databaseBytes: fileSize(at: dbURL),
             walBytes: walBytes,
             walGrowthBytes: walBytes - atomicScanInitialWALBytes
@@ -220,10 +224,29 @@ final class LibraryDatabase: @unchecked Sendable {
             """, bindings: [.int(targetRootID), .int(stagingRootID)])
             try clearLiveScanInventory(rootID: targetRootID)
             try clearLiveTracks(rootID: targetRootID)
+            try execute("DELETE FROM game_sidebar_buckets WHERE root_id = ?;", bindings: [.int(targetRootID)])
+            try execute("DELETE FROM file_sidebar_buckets WHERE root_id = ?;", bindings: [.int(targetRootID)])
             try execute("UPDATE scan_items SET root_id = ? WHERE root_id = ?;", bindings: [.int(targetRootID), .int(stagingRootID)])
             try execute("UPDATE tracks SET root_id = ? WHERE root_id = ?;", bindings: [.int(targetRootID), .int(stagingRootID)])
+            try execute("UPDATE game_sidebar_buckets SET root_id = ? WHERE root_id = ?;", bindings: [.int(targetRootID), .int(stagingRootID)])
+            try execute("UPDATE file_sidebar_buckets SET root_id = ? WHERE root_id = ?;", bindings: [.int(targetRootID), .int(stagingRootID)])
             try execute("DELETE FROM library_roots WHERE id = ?;", bindings: [.int(stagingRootID)])
-            try markSidebarBucketsDirty(rootIDs: [targetRootID])
+            try execute(
+                """
+                UPDATE library_roots
+                SET last_scan_completed_at = ?,
+                    last_scan_track_count = (
+                        SELECT COALESCE(SUM(track_count), 0)
+                        FROM game_sidebar_buckets
+                        WHERE root_id = ?
+                    ),
+                    last_scan_error = NULL,
+                    game_sidebar_buckets_dirty = 0,
+                    file_sidebar_buckets_dirty = 0
+                WHERE id = ?;
+                """,
+                bindings: [.double(Date().timeIntervalSince1970), .int(targetRootID), .int(targetRootID)]
+            )
             try execute("COMMIT;")
         } catch {
             try? execute("ROLLBACK;")

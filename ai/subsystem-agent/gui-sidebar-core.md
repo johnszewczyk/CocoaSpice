@@ -12,7 +12,7 @@
 - The search field now sits tighter to the top chrome with the extra top gap removed.
 - The left pane is a scanned persistent database browser.
 - The bottom sidebar mode switch has been removed.
-- The primary sidebar view is a dense native list of database game rows. Options can enable System Mode, which renders expandable system rows with game leaves underneath.
+- The primary sidebar view is a dense native list of database game rows. Options can enable `Group by Console`, stored internally as `sidebarSystemMode`, which renders expandable console rows with game leaves underneath.
 - Sidebar search filters the database list instead of switching to a separate legacy result view.
 - Right-clicking a sidebar row opens its context menu without changing sidebar selection.
 

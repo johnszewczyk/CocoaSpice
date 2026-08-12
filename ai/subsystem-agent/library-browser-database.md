@@ -11,10 +11,10 @@
 - Track identity is root-scoped: `tracks` is unique on root, source path, archive member, and subtrack index. This permits an intentionally overlapping root (for example, `JoshW` and `JoshW/USF`) to index the same archive without turning valid tracks into persistence failures.
 
 - The sidebar database browser is a scanned persistent browser, not a raw filesystem tree.
-- A full scan writes bounded committed batches into a disabled staging root while sidebar readers continue seeing the previous root and projections. Publish reassigns the staged rows to the real root in one short transaction, then refreshes the projections; cancellation removes only the staging root. Incremental scans retain one outer WAL transaction because they write only selected changed sources.
+- A full scan writes bounded committed batches into a disabled staging root while sidebar readers continue seeing the previous root and projections. Before publication, it builds both sidebar projections against that hidden root. One short transaction then replaces the live rows, moves the prepared projections to the real root, and publishes completion statistics together; cancellation or a projection failure removes only the staging root. Incremental scans retain one outer WAL transaction because they write only selected changed sources.
 - Abandoned staging-root recovery is a primary-connection startup responsibility. Short-lived scan, maintenance, and root-management connections must never run recovery, because they can coexist with an active full scan.
 - Scan metrics separate staging, publication, and projection time and record WAL growth. Use those measurements before replacing the shadow-root design with broader generation-scoped queries.
-- The normal sidebar displays a dense flat list of games derived from scanned metadata. Optional System Mode groups the same game leaves below expandable root-level system rows.
+- The normal sidebar displays a dense flat list of games derived from scanned metadata. The visible `Group by Console` option, stored internally as `sidebarSystemMode`, groups the same game leaves below expandable root-level console rows.
 - Sidebar game buckets and game-row identities are root-scoped: `root_id + game title + system`. This keeps same-title/same-system entries from separate library paths distinct and makes game activation bind the full `tracks_browser_bucket_index` key.
 - The scanned database now stores one playable row per discovered subtrack for loose or archived multi-track `libgme` containers such as NSF, GBS, and KSS.
 - Archive scans expand playable members from ZIP, 7z, and RSN containers, retaining archive path plus member path for later playback materialization.
@@ -29,7 +29,7 @@
 - `tracks.browser_game` and `tracks.browser_system` are persisted alongside scan results and are activated with `root_id`; do not rebuild the game bucket from `track_metadata` in a selection query, omit the selected root, or turn every sidebar activation into a whole-library scan.
 - `LibraryConsoleResolver` owns persisted sidebar-console selection. Decoder routing remains independent: vgmstream container defaults are not embedded console tags, so resolve their console from the nearest recognized folder below the scan root. Keep intermediate format folders such as KSS, VGM, and VGZ out of that decision.
 - `DatabaseFileItem` groups scanned track rows by `root_id + source path`; `tracks_file_tree_index` supports the database-only Files tree. Archive members never become filesystem tree leaves: their archive source is the leaf and activation loads its indexed members through the matching root.
-- The Games browser has a separate covering `tracks_game_sidebar_index` for grouped startup reads and unlinked-source filtering. Schema 19 upgrades in place to schema 20 by adding only the scan-staging registry; older unsupported schemas are reset.
+- The Games browser has a separate covering `tracks_game_sidebar_index` for grouped startup reads and unlinked-source filtering. Schemas 16 through 19 upgrade in place to schema 20 by applying only their missing index, data-repair, and scan-staging steps; other unsupported schemas are reset.
 - The Files browser has the durable root-scoped `file_sidebar_buckets` projection (`root_id + source path`), carrying folder, archive, and playable-track count. Normal reads must use it rather than grouping `tracks`; a dirty enabled root uses the direct grouping only until its projection rebuilds. A metadata-only repair (such as correcting a vgmstream console) may invalidate game buckets but must not dirty this file projection.
 - File-path activation resolves the scanned playable leaves for that file path, so NSF containers contribute subtracks rather than the raw container file.
 - File-tree file selection stores source-file IDs. A normal folder-row selection toggles expansion and does not alter the playlist or file selection.
@@ -48,8 +48,11 @@
 ## Files
 
 - [DatabaseSidebarPresentation.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarPresentation.swift)
+- [DatabaseSidebarLoader.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarLoader.swift)
 - [LibraryDatabase.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase.swift)
 - [LibraryDatabase+Schema.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase+Schema.swift)
+- [LibraryDatabase+GameSidebarBuckets.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase+GameSidebarBuckets.swift)
+- [LibraryDatabase+FileSidebarBuckets.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase+FileSidebarBuckets.swift)
 - [LibraryModels.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryModels.swift)
 - [LibraryConsoleResolver.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryConsoleResolver.swift)
 - [MainView.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)

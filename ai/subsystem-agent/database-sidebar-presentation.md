@@ -8,7 +8,7 @@
 
 ## Current State
 
-- The sidebar presents database games as a dense native list by default. System Mode instead shows expandable `System → Game` rows using the same game items and activation path.
+- The sidebar presents database games as a dense native list by default. `Group by Console` (`sidebarSystemMode`) instead shows expandable `Console → Game` rows using the same game items and activation path.
 - Files mode presents an expandable `library root → stored folder → stored source file` tree derived from `DatabaseFileItem` records. Its folder expansion is in-memory presentation state; it must not enumerate the live filesystem or archives. Each child depth adds its persisted child-indent offset beyond its parent title, so child triangles and file labels never share their parent's text column.
 - Games and Files use one shared dense native-table chrome for table configuration, keyboard/Return activation, row menus, scroll host, text-cell geometry, colors, and visible-row reload. Files render folder disclosure and depth as `▾`/`▸` plus four-space text indentation in the row label; do not add a separate disclosure-button layout.
 - Files-folder disclosure is handled by an unmodified direct click on its triangle or by repeating a plain click on the selected folder title. The initial folder selection expands it; repeating that click toggles it without changing the playlist. Return and double-click still activate the selected folder's descendant leaves.
@@ -19,9 +19,9 @@
 - Game selection status text is standardized as `name • N tracks`.
 - Library scan-root status text is standardized as enabled state, display order, indexed track count, and last completed scan time or error.
 - Sidebar presentation state owns loaded rows, the visible filtered subset, and native selection independently from queue and playback state.
-- In System Mode, root system rows only expand or collapse. Game leaves retain selection, multi-select, Return, double-click, and context-menu behavior.
+- With `Group by Console` enabled, root console rows only expand or collapse. Game leaves retain selection, multi-select, Return, double-click, and context-menu behavior.
 - A non-empty sidebar search temporarily expands the matching system groups. Clearing the query folds every system group while retaining the library/sidebar root itself.
-- Sidebar state publishes a content revision whenever the loaded or filtered game rows change. The native table caches the flattened rows for that revision and rebuilds them only after a content, System Mode, or expansion change.
+- Sidebar state publishes a content revision whenever the loaded or filtered game rows change. The native table caches the flattened rows for that revision and rebuilds them only after a content, `Group by Console`, or expansion change.
 - After either native Games or Files table is first shown, both remain alive while the other is visible. A Games/Files toggle changes visibility only; it must not recreate an expanded Files hierarchy or reread SQLite.
 - Startup loads only the sidebar mode that was last selected, on its own background connection. A persisted Files view begins its Files request immediately; Games remains deferred until Games is selected, and vice versa. A large Files listing must never wait behind the Games query or delay first-window creation.
 - `DatabaseSidebarLoader` owns the Games/Files snapshot cache. A mode toggle reads an already loaded snapshot; only a scan, root-state change, maintenance write, or explicit database reset invalidates it.

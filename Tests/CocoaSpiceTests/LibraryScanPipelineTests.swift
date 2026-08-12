@@ -719,10 +719,32 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(try stagedTrackCount(databaseURL: database.databaseURL) == 0)
 
     try database.beginAtomicScan(rootID: root.id, replacingLiveData: true)
+    try database.persistScanTrackResults([result(name: "Projection Failure")])
+    try database.execute("""
+    CREATE TRIGGER fail_staged_game_projection
+    BEFORE INSERT ON game_sidebar_buckets
+    BEGIN
+        SELECT RAISE(FAIL, 'forced staged projection failure');
+    END;
+    """)
+    do {
+        try database.commitAtomicScan()
+        Issue.record("Expected the staged projection rebuild to fail")
+    } catch {
+        database.rollbackAtomicScan()
+    }
+    try database.execute("DROP TRIGGER fail_staged_game_projection;")
+    #expect(try database.loadGameItems().map(\.name) == ["Old"])
+    #expect(try stagedTrackCount(databaseURL: database.databaseURL) == 0)
+
+    try database.beginAtomicScan(rootID: root.id, replacingLiveData: true)
     try database.persistScanTrackResults([result(name: "New")])
     try database.markScanCompleted(rootID: root.id)
     try database.commitAtomicScan()
     #expect(try database.loadGameItems().map(\.name) == ["New"])
+    #expect(try sqliteScalarInt(databaseURL: database.databaseURL, sql: "SELECT COUNT(*) FROM game_sidebar_buckets WHERE root_id = \(root.id);") == 1)
+    #expect(try sqliteScalarInt(databaseURL: database.databaseURL, sql: "SELECT COUNT(*) FROM file_sidebar_buckets WHERE root_id = \(root.id);") == 1)
+    #expect(try database.loadRoots().first?.lastScanTrackCount == 1)
     #expect(database.lastAtomicScanMetrics?.durationMilliseconds ?? -1 >= 0)
     #expect(database.lastAtomicScanMetrics?.publicationDurationMilliseconds ?? -1 >= 0)
     #expect(database.lastAtomicScanMetrics?.projectionDurationMilliseconds ?? -1 >= 0)
@@ -730,6 +752,17 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
 }
 
 private func stagedTrackCount(databaseURL: URL) throws -> Int {
+    try sqliteScalarInt(
+        databaseURL: databaseURL,
+        sql: "SELECT COUNT(*) FROM tracks WHERE root_id IN (SELECT staging_root_id FROM scan_staging_roots);"
+    )
+}
+
+private func stagingRootCount(databaseURL: URL) throws -> Int {
+    try sqliteScalarInt(databaseURL: databaseURL, sql: "SELECT COUNT(*) FROM scan_staging_roots;")
+}
+
+private func sqliteScalarInt(databaseURL: URL, sql: String) throws -> Int {
     var handle: OpaquePointer?
     guard sqlite3_open_v2(databaseURL.path, &handle, SQLITE_OPEN_READONLY, nil) == SQLITE_OK else {
         defer { sqlite3_close(handle) }
@@ -737,7 +770,7 @@ private func stagedTrackCount(databaseURL: URL) throws -> Int {
     }
     defer { sqlite3_close(handle) }
     var statement: OpaquePointer?
-    guard sqlite3_prepare_v2(handle, "SELECT COUNT(*) FROM tracks WHERE root_id IN (SELECT staging_root_id FROM scan_staging_roots);", -1, &statement, nil) == SQLITE_OK else {
+    guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {
         throw LibraryDatabase.databaseError(handle: handle)
     }
     defer { sqlite3_finalize(statement) }
@@ -772,11 +805,22 @@ private func stagedTrackCount(databaseURL: URL) throws -> Int {
     database = try LibraryDatabase(databaseURL: databaseURL, recoverAbandonedStages: true)
     #expect(try database?.trackCount() == 1)
     try database?.beginAtomicScan(rootID: root.id, replacingLiveData: true)
+    try database?.persistScanTrackResults([.success(candidate, ScanInspection(
+        route: route,
+        tracks: [ScanTrackMetadata(trackIndex: 0, trackCount: 1, metadata: nil)]
+    ))])
     database = nil
 
     database = try LibraryDatabase(databaseURL: databaseURL)
     #expect(try database?.trackCount() == 1)
+    #expect(try stagedTrackCount(databaseURL: databaseURL) == 1)
+    #expect(try stagingRootCount(databaseURL: databaseURL) == 1)
+    database = nil
+
+    database = try LibraryDatabase(databaseURL: databaseURL, recoverAbandonedStages: true)
+    #expect(try database?.trackCount() == 1)
     #expect(try stagedTrackCount(databaseURL: databaseURL) == 0)
+    #expect(try stagingRootCount(databaseURL: databaseURL) == 0)
 }
 
 @Test func scanPlannerOnlySchedulesSelectedItemsInStableOrder() {
