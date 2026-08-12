@@ -25,6 +25,21 @@ enum SidebarBrowserMode: String, CaseIterable, Identifiable {
     }
 }
 
+enum SidebarPresentationView: String, Sendable {
+    case folders
+    case database
+    case search
+}
+
+struct SidebarViewResolution: Equatable, Sendable {
+    let storedMode: SidebarPresentationView
+    let query: String
+    let view: SidebarPresentationView
+    let contentMode: SidebarPresentationView
+    let resultSource: String
+    let isTemporary: Bool
+}
+
 @MainActor
 @Observable
 final class PlayerViewModel {
@@ -174,6 +189,9 @@ final class PlayerViewModel {
     var effectiveSidebarBrowserMode: SidebarBrowserMode {
         Self.effectiveSidebarBrowserMode(storedMode: sidebarBrowserMode, searchText: sidebarSearchQuery)
     }
+    var effectiveSidebarPresentationView: SidebarPresentationView {
+        Self.sidebarViewResolution(storedMode: sidebarBrowserMode, searchText: sidebarSearchQuery).view
+    }
     var sidebarSystemMode = false
     var preferEmbeddedConsoleTags = false
 
@@ -181,7 +199,28 @@ final class PlayerViewModel {
         storedMode: SidebarBrowserMode,
         searchText: String
     ) -> SidebarBrowserMode {
-        searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? storedMode : .games
+        sidebarViewResolution(storedMode: storedMode, searchText: searchText).contentMode == .folders
+            ? .files
+            : .games
+    }
+
+    nonisolated static func sidebarViewResolution(
+        storedMode: SidebarBrowserMode,
+        searchText: String
+    ) -> SidebarViewResolution {
+        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let storedPresentation: SidebarPresentationView = storedMode == .files ? .folders : .database
+        let isSearching = !query.isEmpty
+        let view: SidebarPresentationView = isSearching ? .search : storedPresentation
+        let contentMode: SidebarPresentationView = view == .folders ? .folders : .database
+        return SidebarViewResolution(
+            storedMode: storedPresentation,
+            query: query,
+            view: view,
+            contentMode: contentMode,
+            resultSource: contentMode == .folders ? "folder-tree" : "database-index",
+            isTemporary: isSearching
+        )
     }
     private(set) var expandedDatabaseSystems: Set<String> = []
     var databaseGameItems: [DatabaseGameItem] { databaseSidebar.gameItems }

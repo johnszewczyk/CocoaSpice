@@ -39,6 +39,7 @@
 - Database-backed queue loading now lives in a dedicated queue-loader helper rather than inline throughout the main view model.
 - Sidebar snapshot reads never translate a SQLite failure into an empty library. `DatabaseSidebarLoader` retains the last valid snapshot, publishes the exact failure, and exposes Retry in the sidebar.
 - Sidebar context-menu invocation does not mutate selection or trigger playlist-follow activation by itself. File-tree menu actions carry the clicked row's typed file/folder payload rather than reading the table selection, because folder rows are deliberately nonselectable.
+- `SidebarViewResolution` resolves the stored Games/Files selection and trimmed query into Games, Files, or temporary Search. Search always uses Games content, and clearing it reveals the latest stored selection without rewriting it.
 
 ## Rules
 
@@ -57,6 +58,7 @@
 - [LibraryModels.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryModels.swift)
 - [LibraryConsoleResolver.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryConsoleResolver.swift)
 - [Cross-app identity fixture](/Users/john/Downloads/Code/CocoaSpice/Tests/CocoaSpiceTests/cross-app-library-identity-v1.json)
+- [Cross-app search-view fixture](/Users/john/Downloads/Code/CocoaSpice/Tests/CocoaSpiceTests/cross-app-sidebar-search-view-v1.json)
 - [Sister-app conformance contract](/Users/john/Downloads/Code/DocMan/Docs/cocoaspice-spcboy-conformance.md)
 - [MainView.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
 - [PlaylistQueueLoader.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlaylistQueueLoader.swift)

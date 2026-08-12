@@ -21,6 +21,7 @@
 - Search: temporarily replaces either Games or Files with the same indexed game results. Clearing it returns to the previously selected view.
 - Search: matches game titles and compact source-root names; console headings organize the results but are not an additional search field.
 - Search: preserves the active database selection when the query changes.
+- Search: Return and list navigation act on the visible indexed game results even when Files is the covered underlying view.
 - Search: clearing the query folds all Group by Console headings, returning the sidebar to its compact state.
 
 ## Selection
