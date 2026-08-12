@@ -5,6 +5,12 @@ extension LibraryDatabase {
         let version = try userVersion()
         guard version != Self.schemaVersion else { return }
 
+        if version == 21 {
+            try rewriteSidebarIdentity(preferEmbeddedMetadata: preferEmbeddedConsoleTags)
+            try setUserVersion(Self.schemaVersion)
+            return
+        }
+
         if version == 20 {
             try rewriteSidebarIdentity(preferEmbeddedMetadata: preferEmbeddedConsoleTags)
             try setUserVersion(Self.schemaVersion)

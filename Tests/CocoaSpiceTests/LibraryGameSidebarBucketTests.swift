@@ -51,9 +51,64 @@ import Testing
 
     #expect(try database.loadGameItems().map(\.systemName) == ["Sony PlayStation"])
     try database.rewriteSidebarIdentity(preferEmbeddedMetadata: true)
-    #expect(try database.loadGameItems().map(\.systemName) == ["Playstation"])
+    #expect(try database.loadGameItems().map(\.systemName) == ["Sony PlayStation"])
     try database.rewriteSidebarIdentity(preferEmbeddedMetadata: false)
     #expect(try database.loadGameItems().map(\.systemName) == ["Sony PlayStation"])
+}
+
+@Test func schemaTwentyOneMigrationRewritesAndRepublishesLibraryIdentity() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("cocoaspice-identity-v22-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let rootPath = directory.appendingPathComponent("JoshW", isDirectory: true)
+    try FileManager.default.createDirectory(at: rootPath, withIntermediateDirectories: true)
+    let databaseURL = directory.appendingPathComponent("Library.sqlite")
+
+    var database: LibraryDatabase? = try LibraryDatabase(databaseURL: databaseURL)
+    try database?.addRoot(path: rootPath.path)
+    let root = try #require(database?.loadRoots().first)
+    let archivePath = rootPath.appendingPathComponent("Unsorted/Castlevania [PS2].tzst").path
+    let route = ScanRoute(
+        pluginID: "gme",
+        formatExtension: "nsf",
+        supportsArchiveMembers: true,
+        supportsMultiTrack: true
+    )
+    let candidate = ScanCandidate(
+        identity: ScanItemIdentity(rootID: root.id, path: archivePath, archiveEntry: "Castlevania.nsf"),
+        fingerprint: ScanFingerprint(fileSize: 1, modifiedAt: Date(timeIntervalSince1970: 1)),
+        sourceURL: URL(fileURLWithPath: archivePath),
+        route: route
+    )
+    try database?.persistScanTrackResults([.success(candidate, ScanInspection(
+        route: route,
+        tracks: [ScanTrackMetadata(
+            trackIndex: 0,
+            trackCount: 1,
+            metadata: TrackMetadata(
+                game: "",
+                song: "Theme",
+                system: "Nintendo DS",
+                author: "",
+                comment: "",
+                introLengthMs: 0,
+                loopLengthMs: 0,
+                playLengthMs: 60_000,
+                fadeLengthMs: 0
+            )
+        )]
+    ))])
+    try database?.markScanCompleted(rootID: root.id)
+    try database?.execute("UPDATE tracks SET browser_game = 'Wrong', browser_system = 'Wrong';")
+    try database?.execute("UPDATE game_sidebar_buckets SET browser_game = 'Wrong', browser_system = 'Wrong';")
+    try database?.execute("PRAGMA user_version = 21;")
+    database = nil
+
+    database = try LibraryDatabase(databaseURL: databaseURL, preferEmbeddedConsoleTags: true)
+    let migrated = try #require(database?.loadGameItems().first)
+    #expect(migrated.name == "Castlevania")
+    #expect(migrated.systemName == "Nintendo DS")
+    #expect(migrated.trackCount == 1)
 }
 
 @Test func gameSidebarBucketsServeCleanRootsAndDirtyRootsFallBackToTracks() throws {
@@ -186,8 +241,8 @@ import Testing
     #expect(items.count == 2)
     #expect(Set(items.map(\.id)).count == 2)
     #expect(Set(items.map(\.displayName)) == [
-        "Final Fight (SNES • JoshW)",
-        "Final Fight (SNES • SNESMusicOrg)"
+        "Final Fight (Super Nintendo • JoshW)",
+        "Final Fight (Super Nintendo • SNESMusicOrg)"
     ])
 
     let firstLoaded = try database.tracksAndMetadataForGames([try #require(items.first { $0.rootID == firstRoot.id })])

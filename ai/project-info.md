@@ -29,6 +29,7 @@ Human-facing behavior:
 
 Agent engineering notes:
 
+- Sister-app behavioral conformance with SPCBoy: [cocoaspice-spcboy-conformance.md](/Users/john/Downloads/Code/DocMan/Docs/cocoaspice-spcboy-conformance.md)
 - Playback backend routing: [audio-playback-backend-routing.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-playback-backend-routing.md)
 - Format support matrix: [audio-format-support.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-format-support.md)
 - Highly Complete lifecycle and timing: [audio-highly-complete-bridge-lifecycle.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-bridge-lifecycle.md), [audio-highly-complete-minigsf-timing.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-highly-complete-minigsf-timing.md)

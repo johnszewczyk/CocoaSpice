@@ -225,7 +225,8 @@ let package = Package(
         ),
         .testTarget(
             name: "CocoaSpiceTests",
-            dependencies: ["CocoaSpice", "C2SF"]
+            dependencies: ["CocoaSpice", "C2SF"],
+            resources: [.copy("cross-app-library-identity-v1.json")]
         )
     ],
     swiftLanguageModes: [.v6]

@@ -1672,7 +1672,7 @@ final class PlayerViewModel {
             }
             self.libraryScanStatus = enabled
                 ? "Database console grouping now prefers embedded tags."
-                : "Database console grouping now prefers collection folders."
+                : "Database console grouping now prefers collection tags and folders."
             self.reloadDatabaseSidebar()
         }
     }

@@ -13,7 +13,7 @@ struct LibraryDatabaseScanMetrics: Equatable, Sendable {
 }
 
 final class LibraryDatabase: @unchecked Sendable {
-    static let schemaVersion = 21
+    static let schemaVersion = 22
     static let performanceLogger = Logger(subsystem: "com.local.cocoaspice", category: "library-database")
     let db: OpaquePointer?
     private let dbURL: URL
