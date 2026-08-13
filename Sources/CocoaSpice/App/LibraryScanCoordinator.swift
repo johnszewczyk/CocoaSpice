@@ -22,31 +22,65 @@ final class LibraryScanCoordinator {
         activity: @escaping @Sendable (Int, Int, ScanActivity) -> Void = { _, _, _ in },
         issues: @escaping @Sendable ([String]) -> Void = { _ in }
     ) async throws -> ScanSummary {
+        let phaseTimeline = ScanPhaseTimeline()
+        phaseTimeline.enter(.preparing)
         report("Starting scan: \(root.standardizedURL.lastPathComponent)")
         try database.markScanStarted(rootID: root.id)
-        try database.beginAtomicScan(rootID: root.id, replacingLiveData: mode == .newScan)
-        do {
-            report("Discovering supported files recursively: \(root.standardizedURL.lastPathComponent)…")
-        let discovered = await ScanFilesystemDiscovery.discover(
+        let atomicScan = try database.beginAtomicScan(
             rootID: root.id,
-            rootURL: root.standardizedURL,
-            registry: registry
+            replacingLiveData: true,
+            mode: mode
         )
-        report("Discovered \(discovered.count) files. Loading prior scan state…")
-        let priorItems = try database.loadScanInventory(rootID: root.id)
-        let priorByIdentity = Dictionary(uniqueKeysWithValues: priorItems.map { ($0.identity, $0) })
+        do {
+            if atomicScan.resumed {
+                report("Resuming retained scan: \(root.standardizedURL.lastPathComponent)…")
+            }
+            report("Discovering supported files recursively: \(root.standardizedURL.lastPathComponent)…")
+            phaseTimeline.enter(.discovery)
+            let discovered = try await ScanFilesystemDiscovery.discover(
+                rootID: root.id,
+                rootURL: root.standardizedURL,
+                registry: registry
+            )
+            try Task.checkCancellation()
+            phaseTimeline.enter(.planning)
+            report("Discovered \(discovered.count) files. Loading prior scan state…")
+            try database.synchronizeStagingSources(
+                rootID: root.id,
+                discoveredPaths: discovered.map(\.identity.path)
+            )
+            let priorItems = try database.loadScanInventory(rootID: root.id)
+            let priorByIdentity = Dictionary(uniqueKeysWithValues: priorItems.map { ($0.identity, $0) })
+            let completedSources = Dictionary(uniqueKeysWithValues: try database
+                .loadScanSourceCheckpoints(rootID: root.id)
+                .map { ($0.path, $0.fingerprint) })
 
-        // A source marked dead by Fix Missing becomes live again the moment it
-        // is rediscovered. Its existing inventory and metadata stay intact.
-        try database.restoreSources(discovered.map {
-            LibraryIndexedSource(rootID: $0.identity.rootID, path: $0.identity.path, archiveEntry: nil)
-        })
+            // A retained checkpoint is useful only while the physical source is
+            // still identical. Recompute its bounded content/archive signature
+            // before skipping it so a timestamp-preserving rewrite cannot publish
+            // stale staged rows after resume.
+            let checkpointValidationIndexes = discovered.indices.filter { index in
+                completedSources[discovered[index].identity.path]?.contentSignature != nil
+            }
+            let validatedCheckpointCandidates = try await enrichScanCandidates(
+                checkpointValidationIndexes.map { discovered[$0] },
+                maximumConcurrency: ZipArchiveSupport.archiveProcessConcurrency
+            )
+            var validatedDiscovered = discovered
+            for (offset, index) in checkpointValidationIndexes.enumerated() {
+                validatedDiscovered[index] = validatedCheckpointCandidates[offset]
+            }
 
         var selected: [ScanCandidate] = []
         var candidatesNeedingSignature: [(candidate: ScanCandidate, prior: ScanInventoryItem)] = []
         selected.reserveCapacity(discovered.count)
         candidatesNeedingSignature.reserveCapacity(discovered.count)
-        for candidate in discovered {
+        for candidate in validatedDiscovered {
+            try Task.checkCancellation()
+            if let completedFingerprint = completedSources[candidate.identity.path],
+               completedFingerprint.matches(candidate.fingerprint) {
+                continue
+            }
             guard let prior = priorByIdentity[candidate.identity] else {
                 // The deep archive listing will supply its native signature
                 // while the archive is already being scanned. Do not spend a
@@ -58,10 +92,29 @@ final class LibraryScanCoordinator {
                 selected.append(candidate)
                 continue
             }
-            guard ScanSelection.includes(prior, mode: mode, currentFingerprint: candidate.fingerprint) else {
+            if prior.route != candidate.route {
+                selected.append(candidate)
                 continue
             }
-            guard ArchiveScanSignature.supports(candidate.sourceURL) else {
+            let requiresScan = ScanSelection.includes(
+                prior,
+                mode: mode,
+                currentFingerprint: candidate.fingerprint
+            )
+            if mode == .incremental,
+               prior.fingerprint.contentSignature != nil,
+               !ArchiveScanSignature.supports(candidate.sourceURL) {
+                // Revalidate the bounded content sample even when size and
+                // mtime match. This catches timestamp-preserving rewrites;
+                // unchanged content is then skipped below.
+                candidatesNeedingSignature.append((candidate, prior))
+                continue
+            }
+            guard requiresScan else {
+                continue
+            }
+            guard ArchiveScanSignature.supports(candidate.sourceURL)
+                    || prior.fingerprint.contentSignature != nil else {
                 selected.append(candidate)
                 continue
             }
@@ -71,7 +124,7 @@ final class LibraryScanCoordinator {
         // Native manifest checks avoid extraction, but were previously awaited
         // one at a time after a bulk move or timestamp change. Keep archive
         // tool pressure bounded while letting independent signatures overlap.
-        let enrichedCandidates = await enrichArchiveCandidates(
+        let enrichedCandidates = try await enrichScanCandidates(
             candidatesNeedingSignature.map(\.candidate),
             maximumConcurrency: ZipArchiveSupport.archiveProcessConcurrency
         )
@@ -103,6 +156,7 @@ final class LibraryScanCoordinator {
                 }
             },
             activity: { current, total, activity in
+                phaseTimeline.enter(activity.phase)
                 Task {
                     await progressReporter.reportActivity(current: current, total: total, activity: activity)
                 }
@@ -115,13 +169,27 @@ final class LibraryScanCoordinator {
                 }
             },
             persist: { results in
+                phaseTimeline.enter(.persistence)
                 try await persistence.persist(results)
             }
         )
         await issueReporter.flush()
-        let summary = await accumulator.summary
+        let accumulatedSummary = await accumulator.summary
+        try Task.checkCancellation()
+        phaseTimeline.enter(.publication)
+        report("Publishing scan: \(root.standardizedURL.lastPathComponent)…")
         try database.markScanCompleted(rootID: root.id)
         try database.commitAtomicScan()
+        let summary = ScanSummary(
+            discovered: accumulatedSummary.discovered,
+            completed: accumulatedSummary.completed,
+            successful: accumulatedSummary.successful,
+            failed: accumulatedSummary.failed,
+            unsupported: accumulatedSummary.unsupported,
+            cancelled: accumulatedSummary.cancelled,
+            failures: accumulatedSummary.failures,
+            telemetry: phaseTimeline.snapshot()
+        )
         let issues = summary.failures.map {
             "\($0.identity.path)\($0.identity.archiveEntry.map { "#\($0)" } ?? ""): \($0.stage.rawValue): \($0.message)"
         }
@@ -132,21 +200,31 @@ final class LibraryScanCoordinator {
             issues: issues
         )
         return summary
+        } catch is CancellationError {
+            phaseTimeline.enter(.cleanup)
+            report("Pausing cancelled scan…")
+            database.pauseAtomicScan()
+            throw CancellationError()
         } catch {
-            database.rollbackAtomicScan()
+            phaseTimeline.enter(.cleanup)
+            report("Pausing failed scan…")
+            database.pauseAtomicScan(failed: true, error: error.localizedDescription)
             try? database.markScanFailed(rootID: root.id, error: error.localizedDescription)
             throw error
         }
     }
 }
 
-private func enrichArchiveCandidates(
+private func enrichScanCandidates(
     _ candidates: [ScanCandidate],
     maximumConcurrency: Int
-) async -> [ScanCandidate] {
+) async throws -> [ScanCandidate] {
+    try Task.checkCancellation()
     guard candidates.count > 1 else {
         guard let candidate = candidates.first else { return [] }
-        return [await ArchiveScanSignature.enrich(candidate)]
+        let enriched = await enrichScanCandidate(candidate)
+        try Task.checkCancellation()
+        return [enriched]
     }
 
     let workerCount = min(max(1, maximumConcurrency), candidates.count)
@@ -154,17 +232,29 @@ private func enrichArchiveCandidates(
     var nextIndex = workerCount
     await withTaskGroup(of: (Int, ScanCandidate).self) { group in
         for index in 0..<workerCount {
-            group.addTask { (index, await ArchiveScanSignature.enrich(candidates[index])) }
+            group.addTask { (index, await enrichScanCandidate(candidates[index])) }
         }
         while let (index, candidate) = await group.next() {
             ordered[index] = candidate
+            guard !Task.isCancelled else {
+                group.cancelAll()
+                continue
+            }
             guard nextIndex < candidates.count else { continue }
             let queuedIndex = nextIndex
             nextIndex += 1
-            group.addTask { (queuedIndex, await ArchiveScanSignature.enrich(candidates[queuedIndex])) }
+            group.addTask { (queuedIndex, await enrichScanCandidate(candidates[queuedIndex])) }
         }
     }
+    try Task.checkCancellation()
     return ordered.enumerated().map { index, candidate in candidate ?? candidates[index] }
+}
+
+private func enrichScanCandidate(_ candidate: ScanCandidate) async -> ScanCandidate {
+    if ArchiveScanSignature.supports(candidate.sourceURL) {
+        return await ArchiveScanSignature.enrich(candidate)
+    }
+    return await ScanSourceContentSignature.enrich(candidate)
 }
 
 private actor ScanProgressReporter {
@@ -236,30 +326,12 @@ private actor ScanIssueReporter {
 
 private actor ScanResultPersistence {
     private let database: LibraryDatabase
-    private var refreshedArchiveSources = Set<LibraryIndexedSource>()
 
     init(database: LibraryDatabase) {
         self.database = database
     }
 
     func persist(_ results: [ScanPipelineResult]) throws {
-        // An archive can be emitted across many bounded SQLite batches. Clear
-        // its old members exactly once, before the first fresh member batch,
-        // rather than relying on member-path equality during a repack.
-        let archiveSources = Set(results.compactMap { result -> LibraryIndexedSource? in
-            guard case .success(let candidate, _) = result,
-                  candidate.identity.archiveEntry != nil else {
-                return nil
-            }
-            return LibraryIndexedSource(
-                rootID: candidate.identity.rootID,
-                path: candidate.identity.path,
-                archiveEntry: nil
-            )
-        })
-        for source in archiveSources where refreshedArchiveSources.insert(source).inserted {
-            try database.resetArchiveMembers(rootID: source.rootID, path: source.path)
-        }
-        try database.persistScanResults(results)
+        try database.checkpointScanSource(results)
     }
 }

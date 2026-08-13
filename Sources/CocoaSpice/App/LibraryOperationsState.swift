@@ -24,10 +24,12 @@ final class LibraryOperationsState {
     var cleanRootIDs: Set<Int64> = []
     var trimmedRootIDs: Set<Int64> = []
     var scanInProgress = false
+    var scanIsCancelling = false
     var forceScan = false
     var scanProgressByRootID: [Int64: LibraryScanProgress] = [:]
     var scanCurrentPath: String?
     var scanCurrentFile: String?
+    var scanPhase: ScanLifecyclePhase?
     var linkTestProgress: LibraryScanProgress?
     var linkTestCurrentPath: String?
 
@@ -49,6 +51,7 @@ final class LibraryOperationsState {
         scanProgressByRootID = [:]
         scanCurrentPath = nil
         scanCurrentFile = nil
+        scanPhase = nil
     }
 
     func clearScanProgress(rootID: Int64) {
@@ -83,5 +86,9 @@ final class LibraryOperationsState {
 
     func cancelActiveTask() {
         taskOwner.cancel()
+    }
+
+    func requestActiveTaskCancellation() {
+        taskOwner.requestCancellation()
     }
 }

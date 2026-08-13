@@ -1,71 +1,10 @@
 import Foundation
+import MediaScannerKit
 
-enum ScanPipelineError: LocalizedError {
-    case operationTimedOut(String, seconds: Int)
-
-    var errorDescription: String? {
-        switch self {
-        case .operationTimedOut(let description, let seconds):
-            return "Timed out after \(seconds) seconds: \(description)"
-        }
-    }
-}
-
-struct ScanActivity: Sendable {
-    let sourcePath: String
-    let filename: String
-    let detail: String
-
-    init(candidate: ScanCandidate, detail: String) {
-        if let entryPath = candidate.identity.archiveEntry {
-            sourcePath = "\(candidate.sourceURL.path)#\(entryPath)"
-            filename = URL(fileURLWithPath: entryPath).lastPathComponent
-        } else {
-            sourcePath = candidate.sourceURL.path
-            filename = candidate.sourceURL.lastPathComponent
-        }
-        self.detail = detail
-    }
-}
-
-enum ScanOperationTimeout {
-    enum Kind {
-        case archiveListing
-        case archiveExtraction
-        case metadataInspection
-
-        var seconds: Int {
-            switch self {
-            case .archiveListing: return 30
-            // A valid large archive can take several minutes to extract on a
-            // slower disk. This is a validity boundary, not a speed governor.
-            case .archiveExtraction: return 600
-            case .metadataInspection: return 60
-            }
-        }
-    }
-
-    static func run<T: Sendable>(
-        kind: Kind = .metadataInspection,
-        description: String,
-        operation: @escaping @Sendable () async throws -> T
-    ) async throws -> T {
-        try await withThrowingTaskGroup(of: T.self) { group in
-            group.addTask {
-                try await operation()
-            }
-            group.addTask {
-                try await Task.sleep(nanoseconds: UInt64(kind.seconds) * 1_000_000_000)
-                throw ScanPipelineError.operationTimedOut(description, seconds: kind.seconds)
-            }
-            defer { group.cancelAll() }
-            guard let result = try await group.next() else {
-                throw CancellationError()
-            }
-            return result
-        }
-    }
-}
+typealias ScanPipelineError = MediaScannerKit.ScanPipelineError
+typealias ScanActivity = MediaScannerKit.ScanActivity
+typealias ScanLifecyclePhase = MediaScannerKit.ScanLifecyclePhase
+typealias ScanOperationTimeout = MediaScannerKit.ScanOperationTimeout
 
 struct ScanPipelineExecutor: Sendable {
     let pluginRegistry: ScanPluginRegistry
@@ -118,32 +57,41 @@ struct ScanPipelineExecutor: Sendable {
                     while let index = cursor.take() {
                         try Task.checkCancellation()
                         let candidate = plan.candidates[index]
-                        let results = await self.process(candidate) { detail in
+                        let results = await self.process(candidate) { phase, detail in
                             activity(
                                 completionCounter.current(),
                                 plan.count,
-                                ScanActivity(candidate: candidate, detail: detail)
+                                ScanActivity(candidate: candidate, phase: phase, detail: detail)
                             )
                         }
-                        // A huge archive can produce thousands of leaves.
-                        // Persist bounded batches instead of asking SQLite to
-                        // retain one giant transaction/result array at once.
-                        for resultBatch in results.batched(maximumCount: 128) {
-                            let batch = Array(resultBatch)
-                            let acceptedResults: [ScanPipelineResult]
-                            do {
-                                try await persist(batch)
-                                acceptedResults = batch
-                            } catch {
-                                // A disk/database failure belongs to this item. It must not
-                                // cancel unrelated validation work.
-                                acceptedResults = batch.map { $0.persistenceFailure(message: error.localizedDescription) }
-                            }
-                            for acceptedResult in acceptedResults {
-                                try await accumulator.accept(acceptedResult)
-                                if case .failure(let failure) = acceptedResult {
-                                    issue(failure)
-                                }
+                        try Task.checkCancellation()
+                        // A complete loose source or complete archive is the
+                        // durable checkpoint unit. The database still batches
+                        // prepared writes internally, but one savepoint covers
+                        // the whole source so resume can never observe half an
+                        // archive after a process exit.
+                        activity(
+                            completionCounter.current(),
+                            plan.count,
+                            ScanActivity(
+                                candidate: candidate,
+                                phase: .persistence,
+                                detail: "Checkpointing scan results…"
+                            )
+                        )
+                        let acceptedResults: [ScanPipelineResult]
+                        do {
+                            try await persist(results)
+                            acceptedResults = results
+                        } catch {
+                            // A disk/database failure belongs to this item. It must not
+                            // cancel unrelated validation work.
+                            acceptedResults = results.map { $0.persistenceFailure(message: error.localizedDescription) }
+                        }
+                        for acceptedResult in acceptedResults {
+                            try await accumulator.accept(acceptedResult)
+                            if case .failure(let failure) = acceptedResult {
+                                issue(failure)
                             }
                         }
                         let identityDescription = candidate.identity.archiveEntry.map {
@@ -156,22 +104,27 @@ struct ScanPipelineExecutor: Sendable {
             }
             try await group.waitForAll()
         }
+        try Task.checkCancellation()
         return accumulator
     }
 
     func process(
         _ candidate: ScanCandidate,
-        activity: @escaping @Sendable (String) -> Void = { _ in }
+        activity: @escaping @Sendable (ScanLifecyclePhase, String) -> Void = { _, _ in }
     ) async -> [ScanPipelineResult] {
         do {
             if ZipArchiveSupport.canHandle(candidate.sourceURL), candidate.identity.archiveEntry == nil {
                 return await processArchive(candidate, activity: activity)
             }
             if let archiveEntry = candidate.identity.archiveEntry {
+                activity(.materialization, "Extracting \(candidate.identityDescription)…")
                 let materializedURL = try await materialize(candidate, archiveEntry: archiveEntry)
+                activity(.inspection, "Inspecting \(candidate.identityDescription)…")
                 return [try await processFile(candidate, fileURL: materializedURL)]
             }
-            return [try await processFile(candidate)]
+            let fingerprintedCandidate = await ScanSourceContentSignature.enrich(candidate)
+            activity(.inspection, "Inspecting \(fingerprintedCandidate.identityDescription)…")
+            return [try await processFile(fingerprintedCandidate)]
         } catch is CancellationError {
             return [failure(candidate, stage: .metadata, message: "Cancelled")]
         } catch {
@@ -181,10 +134,10 @@ struct ScanPipelineExecutor: Sendable {
 
     private func processArchive(
         _ candidate: ScanCandidate,
-        activity: @escaping @Sendable (String) -> Void
+        activity: @escaping @Sendable (ScanLifecyclePhase, String) -> Void
     ) async -> [ScanPipelineResult] {
         do {
-            activity("Listing (candidate.sourceURL.lastPathComponent)…")
+            activity(.archiveListing, "Listing \(candidate.sourceURL.lastPathComponent)…")
             let archiveListing = try await ScanOperationTimeout.run(
                 kind: .archiveListing,
                 description: "listing \(candidate.sourceURL.lastPathComponent)"
@@ -223,6 +176,13 @@ struct ScanPipelineExecutor: Sendable {
                     route: member.route
                 )
             }
+            if memberCandidates.allSatisfy({ $0.route?.usesDeferredSingleTrackMetadata == true }) {
+                results.append(contentsOf: memberCandidates.compactMap { candidate in
+                    candidate.route.map { .success(candidate, Self.catalogInspection(route: $0)) }
+                })
+                results.append(.archiveCompleted(await ArchiveScanSignature.enrich(completedCandidate)))
+                return results
+            }
             guard let materializationPolicy = PlaybackFormatRegistry.scanArchiveMaterializationForInspection(
                 entryPaths: members.map(\.entryPath)
             ) else {
@@ -232,7 +192,7 @@ struct ScanPipelineExecutor: Sendable {
             }
             let materializedRoot: URL
             do {
-                activity("Extracting (members.count) playable member\(members.count == 1 ? "" : "s") from (candidate.sourceURL.lastPathComponent)…")
+                activity(.materialization, "Extracting \(members.count) playable member\(members.count == 1 ? "" : "s") from \(candidate.sourceURL.lastPathComponent)…")
                 switch materializationPolicy {
                 case .selectedEntry:
                     materializedRoot = try await ScanOperationTimeout.run(
@@ -289,7 +249,7 @@ struct ScanPipelineExecutor: Sendable {
                 members.count
             )
             let memberCompletionCounter = ScanCompletionCounter()
-            activity("Inspecting 0 / (members.count) members in (candidate.sourceURL.lastPathComponent)…")
+            activity(.inspection, "Inspecting 0 / \(members.count) members in \(candidate.sourceURL.lastPathComponent)…")
             var orderedResults = Array<ScanPipelineResult?>(repeating: nil, count: members.count)
             await withTaskGroup(of: (Int, ScanPipelineResult).self) { group in
                 for _ in 0..<memberWorkerCount {
@@ -302,7 +262,7 @@ struct ScanPipelineExecutor: Sendable {
                         )
                         let completed = memberCompletionCounter.increment()
                         if completed == 1 || completed == members.count || completed.isMultiple(of: 25) {
-                            activity("Inspecting (completed) / (members.count) members in (candidate.sourceURL.lastPathComponent)…")
+                            activity(.inspection, "Inspecting \(completed) / \(members.count) members in \(candidate.sourceURL.lastPathComponent)…")
                         }
                         return (index, result)
                     }
@@ -310,6 +270,10 @@ struct ScanPipelineExecutor: Sendable {
 
                 while let (index, result) = await group.next() {
                     orderedResults[index] = result
+                    guard !Task.isCancelled else {
+                        group.cancelAll()
+                        continue
+                    }
                     guard let nextIndex = memberCursor.take() else { continue }
                     group.addTask {
                         let result = await self.processMaterializedArchiveMember(
@@ -319,7 +283,7 @@ struct ScanPipelineExecutor: Sendable {
                         )
                         let completed = memberCompletionCounter.increment()
                         if completed == members.count || completed.isMultiple(of: 25) {
-                            activity("Inspecting (completed) / (members.count) members in (candidate.sourceURL.lastPathComponent)…")
+                            activity(.inspection, "Inspecting \(completed) / \(members.count) members in \(candidate.sourceURL.lastPathComponent)…")
                         }
                         return (nextIndex, result)
                     }
@@ -393,12 +357,22 @@ struct ScanPipelineExecutor: Sendable {
         if HeaderlessSS2Detector.isUnsupportedResource(fileURL ?? candidate.sourceURL) {
             return .unsupported(candidate)
         }
+        if route.usesDeferredSingleTrackMetadata {
+            return .success(candidate, Self.catalogInspection(route: route))
+        }
         let inspection = try await inspectionScheduler.withPermit {
             try await ScanOperationTimeout.run(kind: .metadataInspection, description: "inspecting \(candidate.identityDescription)") {
                 try await handler.inspect(fileURL: fileURL ?? candidate.sourceURL, route: route)
             }
         }
         return .success(candidate, inspection)
+    }
+
+    private static func catalogInspection(route: ScanRoute) -> ScanInspection {
+        ScanInspection(
+            route: route,
+            tracks: [ScanTrackMetadata(trackIndex: 0, trackCount: 1, metadata: nil)]
+        )
     }
 
     private func processMaterializedArchiveMember(
@@ -432,6 +406,12 @@ struct ScanPipelineExecutor: Sendable {
             stage: stage,
             message: message
         ))
+    }
+}
+
+private extension ScanRoute {
+    var usesDeferredSingleTrackMetadata: Bool {
+        structurePolicy == .knownSingle && metadataPolicy == .optionalDeferred
     }
 }
 

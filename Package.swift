@@ -27,6 +27,9 @@ let package = Package(
     products: [
         .executable(name: "CocoaSpice", targets: ["CocoaSpice"])
     ],
+    dependencies: [
+        .package(path: "../MediaScanner")
+    ],
     targets: [
         .target(
             name: "CGME",
@@ -212,7 +215,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "CocoaSpice",
-            dependencies: ["CGME", "COpenMPT", "CLibVGM", "CHighlyComplete", "CHighlyTheoretical", "CLazyUSF", "C2SF", "CPlaybackAudio", "CVGMStream", "CFFmpegAudio", "CPlayPSF"],
+            dependencies: ["CGME", "COpenMPT", "CLibVGM", "CHighlyComplete", "CHighlyTheoretical", "CLazyUSF", "C2SF", "CPlaybackAudio", "CVGMStream", "CFFmpegAudio", "CPlayPSF", .product(name: "MediaScannerKit", package: "MediaScanner")],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("AudioToolbox"),
@@ -228,7 +231,10 @@ let package = Package(
             dependencies: ["CocoaSpice", "C2SF"],
             resources: [
                 .copy("cross-app-library-identity-v1.json"),
-                .copy("cross-app-sidebar-search-view-v1.json")
+                .copy("cross-app-sidebar-search-view-v1.json"),
+                .copy("cross-app-playlist-activation-v1.json"),
+                .copy("cross-app-scanner-lifecycle-v1.json"),
+                .copy("cross-app-scanner-policy-v1.json")
             ]
         )
     ],

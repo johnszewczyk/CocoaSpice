@@ -52,6 +52,25 @@ import Testing
 }
 
 @MainActor
+@Test func latestTaskOwnerCanRemainCurrentWhileCancellationSettles() {
+    let owner = LatestTaskOwner()
+    let generation = owner.begin()
+    let task = Task { @MainActor in
+        _ = try? await Task.sleep(for: .seconds(10))
+    }
+    owner.install(task, generation: generation)
+
+    owner.requestCancellation()
+
+    #expect(task.isCancelled)
+    #expect(owner.isCurrent(generation))
+    #expect(owner.isActive)
+    owner.finish(generation: generation)
+    #expect(!owner.isCurrent(generation))
+    #expect(!owner.isActive)
+}
+
+@MainActor
 @Test func playbackRequestStateInvalidatesCancelledRequestsAndTracksPendingPlayback() {
     let state = PlaybackRequestState()
     let track = TrackItem(url: URL(fileURLWithPath: "/tmp/theme.spc"))

@@ -1,4 +1,5 @@
 import Foundation
+import MediaScannerKit
 
 enum TrackSource: Hashable, Sendable {
     case file(URL)
@@ -29,12 +30,10 @@ enum TrackSource: Hashable, Sendable {
     }
 
     var persistentID: String {
-        switch self {
-        case .file(let url):
-            return url.path
-        case .zipEntry(let archiveURL, let entryPath):
-            return "\(archiveURL.path)::\(entryPath)"
-        }
+        PlaylistTrackIdentity.sourceID(
+            sourcePath: sourceURL.path,
+            archiveEntry: archiveEntryPath
+        )
     }
 
     var playablePathExtension: String {
@@ -115,6 +114,26 @@ enum TrackSource: Hashable, Sendable {
             .map(String.init)
             .filter { !$0.isEmpty }
             .joined(separator: "/")
+    }
+}
+
+/// A versioned, delimiter-safe identity shared by every playlist intake path.
+/// Swift's UTF-16 count intentionally matches JavaScript String.length so the
+/// sister apps can execute the same fixture without lossy path escaping.
+enum PlaylistTrackIdentity {
+    static func sourceID(sourcePath: String, archiveEntry: String?) -> String {
+        if let archiveEntry {
+            return "ps1|a|\(sourcePath.utf16.count)|\(sourcePath)|\(archiveEntry.utf16.count)|\(archiveEntry)"
+        }
+        return "ps1|f|\(sourcePath.utf16.count)|\(sourcePath)"
+    }
+
+    static func trackID(sourcePath: String, archiveEntry: String?, trackIndex: Int) -> String {
+        let index = max(0, trackIndex)
+        if let archiveEntry {
+            return "pt1|a|\(sourcePath.utf16.count)|\(sourcePath)|\(archiveEntry.utf16.count)|\(archiveEntry)|\(index)"
+        }
+        return "pt1|f|\(sourcePath.utf16.count)|\(sourcePath)|\(index)"
     }
 }
 
@@ -223,7 +242,13 @@ struct TrackItem: Identifiable, Hashable, Sendable {
 
     var url: URL { source.sourceURL }
     var revealURL: URL { source.revealURL }
-    var id: String { "\(source.persistentID)#\(trackIndex)" }
+    var id: String {
+        PlaylistTrackIdentity.trackID(
+            sourcePath: url.path,
+            archiveEntry: archiveEntryPath,
+            trackIndex: trackIndex
+        )
+    }
     var containerID: String { source.persistentID }
     var displayTrackNumber: Int { trackIndex + 1 }
     var isMultiTrackContainer: Bool { trackCount > 1 }
@@ -254,6 +279,27 @@ struct TrackItem: Identifiable, Hashable, Sendable {
     var fullPathText: String {
         let trackSuffix = isMultiTrackContainer ? " [\(displayTrackNumber)]" : ""
         return "\(source.fullSourcePath)\(trackSuffix)"
+    }
+
+    static func expanded(url: URL, trackCount: Int) -> [TrackItem] {
+        let count = max(1, trackCount)
+        return (0..<count).map { TrackItem(url: url, trackIndex: $0, trackCount: count) }
+    }
+
+    static func expanded(
+        archiveURL: URL,
+        entryPath: String,
+        trackCount: Int
+    ) -> [TrackItem] {
+        let count = max(1, trackCount)
+        return (0..<count).map {
+            TrackItem(
+                archiveURL: archiveURL,
+                entryPath: entryPath,
+                trackIndex: $0,
+                trackCount: count
+            )
+        }
     }
     var persistedValue: String {
         let payload = PersistedTrackItem(
@@ -314,17 +360,7 @@ struct InspectedTrack: Sendable {
     let metadata: TrackMetadata
 }
 
-struct TrackMetadata: Equatable, Sendable {
-    let game: String
-    let song: String
-    let system: String
-    let author: String
-    let comment: String
-    let introLengthMs: Int
-    let loopLengthMs: Int
-    let playLengthMs: Int
-    let fadeLengthMs: Int
-}
+typealias TrackMetadata = ScannerMetadata
 
 struct PlaylistColumnWidthHints: Equatable, Sendable {
     let indexText: String

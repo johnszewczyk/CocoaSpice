@@ -1,4 +1,5 @@
 import Foundation
+import MediaScannerKit
 
 enum KDTSequenceDetector {
     static func isSilentHillSequenceBank(_ fileURL: URL) -> Bool {
@@ -159,9 +160,7 @@ struct PSFMetadataScanHandler: ScanFormatHandler {
 }
 
 enum ScanCoreHandlers {
-    static let registry = ScanPluginRegistry(
-        descriptors: PlaybackFormatRegistry.scanPluginDescriptors
-    )
+    static let registry = BuiltInScannerPlugins.registry
 
     static let handlers: ScanPluginHandlerRegistry = {
         var schedulers: [PlaybackDecoderBackend: ScanResourceScheduler] = [:]

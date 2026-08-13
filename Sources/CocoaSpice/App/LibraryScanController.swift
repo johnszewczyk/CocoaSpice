@@ -41,12 +41,12 @@ final class LibraryScanController {
     }
 
     func stop() {
-        guard operations.scanInProgress else { return }
-        operations.cancelActiveTask()
-        operations.scanInProgress = false
+        guard operations.scanInProgress, !operations.scanIsCancelling else { return }
+        operations.scanIsCancelling = true
+        operations.scanPhase = .cleanup
+        operations.requestActiveTaskCancellation()
         requestQueue.clear()
-        operations.resetScanProgress()
-        operations.status = "Scan stopped"
+        operations.status = "Cancelling scan…"
     }
 
     func closeLiveLog(rootID: Int64) {
@@ -89,7 +89,9 @@ final class LibraryScanController {
     private func start(_ requestedRoots: [LibraryScanRoot], mode: ScanMode) {
         let generation = operations.beginTask()
         operations.scanInProgress = true
+        operations.scanIsCancelling = false
         operations.resetScanProgress()
+        operations.scanPhase = .preparing
         operations.status = mode == .newScan ? "Preparing forced scan…" : "Preparing incremental scan…"
         let task = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -99,6 +101,8 @@ final class LibraryScanController {
             }
             if operations.isCurrentTask(generation) {
                 operations.scanInProgress = false
+                operations.scanIsCancelling = false
+                operations.resetScanProgress()
                 operations.finishTask(generation: generation)
                 startNextQueuedScan()
             }
@@ -140,24 +144,34 @@ final class LibraryScanController {
         operations.status = "Preparing \(modeTitle) scan: \(root.standardizedURL.lastPathComponent)…"
         do {
             let databaseURL = database.databaseURL
-            let summary = try await Task.detached(priority: .utility) {
+            let scanTask = Task.detached(priority: .utility) {
                 let scanDatabase = try LibraryDatabase(databaseURL: databaseURL)
                 let coordinator = LibraryScanCoordinator(database: scanDatabase)
                 return try await coordinator.run(root: root, mode: mode) { [weak self] status in
                     Task { @MainActor in
-                        guard let self, self.operations.isCurrentTask(generation) else { return }
+                        guard let self,
+                              self.operations.isCurrentTask(generation),
+                              !self.operations.scanIsCancelling else { return }
+                        if let phase = ScanLifecyclePhase.infer(from: status) {
+                            self.operations.scanPhase = phase
+                        }
                         self.operations.status = status
                     }
                 } progress: { [weak self] current, total in
                     Task { @MainActor in
-                        guard let self, self.operations.isCurrentTask(generation) else { return }
+                        guard let self,
+                              self.operations.isCurrentTask(generation),
+                              !self.operations.scanIsCancelling else { return }
                         self.operations.setScanProgress(rootID: root.id, current: current, total: total)
                     }
                 } activity: { [weak liveLog] current, total, activity in
                     Task { @MainActor [weak self] in
-                        guard let self, self.operations.isCurrentTask(generation) else { return }
+                        guard let self,
+                              self.operations.isCurrentTask(generation),
+                              !self.operations.scanIsCancelling else { return }
                         self.operations.scanCurrentPath = activity.sourcePath
                         self.operations.scanCurrentFile = activity.filename
+                        self.operations.scanPhase = activity.phase
                         liveLog?.update(current: current, total: total, detail: activity.detail)
                     }
                 } issues: { [weak liveLog] lines in
@@ -165,7 +179,12 @@ final class LibraryScanController {
                         liveLog?.append(lines)
                     }
                 }
-            }.value
+            }
+            let summary = try await withTaskCancellationHandler {
+                try await scanTask.value
+            } onCancel: {
+                scanTask.cancel()
+            }
             guard operations.isCurrentTask(generation) else { return }
             liveLog.finish(successful: summary.successful, failed: summary.failed, unsupported: summary.unsupported)
             operations.status = "\(summary.successful) / \(summary.successful + summary.failed + summary.unsupported)"

@@ -7,6 +7,11 @@ enum ZipArchiveSupport {
     static let supportedArchiveExtensions: Set<String> = ["zip", "7z", "rsn", "tzst"]
     private static let archiveListingTimeout: TimeInterval = 30
     private static let archiveExtractionTimeout: TimeInterval = 600
+    private static let archiveListingMaximumBytes = 64 * 1024 * 1024
+    private static let archiveListingMaximumEntries = 250_000
+    private static let archiveEntryMaximumNameBytes = 32 * 1024
+    private static let scanScratchMaximumBytes: Int64 = 8 * 1024 * 1024 * 1024
+    private static let scanScratchFreeReserveBytes: Int64 = 2 * 1024 * 1024 * 1024
     /// Archive commands are deliberately one-thread-per-process. The scanner
     /// fans those processes across the machine instead of allowing every 7zz
     /// process to spawn its own full-width worker pool.
@@ -59,6 +64,7 @@ enum ZipArchiveSupport {
         case invalidEntryPath(String)
         case insufficientStorage(requiredBytes: Int64)
         case cacheLimitExceeded(limitBytes: Int64)
+        case listingLimitExceeded(String)
 
         var errorDescription: String? {
             switch self {
@@ -72,6 +78,8 @@ enum ZipArchiveSupport {
                 return "Archive materialization needs at least \(ByteCountFormatter.string(fromByteCount: requiredBytes, countStyle: .file)) of free disk space."
             case .cacheLimitExceeded(let limitBytes):
                 return "This archive materialization exceeds the \(ByteCountFormatter.string(fromByteCount: limitBytes, countStyle: .file)) cache limit."
+            case .listingLimitExceeded(let message):
+                return "Archive listing exceeds the safe scanner limit: \(message)"
             }
         }
     }
@@ -416,6 +424,7 @@ enum ZipArchiveSupport {
                 entryPaths: normalizedPaths,
                 into: rootURL
             )
+            try validateScanScratchBudget()
             return rootURL
         } catch {
             discardScanMaterialization(at: rootURL)
@@ -435,6 +444,7 @@ enum ZipArchiveSupport {
             case .tarZstandard:
                 try materializeTarZstandardArchive(archiveURL, into: rootURL)
             }
+            try validateScanScratchBudget()
             return rootURL
         } catch {
             discardScanMaterialization(at: rootURL)
@@ -742,9 +752,22 @@ enum ZipArchiveSupport {
     private static func makeScanScratchDirectory() throws -> URL {
         let rootURL = scanScratchRootURL()
         try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        try validateScanScratchBudget()
         let scratchURL = rootURL.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: scratchURL, withIntermediateDirectories: false)
         return scratchURL
+    }
+
+    private static func validateScanScratchBudget() throws {
+        let rootURL = scanScratchRootURL()
+        let usedBytes = directoryByteCount(rootURL)
+        guard usedBytes <= scanScratchMaximumBytes else {
+            throw ArchiveError.cacheLimitExceeded(limitBytes: scanScratchMaximumBytes)
+        }
+        if let availableBytes = availableCapacityNear(rootURL),
+           availableBytes < scanScratchFreeReserveBytes {
+            throw ArchiveError.insufficientStorage(requiredBytes: scanScratchFreeReserveBytes)
+        }
     }
 
     private struct ArchiveListing {
@@ -759,8 +782,9 @@ enum ZipArchiveSupport {
                 executable: try executable(named: "7zz"),
                 arguments: ["l", "-mmt=1", "-slt", "-ba", archiveURL.path]
             )
+            try validateListingData(data)
             let report = String(decoding: data, as: UTF8.self)
-            return ArchiveListing(
+            return try validatedListing(
                 entries: report
                 .split(whereSeparator: \.isNewline)
                 .compactMap { line in
@@ -775,8 +799,9 @@ enum ZipArchiveSupport {
                 executable: try executable(named: "7zz"),
                 arguments: ["l", "-mmt=1", "-slt", "-ba", archiveURL.path]
             )
+            try validateListingData(data)
             let report = String(decoding: data, as: UTF8.self)
-            return ArchiveListing(
+            return try validatedListing(
                 entries: report
                 .split(whereSeparator: \.isNewline)
                 .compactMap { line in
@@ -791,23 +816,46 @@ enum ZipArchiveSupport {
                 executable: try executable(named: "lsar"),
                 arguments: ["-j", archiveURL.path]
             )
+            try validateListingData(data)
             guard
                 let object = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                 let contents = object["lsarContents"] as? [[String: Any]]
             else {
                 throw ArchiveError.processFailed(executable: "lsar", message: "invalid JSON listing")
             }
-            return ArchiveListing(
+            return try validatedListing(
                 entries: contents.compactMap { $0["XADFileName"] as? String },
                 scanSignature: nil
             )
         case .tarZstandard:
             let data = try runTarZstandardListing(archiveURL)
-            return ArchiveListing(
+            try validateListingData(data)
+            return try validatedListing(
                 entries: tarListingEntryPaths(from: data),
                 scanSignature: nil
             )
         }
+    }
+
+    private static func validateListingData(_ data: Data) throws {
+        guard data.count <= archiveListingMaximumBytes else {
+            throw ArchiveError.listingLimitExceeded("more than 64 MiB of tool output")
+        }
+    }
+
+    private static func validatedListing(
+        entries: [String],
+        scanSignature: String?
+    ) throws -> ArchiveListing {
+        guard entries.count <= archiveListingMaximumEntries else {
+            throw ArchiveError.listingLimitExceeded("more than \(archiveListingMaximumEntries) entries")
+        }
+        if let oversized = entries.first(where: { $0.utf8.count > archiveEntryMaximumNameBytes }) {
+            throw ArchiveError.listingLimitExceeded(
+                "entry name longer than \(archiveEntryMaximumNameBytes) bytes: \(oversized.prefix(80))"
+            )
+        }
+        return ArchiveListing(entries: entries, scanSignature: scanSignature)
     }
 
     private static func archiveKind(for archiveURL: URL) -> ArchiveKind {
@@ -882,7 +930,8 @@ enum ZipArchiveSupport {
             try runZstandardTarPipeline(
                 archiveURL: archiveURL,
                 tarArguments: ["-xf", "-", "-C", destinationURL.path]
-                    + tarMemberSelectionPatterns(literalPaths)
+                    + tarMemberSelectionPatterns(literalPaths),
+                allowEarlyConsumerExit: true
             )
         }
 
@@ -906,7 +955,8 @@ enum ZipArchiveSupport {
             try runZstandardTarPipelineWritingOutput(
                 archiveURL: archiveURL,
                 tarArguments: ["-xOf", "-", "--null", "-T", selectionURL.path],
-                outputURL: outputURL
+                outputURL: outputURL,
+                allowEarlyConsumerExit: true
             )
         }
     }
@@ -1081,14 +1131,12 @@ enum ZipArchiveSupport {
             decoding: decompressorErrors.value,
             as: UTF8.self
         )
-        let decompressorReportedBrokenPipe = isExpectedTarListingBrokenPipe(
+        let decompressorReportedBrokenPipe = isExpectedZstandardPipeClosure(
             exitStatus: decompressor.terminationStatus,
             terminationReason: decompressor.terminationReason,
             stderr: decompressorErrorText
         )
         let decompressorSucceeded = decompressor.terminationStatus == 0
-            || (decompressor.terminationReason == .uncaughtSignal
-                && decompressor.terminationStatus == SIGPIPE)
             || decompressorReportedBrokenPipe
         guard decompressorSucceeded, lister.terminationStatus == 0 else {
             let messages = [decompressorErrors.value, listerErrors.value]
@@ -1099,18 +1147,23 @@ enum ZipArchiveSupport {
                 message: messages.isEmpty ? "exit code \(decompressor.terminationStatus)/\(lister.terminationStatus)" : messages.joined(separator: "\n")
             )
         }
-        return try Data(contentsOf: outputURL)
+        let outputBytes = Int64((try? outputURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        guard outputBytes <= Int64(archiveListingMaximumBytes) else {
+            throw ArchiveError.listingLimitExceeded("more than 64 MiB of tool output")
+        }
+        return try Data(contentsOf: outputURL, options: .mappedIfSafe)
     }
 
-    static func isExpectedTarListingBrokenPipe(
+    static func isExpectedZstandardPipeClosure(
         exitStatus: Int32,
         terminationReason: Process.TerminationReason,
         stderr: String
     ) -> Bool {
-        terminationReason == .exit
-            && exitStatus == 70
-            && stderr.localizedCaseInsensitiveContains("write error")
-            && stderr.localizedCaseInsensitiveContains("broken pipe")
+        (terminationReason == .uncaughtSignal && exitStatus == SIGPIPE)
+            || (terminationReason == .exit
+                && exitStatus == 70
+                && stderr.localizedCaseInsensitiveContains("write error")
+                && stderr.localizedCaseInsensitiveContains("broken pipe"))
     }
 
     private static func archiveFilePaths(in rootURL: URL) throws -> [String] {
@@ -1238,29 +1291,37 @@ enum ZipArchiveSupport {
             )
         }
 
-        return try Data(contentsOf: outputURL)
+        let outputBytes = Int64((try? outputURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
+        guard outputBytes <= Int64(archiveListingMaximumBytes) else {
+            throw ArchiveError.listingLimitExceeded("more than 64 MiB of tool output")
+        }
+        return try Data(contentsOf: outputURL, options: .mappedIfSafe)
     }
 
     private static func runZstandardTarPipeline(
         archiveURL: URL,
-        tarArguments: [String]
+        tarArguments: [String],
+        allowEarlyConsumerExit: Bool = false
     ) throws {
         try runZstandardTarPipeline(
             archiveURL: archiveURL,
             tarArguments: tarArguments,
-            outputURL: nil
+            outputURL: nil,
+            allowEarlyConsumerExit: allowEarlyConsumerExit
         )
     }
 
     private static func runZstandardTarPipelineWritingOutput(
         archiveURL: URL,
         tarArguments: [String],
-        outputURL: URL
+        outputURL: URL,
+        allowEarlyConsumerExit: Bool = false
     ) throws {
         try runZstandardTarPipeline(
             archiveURL: archiveURL,
             tarArguments: tarArguments,
-            outputURL: outputURL
+            outputURL: outputURL,
+            allowEarlyConsumerExit: allowEarlyConsumerExit
         )
     }
 
@@ -1270,7 +1331,8 @@ enum ZipArchiveSupport {
     private static func runZstandardTarPipeline(
         archiveURL: URL,
         tarArguments: [String],
-        outputURL: URL?
+        outputURL: URL?,
+        allowEarlyConsumerExit: Bool = false
     ) throws {
         while processGate.wait(timeout: .now() + .milliseconds(100)) != .success {
             if Task.isCancelled { throw CancellationError() }
@@ -1357,16 +1419,23 @@ enum ZipArchiveSupport {
         }
         readers.wait()
 
-        guard zstd.terminationStatus == 0 else {
-            throw ArchiveError.processFailed(
-                executable: "zstd",
-                message: processErrorText(zstdCollector.value, status: zstd.terminationStatus)
-            )
-        }
-        guard tar.terminationStatus == 0 else {
+        let tarSucceeded = tar.terminationStatus == 0
+        guard tarSucceeded else {
             throw ArchiveError.processFailed(
                 executable: "tar",
                 message: processErrorText(tarCollector.value, status: tar.terminationStatus)
+            )
+        }
+        let zstdSucceeded = zstd.terminationStatus == 0
+            || (allowEarlyConsumerExit && isExpectedZstandardPipeClosure(
+                exitStatus: zstd.terminationStatus,
+                terminationReason: zstd.terminationReason,
+                stderr: String(decoding: zstdCollector.value, as: UTF8.self)
+            ))
+        guard zstdSucceeded else {
+            throw ArchiveError.processFailed(
+                executable: "zstd",
+                message: processErrorText(zstdCollector.value, status: zstd.terminationStatus)
             )
         }
     }

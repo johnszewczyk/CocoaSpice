@@ -12,8 +12,23 @@ struct LibraryDatabaseScanMetrics: Equatable, Sendable {
     let walGrowthBytes: Int64
 }
 
+struct AtomicScanStart: Equatable, Sendable {
+    let resumed: Bool
+}
+
+struct ScanSourceCheckpoint: Equatable, Sendable {
+    let path: String
+    let fingerprint: ScanFingerprint
+}
+
+struct PlaylistMetadataDatabaseUpdate: Sendable {
+    let track: TrackItem
+    let metadata: TrackMetadata
+    let fingerprint: ScanFingerprint
+}
+
 final class LibraryDatabase: @unchecked Sendable {
-    static let schemaVersion = 22
+    static let schemaVersion = 23
     static let performanceLogger = Logger(subsystem: "com.local.cocoaspice", category: "library-database")
     let db: OpaquePointer?
     private let dbURL: URL
@@ -91,7 +106,12 @@ final class LibraryDatabase: @unchecked Sendable {
         }
     }
 
-    func beginAtomicScan(rootID: Int64, replacingLiveData: Bool) throws {
+    @discardableResult
+    func beginAtomicScan(
+        rootID: Int64,
+        replacingLiveData: Bool,
+        mode: ScanMode? = nil
+    ) throws -> AtomicScanStart {
         guard sqlite3_get_autocommit(db) != 0 else {
             throw NSError(
                 domain: "LibraryDatabase",
@@ -104,7 +124,19 @@ final class LibraryDatabase: @unchecked Sendable {
         atomicScanRootID = rootID
         if replacingLiveData {
             do {
-                atomicScanStagingRootID = try createScanStagingRoot(targetRootID: rootID)
+                let requestedMode = mode ?? .newScan
+                if let stage = try resumableScanStagingRoot(targetRootID: rootID, mode: requestedMode) {
+                    atomicScanStagingRootID = stage
+                    try updateScanStagingState(stageRootID: stage, state: "active", error: nil)
+                    return AtomicScanStart(resumed: true)
+                }
+                try discardIncompatibleScanStagingRoots(targetRootID: rootID, mode: requestedMode)
+                atomicScanStagingRootID = try createScanStagingRoot(
+                    targetRootID: rootID,
+                    mode: requestedMode,
+                    cloneLiveState: mode != nil
+                )
+                return AtomicScanStart(resumed: false)
             } catch {
                 atomicScanStartedAt = nil
                 atomicScanInitialWALBytes = 0
@@ -121,6 +153,7 @@ final class LibraryDatabase: @unchecked Sendable {
                 throw error
             }
         }
+        return AtomicScanStart(resumed: false)
     }
 
     func commitAtomicScan() throws {
@@ -193,6 +226,22 @@ final class LibraryDatabase: @unchecked Sendable {
         atomicScanInitialWALBytes = 0
     }
 
+    func pauseAtomicScan(failed: Bool = false, error: String? = nil) {
+        if let stagingRootID = atomicScanStagingRootID {
+            try? updateScanStagingState(
+                stageRootID: stagingRootID,
+                state: failed ? "failed" : "paused",
+                error: error
+            )
+        } else if atomicScanRootID != nil {
+            try? execute("ROLLBACK;")
+        }
+        atomicScanRootID = nil
+        atomicScanStagingRootID = nil
+        atomicScanStartedAt = nil
+        atomicScanInitialWALBytes = 0
+    }
+
     func isStagingFullScan(rootID: Int64) -> Bool {
         atomicScanRootID == rootID && atomicScanStagingRootID != nil
     }
@@ -202,7 +251,11 @@ final class LibraryDatabase: @unchecked Sendable {
         return stagingRootID
     }
 
-    private func createScanStagingRoot(targetRootID: Int64) throws -> Int64 {
+    private func createScanStagingRoot(
+        targetRootID: Int64,
+        mode: ScanMode,
+        cloneLiveState: Bool
+    ) throws -> Int64 {
         let stagingPath = "cocoaspice-scan-stage://\(targetRootID)/\(UUID().uuidString)"
         return try withSavepoint {
             try execute(
@@ -211,11 +264,140 @@ final class LibraryDatabase: @unchecked Sendable {
             )
             let stagingRootID = sqlite3_last_insert_rowid(db)
             try execute(
-                "INSERT INTO scan_staging_roots (staging_root_id, target_root_id, created_at) VALUES (?, ?, ?);",
-                bindings: [.int(stagingRootID), .int(targetRootID), .double(Date().timeIntervalSince1970)]
+                "INSERT INTO scan_staging_roots (staging_root_id, target_root_id, created_at, state, mode, policy_version, updated_at) VALUES (?, ?, ?, 'active', ?, 1, ?);",
+                bindings: [
+                    .int(stagingRootID),
+                    .int(targetRootID),
+                    .double(Date().timeIntervalSince1970),
+                    .text(mode.rawValue),
+                    .double(Date().timeIntervalSince1970)
+                ]
             )
+            if cloneLiveState {
+                try cloneLiveScanState(targetRootID: targetRootID, stagingRootID: stagingRootID)
+            }
             return stagingRootID
         }
+    }
+
+    private func resumableScanStagingRoot(targetRootID: Int64, mode: ScanMode) throws -> Int64? {
+        let sql = """
+        SELECT staging_root_id
+        FROM scan_staging_roots
+        WHERE target_root_id = ? AND mode = ? AND policy_version = 1
+        ORDER BY updated_at DESC, created_at DESC
+        LIMIT 1;
+        """
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw databaseError()
+        }
+        defer { sqlite3_finalize(statement) }
+        sqliteBind(.int(targetRootID), to: statement, at: 1)
+        sqliteBind(.text(mode.rawValue), to: statement, at: 2)
+        guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
+        return sqlite3_column_int64(statement, 0)
+    }
+
+    private func discardIncompatibleScanStagingRoots(targetRootID: Int64, mode: ScanMode) throws {
+        try execute(
+            """
+            DELETE FROM library_roots
+            WHERE id IN (
+                SELECT staging_root_id
+                FROM scan_staging_roots
+                WHERE target_root_id = ? AND (mode <> ? OR policy_version <> 1)
+            );
+            """,
+            bindings: [.int(targetRootID), .text(mode.rawValue)]
+        )
+    }
+
+    private func updateScanStagingState(
+        stageRootID: Int64,
+        state: String,
+        error: String?
+    ) throws {
+        try execute(
+            """
+            UPDATE scan_staging_roots
+            SET state = ?, last_error = ?, updated_at = ?
+            WHERE staging_root_id = ?;
+            """,
+            bindings: [
+                .text(state),
+                error.map(SQLiteValue.text) ?? .null,
+                .double(Date().timeIntervalSince1970),
+                .int(stageRootID)
+            ]
+        )
+    }
+
+    private func cloneLiveScanState(targetRootID: Int64, stagingRootID: Int64) throws {
+        try execute(
+            """
+            INSERT INTO scan_items (
+                root_id, path, archive_entry, file_size, modified_at,
+                content_signature, state, plugin_id, format_extension,
+                supports_archive_members, supports_multi_track, structure_policy,
+                metadata_policy, failure_stage,
+                failure_message, updated_at
+            )
+            SELECT ?, path, archive_entry, file_size, modified_at,
+                   content_signature, state, plugin_id, format_extension,
+                   supports_archive_members, supports_multi_track, structure_policy,
+                   metadata_policy, failure_stage,
+                   failure_message, updated_at
+            FROM scan_items live
+            WHERE live.root_id = ?
+              AND NOT EXISTS (
+                  SELECT 1 FROM dead_sources dead
+                  WHERE dead.root_id = live.root_id AND dead.path = live.path
+              );
+            """,
+            bindings: [.int(stagingRootID), .int(targetRootID)]
+        )
+        try execute(
+            """
+            INSERT INTO tracks (
+                root_id, folder_path, path, filename, extension, browser_game,
+                browser_system, track_index, track_count, file_size, modified_at,
+                discovered_at, archive_path, archive_entry
+            )
+            SELECT ?, folder_path, path, filename, extension, browser_game,
+                   browser_system, track_index, track_count, file_size, modified_at,
+                   discovered_at, archive_path, archive_entry
+            FROM tracks live
+            WHERE live.root_id = ?
+              AND NOT EXISTS (
+                  SELECT 1 FROM dead_sources dead
+                  WHERE dead.root_id = live.root_id AND dead.path = live.path
+              );
+            """,
+            bindings: [.int(stagingRootID), .int(targetRootID)]
+        )
+        try execute(
+            """
+            INSERT INTO track_metadata (
+                track_id, title, game, author, system, comment,
+                intro_length_ms, loop_length_ms, play_length_ms,
+                fade_length_ms, metadata_scanned_at
+            )
+            SELECT staged.id, metadata.title, metadata.game, metadata.author,
+                   metadata.system, metadata.comment, metadata.intro_length_ms,
+                   metadata.loop_length_ms, metadata.play_length_ms,
+                   metadata.fade_length_ms, metadata.metadata_scanned_at
+            FROM tracks live
+            INNER JOIN track_metadata metadata ON metadata.track_id = live.id
+            INNER JOIN tracks staged
+                ON staged.root_id = ?
+               AND staged.path = live.path
+               AND staged.track_index = live.track_index
+               AND staged.archive_entry IS live.archive_entry
+            WHERE live.root_id = ?;
+            """,
+            bindings: [.int(stagingRootID), .int(targetRootID)]
+        )
     }
 
     private func publishScanStagingRoot(_ stagingRootID: Int64, targetRootID: Int64) throws {
@@ -274,7 +456,9 @@ final class LibraryDatabase: @unchecked Sendable {
 
     func loadScanInventory(rootID: Int64) throws -> [ScanInventoryItem] {
         let sql = """
-        SELECT path, archive_entry, file_size, modified_at, content_signature, state, plugin_id, format_extension, supports_archive_members, supports_multi_track
+        SELECT path, archive_entry, file_size, modified_at, content_signature, state,
+               plugin_id, format_extension, supports_archive_members,
+               supports_multi_track, structure_policy, metadata_policy
         FROM scan_items
         WHERE root_id = ?
         ORDER BY path ASC, archive_entry ASC;
@@ -284,7 +468,7 @@ final class LibraryDatabase: @unchecked Sendable {
             throw databaseError()
         }
         defer { sqlite3_finalize(statement) }
-        sqliteBind(.int(rootID), to: statement, at: 1)
+        sqliteBind(.int(storageRootID(for: rootID)), to: statement, at: 1)
 
         var items: [ScanInventoryItem] = []
         while sqlite3_step(statement) == SQLITE_ROW {
@@ -295,7 +479,9 @@ final class LibraryDatabase: @unchecked Sendable {
                     pluginID: $0,
                     formatExtension: sqliteString(statement, index: 7),
                     supportsArchiveMembers: sqlite3_column_int(statement, 8) != 0,
-                    supportsMultiTrack: sqlite3_column_int(statement, 9) != 0
+                    supportsMultiTrack: sqlite3_column_int(statement, 9) != 0,
+                    structurePolicy: ScanStructurePolicy(rawValue: sqliteString(statement, index: 10)),
+                    metadataPolicy: ScanMetadataPolicy(rawValue: sqliteString(statement, index: 11)) ?? .decoder
                 )
             }
             items.append(
@@ -316,6 +502,140 @@ final class LibraryDatabase: @unchecked Sendable {
             )
         }
         return items
+    }
+
+    func loadScanSourceCheckpoints(rootID: Int64) throws -> [ScanSourceCheckpoint] {
+        guard atomicScanRootID == rootID, let stagingRootID = atomicScanStagingRootID else {
+            return []
+        }
+        let sql = """
+        SELECT path, file_size, modified_at, content_signature
+        FROM scan_source_checkpoints
+        WHERE staging_root_id = ?
+        ORDER BY path;
+        """
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+            throw databaseError()
+        }
+        defer { sqlite3_finalize(statement) }
+        sqliteBind(.int(stagingRootID), to: statement, at: 1)
+        var checkpoints: [ScanSourceCheckpoint] = []
+        while sqlite3_step(statement) == SQLITE_ROW {
+            checkpoints.append(ScanSourceCheckpoint(
+                path: sqliteString(statement, index: 0),
+                fingerprint: ScanFingerprint(
+                    fileSize: sqlite3_column_int64(statement, 1),
+                    modifiedAt: Date(timeIntervalSince1970: sqlite3_column_double(statement, 2)),
+                    contentSignature: nullableString(statement, index: 3)
+                )
+            ))
+        }
+        return checkpoints
+    }
+
+    func synchronizeStagingSources(rootID: Int64, discoveredPaths: [String]) throws {
+        guard atomicScanRootID == rootID, let stagingRootID = atomicScanStagingRootID else { return }
+        let tableName = "cocoa_scan_sources_\(UUID().uuidString.replacingOccurrences(of: "-", with: ""))"
+        try withSavepoint {
+            try execute("CREATE TEMP TABLE \(tableName) (path TEXT PRIMARY KEY);")
+            defer { try? execute("DROP TABLE IF EXISTS \(tableName);") }
+            let insert = try prepareStatement("INSERT OR IGNORE INTO \(tableName) (path) VALUES (?);")
+            defer { sqlite3_finalize(insert) }
+            for path in Set(discoveredPaths) {
+                try executePrepared(insert, bindings: [.text(path)])
+            }
+            try execute(
+                "DELETE FROM tracks WHERE root_id = ? AND path NOT IN (SELECT path FROM \(tableName));",
+                bindings: [.int(stagingRootID)]
+            )
+            try execute(
+                "DELETE FROM scan_items WHERE root_id = ? AND path NOT IN (SELECT path FROM \(tableName));",
+                bindings: [.int(stagingRootID)]
+            )
+            try execute(
+                "DELETE FROM scan_source_checkpoints WHERE staging_root_id = ? AND path NOT IN (SELECT path FROM \(tableName));",
+                bindings: [.int(stagingRootID)]
+            )
+            try markSidebarBucketsDirty(rootIDs: [stagingRootID])
+        }
+    }
+
+    func checkpointScanSource(_ results: [ScanPipelineResult]) throws {
+        guard let source = results.compactMap({ result -> (identity: ScanItemIdentity, fingerprint: ScanFingerprint, sourceURL: URL)? in
+            switch result {
+            case .success(let candidate, _), .archiveCompleted(let candidate), .unsupported(let candidate):
+                return (candidate.identity, candidate.fingerprint, candidate.sourceURL)
+            case .failure(let failure):
+                return (
+                    failure.identity,
+                    failure.fingerprint,
+                    URL(fileURLWithPath: failure.identity.path)
+                )
+            }
+        }).first else { return }
+        guard atomicScanRootID == source.identity.rootID,
+              let stagingRootID = atomicScanStagingRootID else {
+            throw NSError(
+                domain: "LibraryDatabase",
+                code: 4,
+                userInfo: [NSLocalizedDescriptionKey: "Cannot checkpoint a source without an active staged scan."]
+            )
+        }
+        let sourcePath = source.identity.path
+        try withSavepoint {
+            try execute(
+                "DELETE FROM tracks WHERE root_id = ? AND path = ?;",
+                bindings: [.int(stagingRootID), .text(sourcePath)]
+            )
+            try execute(
+                "DELETE FROM scan_items WHERE root_id = ? AND path = ?;",
+                bindings: [.int(stagingRootID), .text(sourcePath)]
+            )
+            try persistScanResults(results)
+
+            let hasFailure = results.contains { result in
+                if case .failure = result { return true }
+                return false
+            }
+            let isArchive = source.identity.archiveEntry != nil
+                || results.contains { result in
+                    if case .archiveCompleted = result { return true }
+                    return false
+                }
+                || ZipArchiveSupport.canHandle(source.sourceURL)
+            let archiveCompleted = results.contains { result in
+                if case .archiveCompleted = result { return true }
+                return false
+            }
+            guard !hasFailure, !isArchive || archiveCompleted else { return }
+            let completedFingerprint = results.compactMap { result -> ScanFingerprint? in
+                if case .archiveCompleted(let completed) = result { return completed.fingerprint }
+                return nil
+            }.first ?? source.fingerprint
+            try execute(
+                """
+                INSERT INTO scan_source_checkpoints (
+                    staging_root_id, path, file_size, modified_at,
+                    content_signature, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(staging_root_id, path) DO UPDATE SET
+                    file_size = excluded.file_size,
+                    modified_at = excluded.modified_at,
+                    content_signature = excluded.content_signature,
+                    updated_at = excluded.updated_at;
+                """,
+                bindings: [
+                    .int(stagingRootID),
+                    .text(sourcePath),
+                    .int(completedFingerprint.fileSize),
+                    .double(completedFingerprint.modifiedAt.timeIntervalSince1970),
+                    completedFingerprint.contentSignature.map(SQLiteValue.text) ?? .null,
+                    .double(Date().timeIntervalSince1970)
+                ]
+            )
+            try updateScanStagingState(stageRootID: stagingRootID, state: "active", error: nil)
+        }
     }
 
     func scanCompletedWithoutIssues(rootID: Int64) throws -> Bool {
@@ -353,8 +673,8 @@ final class LibraryDatabase: @unchecked Sendable {
     ) throws {
         try execute(
             """
-            INSERT INTO scan_items (root_id, path, archive_entry, file_size, modified_at, content_signature, state, plugin_id, format_extension, supports_archive_members, supports_multi_track, failure_stage, failure_message, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO scan_items (root_id, path, archive_entry, file_size, modified_at, content_signature, state, plugin_id, format_extension, supports_archive_members, supports_multi_track, structure_policy, metadata_policy, failure_stage, failure_message, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(root_id, path, archive_entry) DO UPDATE SET
                 file_size = excluded.file_size,
                 modified_at = excluded.modified_at,
@@ -364,6 +684,8 @@ final class LibraryDatabase: @unchecked Sendable {
                 format_extension = excluded.format_extension,
                 supports_archive_members = excluded.supports_archive_members,
                 supports_multi_track = excluded.supports_multi_track,
+                structure_policy = excluded.structure_policy,
+                metadata_policy = excluded.metadata_policy,
                 failure_stage = excluded.failure_stage,
                 failure_message = excluded.failure_message,
                 updated_at = excluded.updated_at;
@@ -380,6 +702,8 @@ final class LibraryDatabase: @unchecked Sendable {
                 item.route.map { .text($0.formatExtension) } ?? .null,
                 .int(item.route?.supportsArchiveMembers == true ? 1 : 0),
                 .int(item.route?.supportsMultiTrack == true ? 1 : 0),
+                .text(item.route?.structurePolicy.rawValue ?? ScanStructurePolicy.knownSingle.rawValue),
+                .text(item.route?.metadataPolicy.rawValue ?? ScanMetadataPolicy.decoder.rawValue),
                 failure.map { .text($0.stage.rawValue) } ?? .null,
                 failure.map { .text($0.message) } ?? .null,
                 .double(Date().timeIntervalSince1970)
@@ -402,7 +726,7 @@ final class LibraryDatabase: @unchecked Sendable {
                 .double(fingerprint.modifiedAt.timeIntervalSince1970),
                 fingerprint.contentSignature.map(SQLiteValue.text) ?? .null,
                 .double(Date().timeIntervalSince1970),
-                .int(identity.rootID),
+                .int(storageRootID(for: identity.rootID)),
                 .text(identity.path),
                 .text(identity.archiveEntry ?? "")
             ]
@@ -613,6 +937,138 @@ final class LibraryDatabase: @unchecked Sendable {
             try persistScanTrackResultsInCurrentTransaction(
                 results
             )
+        }
+    }
+
+    func persistPlaylistMetadataIfCurrent(
+        _ updates: [PlaylistMetadataDatabaseUpdate]
+    ) throws {
+        guard !updates.isEmpty else { return }
+        let selectTracks = try prepareStatement(
+            """
+            SELECT t.id, t.root_id, r.path, t.browser_game, t.browser_system
+            FROM tracks t
+            INNER JOIN library_roots r ON r.id = t.root_id
+            WHERE t.path = ?
+              AND t.archive_entry IS ?
+              AND t.track_index = ?
+              AND t.file_size = ?
+              AND t.modified_at = ?
+              AND r.is_attached = 1
+              AND t.root_id NOT IN (SELECT staging_root_id FROM scan_staging_roots);
+            """
+        )
+        defer { sqlite3_finalize(selectTracks) }
+        let upsertMetadata = try prepareStatement(
+            """
+            INSERT INTO track_metadata (
+                track_id, title, game, author, system, comment,
+                intro_length_ms, loop_length_ms, play_length_ms,
+                fade_length_ms, metadata_scanned_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(track_id) DO UPDATE SET
+                title = excluded.title,
+                game = excluded.game,
+                author = excluded.author,
+                system = excluded.system,
+                comment = excluded.comment,
+                intro_length_ms = excluded.intro_length_ms,
+                loop_length_ms = excluded.loop_length_ms,
+                play_length_ms = excluded.play_length_ms,
+                fade_length_ms = excluded.fade_length_ms,
+                metadata_scanned_at = excluded.metadata_scanned_at;
+            """
+        )
+        defer { sqlite3_finalize(upsertMetadata) }
+
+        try withSavepoint {
+            for update in updates {
+                sqlite3_reset(selectTracks)
+                sqlite3_clear_bindings(selectTracks)
+                let sourcePath = update.track.source.sourceURL.path
+                let archiveEntry = update.track.source.archiveEntryPath
+                let bindings: [SQLiteValue] = [
+                    .text(sourcePath),
+                    archiveEntry.map(SQLiteValue.text) ?? .null,
+                    .int(Int64(update.track.trackIndex)),
+                    .int(update.fingerprint.fileSize),
+                    .double(update.fingerprint.modifiedAt.timeIntervalSince1970)
+                ]
+                for (index, binding) in bindings.enumerated() {
+                    sqliteBind(binding, to: selectTracks, at: Int32(index + 1))
+                }
+
+                var matchingRows: [(trackID: Int64, rootID: Int64, rootPath: String, game: String, system: String)] = []
+                while sqlite3_step(selectTracks) == SQLITE_ROW {
+                    matchingRows.append((
+                        trackID: sqlite3_column_int64(selectTracks, 0),
+                        rootID: sqlite3_column_int64(selectTracks, 1),
+                        rootPath: sqliteString(selectTracks, index: 2),
+                        game: sqliteString(selectTracks, index: 3),
+                        system: sqliteString(selectTracks, index: 4)
+                    ))
+                }
+                guard sqlite3_errcode(db) == SQLITE_OK || sqlite3_errcode(db) == SQLITE_DONE else {
+                    throw databaseError()
+                }
+
+                let route = ScanCoreHandlers.registry.route(
+                    for: update.track.playablePathExtension,
+                    archiveMember: update.track.isArchiveEntry
+                )
+                for row in matchingRows {
+                    try executePrepared(
+                        upsertMetadata,
+                        bindings: [
+                            .int(row.trackID),
+                            .text(update.metadata.song),
+                            .text(update.metadata.game),
+                            .text(update.metadata.author),
+                            .text(update.metadata.system),
+                            .text(update.metadata.comment),
+                            .int(Int64(update.metadata.introLengthMs)),
+                            .int(Int64(update.metadata.loopLengthMs)),
+                            .int(Int64(update.metadata.playLengthMs)),
+                            .int(Int64(update.metadata.fadeLengthMs)),
+                            .double(Date().timeIntervalSince1970)
+                        ]
+                    )
+                    let nextGame = LibraryConsoleResolver.browserGame(
+                        metadataGame: update.metadata.game,
+                        sourcePath: sourcePath,
+                        archiveEntry: archiveEntry
+                    )
+                    let nextSystem = LibraryConsoleResolver.browserSystem(
+                        metadataSystem: update.metadata.system,
+                        route: route,
+                        sourcePath: sourcePath,
+                        rootPath: row.rootPath,
+                        preferEmbeddedMetadata: preferEmbeddedConsoleTags
+                    )
+                    guard row.game != nextGame || row.system != nextSystem else { continue }
+                    try execute(
+                        "UPDATE game_sidebar_buckets SET track_count = track_count - 1 WHERE root_id = ? AND browser_game = ? AND browser_system = ?;",
+                        bindings: [.int(row.rootID), .text(row.game), .text(row.system)]
+                    )
+                    try execute(
+                        "DELETE FROM game_sidebar_buckets WHERE root_id = ? AND browser_game = ? AND browser_system = ? AND track_count <= 0;",
+                        bindings: [.int(row.rootID), .text(row.game), .text(row.system)]
+                    )
+                    try execute(
+                        """
+                        INSERT INTO game_sidebar_buckets (root_id, browser_game, browser_system, track_count)
+                        VALUES (?, ?, ?, 1)
+                        ON CONFLICT(root_id, browser_game, browser_system)
+                        DO UPDATE SET track_count = track_count + 1;
+                        """,
+                        bindings: [.int(row.rootID), .text(nextGame), .text(nextSystem)]
+                    )
+                    try execute(
+                        "UPDATE tracks SET browser_game = ?, browser_system = ? WHERE id = ?;",
+                        bindings: [.text(nextGame), .text(nextSystem), .int(row.trackID)]
+                    )
+                }
+            }
         }
     }
 

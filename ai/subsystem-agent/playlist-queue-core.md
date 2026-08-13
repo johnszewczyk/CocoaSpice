@@ -10,8 +10,9 @@
 
 - The right pane playlist is the active editable queue.
 - The playlist is shown directly without a second search/filter field or hidden filtered state; database search remains in the sidebar.
-- Rows are keyed by playable identity, which is file path plus subtrack index when needed.
-- Rows can also be keyed by `archive path + archive member path + subtrack index` for ZIP-imported tracks.
+- Rows use the versioned, delimiter-safe `pt1` playable identity: source path,
+  optional archive member path, and zero-based subtrack index. Metadata and
+  display values are excluded, so background inspection cannot replace the row.
 - Double-click on a row starts playback of that row.
 - `Return` starts playback of the primary selected row.
 - The row transport button plays that row, or stops it if that row is the active playing track.
@@ -26,10 +27,10 @@
 - Queue edits include cut, paste, delete, move, and drag-reorder.
 - Background playlist inspection publishes completed metadata incrementally so visible rows update before a large queue has fully hydrated.
 - Background hydration groups unresolved archive members by container and materializes each group once. It feeds prepared files through two bounded workers instead of creating one task and extractor process per playlist row.
+- Hydrated loose-file and archive-member metadata is persisted back to the live scan database only when the playable identity and source fingerprint still match. Metadata completeness is explicit; a valid zero or unknown duration is not itself evidence that inspection is missing.
 - Database-backed queue loads distinguish a successful empty result from a SQLite failure. A query failure is logged and shown in status without replacing or partially updating the current queue; combined file/folder selections are applied atomically only after every query succeeds.
 - A coalesced metadata batch reloads only the affected metadata cells. Hydration does not reload the whole table, measure every column, animate column widths, or persist width changes.
 - A playback request cancels queued background hydration before opening its decoder. Hydration restarts for unresolved rows after that request settles, preventing a large playlist from sitting ahead of interactive playback on the inspection queue.
-- Cached SPC metadata with no play length is incomplete and is reinspected during playlist hydration.
 
 ## Rules
 
@@ -47,3 +48,4 @@
 - [PlaylistQueueLoader.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlaylistQueueLoader.swift)
 - [PlayerViewModel.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
 - [LibraryModels.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryModels.swift)
+- [Cross-app playlist activation fixture](/Users/john/Downloads/Code/CocoaSpice/Tests/CocoaSpiceTests/cross-app-playlist-activation-v1.json)

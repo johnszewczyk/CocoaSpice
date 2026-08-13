@@ -1,3 +1,4 @@
+import Foundation
 import SQLite3
 
 extension LibraryDatabase {
@@ -5,13 +6,21 @@ extension LibraryDatabase {
         let version = try userVersion()
         guard version != Self.schemaVersion else { return }
 
+        if version == 22 {
+            try createResumableScanTables()
+            try setUserVersion(Self.schemaVersion)
+            return
+        }
+
         if version == 21 {
+            try createResumableScanTables()
             try rewriteSidebarIdentity(preferEmbeddedMetadata: preferEmbeddedConsoleTags)
             try setUserVersion(Self.schemaVersion)
             return
         }
 
         if version == 20 {
+            try createResumableScanTables()
             try rewriteSidebarIdentity(preferEmbeddedMetadata: preferEmbeddedConsoleTags)
             try setUserVersion(Self.schemaVersion)
             return
@@ -19,6 +28,7 @@ extension LibraryDatabase {
 
         if version == 19 {
             try createScanStagingRootTable()
+            try createResumableScanTables()
             try rewriteSidebarIdentity(preferEmbeddedMetadata: preferEmbeddedConsoleTags)
             try setUserVersion(Self.schemaVersion)
             return
@@ -34,6 +44,7 @@ extension LibraryDatabase {
             try repairVGMStreamConsoleBuckets()
             try clearHESFallbackDurations()
             try createScanStagingRootTable()
+            try createResumableScanTables()
             try rewriteSidebarIdentity(preferEmbeddedMetadata: preferEmbeddedConsoleTags)
             try setUserVersion(Self.schemaVersion)
             return
@@ -43,6 +54,7 @@ extension LibraryDatabase {
             try repairVGMStreamConsoleBuckets()
             try clearHESFallbackDurations()
             try createScanStagingRootTable()
+            try createResumableScanTables()
             try rewriteSidebarIdentity(preferEmbeddedMetadata: preferEmbeddedConsoleTags)
             try setUserVersion(Self.schemaVersion)
             return
@@ -51,6 +63,7 @@ extension LibraryDatabase {
         if version == 18 {
             try clearHESFallbackDurations()
             try createScanStagingRootTable()
+            try createResumableScanTables()
             try rewriteSidebarIdentity(preferEmbeddedMetadata: preferEmbeddedConsoleTags)
             try setUserVersion(Self.schemaVersion)
             return
@@ -64,6 +77,7 @@ extension LibraryDatabase {
             try createScanStagingRootTable()
             try createTrackTables()
             try createScanTables()
+            try createResumableScanTables()
             try createDeadSourceTable()
             try createGameSidebarBucketTable()
             try createFileSidebarBucketTable()
@@ -78,7 +92,22 @@ extension LibraryDatabase {
     }
 
     func cleanupAbandonedScanStagingRoots() throws {
-        try execute("DELETE FROM library_roots WHERE id IN (SELECT staging_root_id FROM scan_staging_roots);")
+        // A process exit may interrupt work, but every completed source is an
+        // atomic checkpoint. Retain stages that own useful completed work;
+        // legacy or interrupted-before-first-checkpoint stages remain safe to
+        // remove. Scratch material is independently disposable.
+        try execute("""
+        DELETE FROM library_roots
+        WHERE id IN (
+            SELECT stage.staging_root_id
+            FROM scan_staging_roots stage
+            WHERE NOT EXISTS (
+                SELECT 1 FROM scan_source_checkpoints checkpoint
+                WHERE checkpoint.staging_root_id = stage.staging_root_id
+            )
+        );
+        """)
+        try execute("UPDATE scan_staging_roots SET state = 'paused', updated_at = ? WHERE state = 'active';", bindings: [.double(Date().timeIntervalSince1970)])
     }
 
     private func dropAllApplicationTables() throws {
@@ -206,6 +235,61 @@ extension LibraryDatabase {
         );
         """)
         try execute("CREATE INDEX IF NOT EXISTS scan_staging_target_index ON scan_staging_roots(target_root_id);")
+    }
+
+    private func createResumableScanTables() throws {
+        let columns = try tableColumns("scan_staging_roots")
+        if !columns.contains("state") {
+            try execute("ALTER TABLE scan_staging_roots ADD COLUMN state TEXT NOT NULL DEFAULT 'paused';")
+        }
+        if !columns.contains("mode") {
+            try execute("ALTER TABLE scan_staging_roots ADD COLUMN mode TEXT NOT NULL DEFAULT 'newScan';")
+        }
+        if !columns.contains("policy_version") {
+            try execute("ALTER TABLE scan_staging_roots ADD COLUMN policy_version INTEGER NOT NULL DEFAULT 1;")
+        }
+        if !columns.contains("updated_at") {
+            try execute("ALTER TABLE scan_staging_roots ADD COLUMN updated_at REAL NOT NULL DEFAULT 0;")
+            try execute("UPDATE scan_staging_roots SET updated_at = created_at WHERE updated_at = 0;")
+        }
+        if !columns.contains("last_error") {
+            try execute("ALTER TABLE scan_staging_roots ADD COLUMN last_error TEXT;")
+        }
+        let scanItemColumns = try tableColumns("scan_items")
+        if !scanItemColumns.contains("structure_policy") {
+            try execute("ALTER TABLE scan_items ADD COLUMN structure_policy TEXT NOT NULL DEFAULT 'knownSingle';")
+            try execute("UPDATE scan_items SET structure_policy = CASE WHEN supports_multi_track = 1 THEN 'enumerate' ELSE 'knownSingle' END;")
+        }
+        if !scanItemColumns.contains("metadata_policy") {
+            try execute("ALTER TABLE scan_items ADD COLUMN metadata_policy TEXT NOT NULL DEFAULT 'decoder';")
+        }
+        try execute("""
+        CREATE TABLE IF NOT EXISTS scan_source_checkpoints (
+            staging_root_id INTEGER NOT NULL,
+            path TEXT NOT NULL,
+            file_size INTEGER NOT NULL,
+            modified_at REAL NOT NULL,
+            content_signature TEXT,
+            updated_at REAL NOT NULL,
+            PRIMARY KEY(staging_root_id, path),
+            FOREIGN KEY(staging_root_id) REFERENCES library_roots(id) ON DELETE CASCADE
+        );
+        """)
+        try execute("CREATE INDEX IF NOT EXISTS scan_checkpoints_stage_index ON scan_source_checkpoints(staging_root_id, path);")
+    }
+
+    private func tableColumns(_ tableName: String) throws -> Set<String> {
+        let identifier = tableName.replacingOccurrences(of: "\"", with: "\"\"")
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "PRAGMA table_info(\"\(identifier)\");", -1, &statement, nil) == SQLITE_OK else {
+            throw databaseError()
+        }
+        defer { sqlite3_finalize(statement) }
+        var columns = Set<String>()
+        while sqlite3_step(statement) == SQLITE_ROW {
+            columns.insert(sqliteString(statement, index: 1))
+        }
+        return columns
     }
 
     private func createGameSidebarBucketTable() throws {
@@ -339,6 +423,8 @@ extension LibraryDatabase {
             format_extension TEXT,
             supports_archive_members INTEGER NOT NULL DEFAULT 0,
             supports_multi_track INTEGER NOT NULL DEFAULT 0,
+            structure_policy TEXT NOT NULL DEFAULT 'knownSingle',
+            metadata_policy TEXT NOT NULL DEFAULT 'decoder',
             failure_stage TEXT,
             failure_message TEXT,
             updated_at REAL NOT NULL,

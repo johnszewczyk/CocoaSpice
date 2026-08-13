@@ -1,4 +1,5 @@
 import Foundation
+import MediaScannerKit
 
 enum PlaybackDecoderBackend: Hashable, Sendable {
     case gme
@@ -59,13 +60,10 @@ struct PlaybackDecoderModule: Sendable {
     }
 
     var scanDescriptor: ScanPluginDescriptor {
-        ScanPluginDescriptor(
-            pluginID: pluginID,
-            displayName: displayName,
-            supportedExtensions: supportedExtensions,
-            supportsMultiTrack: requiresTrackEnumeration,
-            priority: 10
-        )
+        guard let descriptor = BuiltInScannerPlugins.registry.descriptors.first(where: { $0.pluginID == pluginID }) else {
+            preconditionFailure("Missing shared scanner plugin descriptor for \(pluginID)")
+        }
+        return descriptor
     }
 }
 
@@ -139,7 +137,8 @@ enum PlaybackFormatRegistry {
         PlaybackDecoderModule(
             pluginID: "gme", displayName: "Game Music Emu", backend: .gme,
             supportedExtensions: ["spc"],
-            requiresTrackEnumeration: false, archiveMaterialization: .selectedEntry,
+            requiresTrackEnumeration: false,
+            archiveMaterialization: .selectedEntry,
             scanInspectionConcurrency: libGMEScanInspectionConcurrency,
             supportsLongPlay: true
         ),
@@ -158,12 +157,14 @@ enum PlaybackFormatRegistry {
         PlaybackDecoderModule(
             pluginID: "standard-audio", displayName: "Core Audio", backend: .standardAudio,
             supportedExtensions: standardAudioSupportedExtensions,
-            requiresTrackEnumeration: false, archiveMaterialization: .selectedEntry
+            requiresTrackEnumeration: false,
+            archiveMaterialization: .selectedEntry
         ),
         PlaybackDecoderModule(
             pluginID: "ffmpeg-audio", displayName: "FFmpeg", backend: .ffmpegAudio,
             supportedExtensions: ffmpegAudioSupportedExtensions,
-            requiresTrackEnumeration: false, archiveMaterialization: .selectedEntry
+            requiresTrackEnumeration: false,
+            archiveMaterialization: .selectedEntry
         ),
         PlaybackDecoderModule(
             pluginID: "libvgm", displayName: "libVGM", backend: .libvgm,
@@ -178,19 +179,22 @@ enum PlaybackFormatRegistry {
         PlaybackDecoderModule(
             pluginID: "highly-theoretical", displayName: "Highly Theoretical", backend: .highlyTheoretical,
             supportedExtensions: highlyTheoreticalSupportedExtensions,
-            requiresTrackEnumeration: false, archiveMaterialization: .completeSet,
+            requiresTrackEnumeration: false,
+            archiveMaterialization: .completeSet,
             scanArchiveMaterialization: .selectedEntry, supportsLongPlay: true
         ),
         PlaybackDecoderModule(
             pluginID: "lazyusf", displayName: "LazyUSF", backend: .lazyUSF,
             supportedExtensions: lazyUSFSupportedExtensions,
-            requiresTrackEnumeration: false, archiveMaterialization: .completeSetWithLazyUSFAliases,
+            requiresTrackEnumeration: false,
+            archiveMaterialization: .completeSetWithLazyUSFAliases,
             scanArchiveMaterialization: .selectedEntry, supportsLongPlay: true
         ),
         PlaybackDecoderModule(
             pluginID: "twosf", displayName: "2SF", backend: .twoSF,
             supportedExtensions: twoSFSupportedExtensions,
-            requiresTrackEnumeration: false, archiveMaterialization: .completeSet,
+            requiresTrackEnumeration: false,
+            archiveMaterialization: .completeSet,
             scanArchiveMaterialization: .selectedEntry, supportsLongPlay: true
         ),
         PlaybackDecoderModule(
@@ -212,19 +216,21 @@ enum PlaybackFormatRegistry {
         PlaybackDecoderModule(
             pluginID: "play-psf1", displayName: "Play! PSF", backend: .playPSF,
             supportedExtensions: psfSupportedExtensions,
-            requiresTrackEnumeration: false, archiveMaterialization: .completeSet,
+            requiresTrackEnumeration: false,
+            archiveMaterialization: .completeSet,
             scanArchiveMaterialization: .selectedEntry, supportsLongPlay: true
         ),
         PlaybackDecoderModule(
             pluginID: "play-psf2", displayName: "Play! PSF2", backend: .playPSF,
             supportedExtensions: psf2SupportedExtensions,
-            requiresTrackEnumeration: false, archiveMaterialization: .completeSet,
+            requiresTrackEnumeration: false,
+            archiveMaterialization: .completeSet,
             scanArchiveMaterialization: .selectedEntry, supportsLongPlay: true
         )
     ]
 
     static let supportedExtensions: Set<String> = Set(modules.flatMap(\.supportedExtensions))
-    static let scanPluginDescriptors = modules.map(\.scanDescriptor)
+    static let scanPluginDescriptors = BuiltInScannerPlugins.registry.descriptors
 
     static func admits(pathExtension: String) -> Bool {
         supportedExtensions.contains(normalize(pathExtension))

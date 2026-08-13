@@ -209,22 +209,48 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(count > 0)
 }
 
-@Test func tarZstandardListingAcceptsOnlyZstdsExpectedBrokenPipeExit() {
-    #expect(ZipArchiveSupport.isExpectedTarListingBrokenPipe(
+@Test func tarZstandardPipelinesAcceptOnlyZstdsExpectedPipeClosure() {
+    #expect(ZipArchiveSupport.isExpectedZstandardPipeClosure(
+        exitStatus: SIGPIPE,
+        terminationReason: .uncaughtSignal,
+        stderr: ""
+    ))
+    #expect(ZipArchiveSupport.isExpectedZstandardPipeClosure(
         exitStatus: 70,
         terminationReason: .exit,
         stderr: "zstd: error 70 : Write error : cannot write block : Broken pipe"
     ))
-    #expect(!ZipArchiveSupport.isExpectedTarListingBrokenPipe(
+    #expect(!ZipArchiveSupport.isExpectedZstandardPipeClosure(
         exitStatus: 70,
         terminationReason: .exit,
         stderr: "zstd: error 70 : Write error : disk full"
     ))
-    #expect(!ZipArchiveSupport.isExpectedTarListingBrokenPipe(
+    #expect(!ZipArchiveSupport.isExpectedZstandardPipeClosure(
         exitStatus: 1,
         terminationReason: .exit,
         stderr: "zstd: error 70 : Write error : cannot write block : Broken pipe"
     ))
+}
+
+@Test func hootTarZstandardScanMaterializesAllVGMTracksBeforeNonAudioTail() throws {
+    let archiveURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/JoshW/Hoot/Rapid Hero [Arcadia] (1994-07)(NMK)(Media Trading).tar.zst")
+    guard FileManager.default.fileExists(atPath: archiveURL.path) else { return }
+
+    let entries = try ZipArchiveSupport.listPlayableEntries(
+        in: archiveURL,
+        supportedExtensions: ["vgm"]
+    )
+    #expect(entries.count == 14)
+    let scanRoot = try ZipArchiveSupport.materializeEntriesForScan(
+        at: archiveURL,
+        entryPaths: entries.map(\.entryPath)
+    )
+    defer { ZipArchiveSupport.discardScanMaterialization(at: scanRoot) }
+    #expect(entries.allSatisfy {
+        FileManager.default.fileExists(
+            atPath: ZipArchiveSupport.archiveMemberURL(in: scanRoot, entryPath: $0.entryPath).path
+        )
+    })
 }
 
 @Test func tarZstandardSelectedPlaybackCachesOnlyTheRequestedMember() throws {

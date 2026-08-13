@@ -6,8 +6,12 @@
 
 - Scan roots: add and manage folders used by the database.
 - Library Paths: Add Path, Enable All / Disable All, Reset Paths, Scan All, and Test Links are the library-wide controls. The compact circled-check control switches every configured path on or off together. Reset Paths asks for confirmation before removing every configured path; retained indexed data remains available if a path is added again. Test Links marks missing indexed sources dead while retaining their metadata for rediscovery.
-- Scanner Options: Deep Scan is the sole scanner setting. It makes Scan and Scan All re-inspect every discovered file, including unchanged archives, and replaces the root's live indexed results with the fresh scan.
-- Stop Scan: stops the active scan without removing indexed library entries already written.
+- Scanner Options: Deep Scan is the sole scanner setting. It is a force-reinspect switch, not a metadata-depth mode: Scan and Scan All re-inspect every discovered file, including unchanged archives, and replace the root's live indexed results with the fresh scan.
+- Stop Scan: changes the operation to Cancelling until active decoder/archive
+  work and scratch cleanup finish. The previous committed library remains
+  available. Completed source/archive checkpoints remain in a hidden stage and
+  the next scan with the same mode resumes them after source validation;
+  another scan cannot start during cleanup.
 - Data: is a separate Options sidebar page with Database and Cache panels.
 - Database: reports total indexed tracks, unlinked tracks, and unlinked sources. It retains file data when files move on disk to speed up scans; Clean Unlinked permanently removes retained unlinked sources and their tracks, metadata, and scan inventory. One unlinked source can retain many tracks, especially an archive, so the source and track counts need not match. Its count and cleanup work begin only when this Data panel is opened, run in the background, and refresh the sidebar only after cleanup completes. Reset Database asks for confirmation, then removes all indexed files, metadata, scan inventory, and scan status while retaining configured library paths.
 - Cache: defaults to on with a 2 GB limit; choose 2 GB, 4 GB, 8 GB, or 16 GB. The panel reports cached usage, file count, and free space on the cache volume. Cached archive material is pruned least-recently-used after a successful materialization. Cache off uses disposable playback storage, removed when playback stops. At launch, CocoaSpice removes only its own abandoned scan scratch, disposable playback material, incomplete extraction staging, and obsolete cache-layout entries. Every archive materialization reserves 1 GB of free disk space and refuses material that cannot fit its active storage limit. Clear Cache stops playback and removes cached or disposable archive material; it is unavailable while a library scan is running.

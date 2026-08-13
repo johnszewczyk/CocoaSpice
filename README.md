@@ -31,10 +31,10 @@ This is not ordinary “repeat the file” behavior. Long Play uses the decoder�
 ## Library workflow
 
 1. **Add paths** in **Options → Library**. Paths can be enabled or disabled without removing their scanned data.
-2. **Scan All** queues enabled paths. A direct row scan also works for an unchecked path. Scanning is background work; the Scan Status panel shows separately ellipsized **Current Activity**, **File Path**, and **File Name** fields, plus progress and cancellation.
+2. **Scan All** queues enabled paths. A direct row scan also works for an unchecked path. Scanning is background work; the Scan Status panel shows separately ellipsized **Current Activity**, **File Path**, and **File Name** fields, plus progress and cancellation. Stop retains every completed source/archive checkpoint, and the next matching scan resumes after rediscovery validates those sources.
 3. **Browse** Games for metadata-grouped titles, or Files for the scanned folder tree. Neither mode walks the live filesystem during ordinary browsing.
 4. **Test Links** marks absent sources as unlinked but preserves their file data for fast rediscovery after a move. **Clean Unlinked** is the deliberate, permanent removal step.
-5. **Deep Scan** forces fresh archive extraction and metadata inspection, replacing the stored scan results for that path.
+5. **Deep Scan** means force-reinspect: it bypasses unchanged-source reuse and replaces the stored scan results for that path. It is not a separate metadata-depth mode.
 
 ### Database rules
 
@@ -42,6 +42,7 @@ This is not ordinary “repeat the file” behavior. Long Play uses the decoder�
 - A Games row is identified by its library root, game, and system. Matching titles from separate roots remain separate and load only that root's stored playlist rows.
 - Game tags are used when present; otherwise archives use their filename and loose tracks use their parent folder. A recognized terminal filename tag such as `[PS2]`, then a recognized console folder, supplies collection console identity by default; the Options switch prefers normalized embedded console tags instead.
 - Incremental scans reuse unchanged results. A changed archive replaces its complete stored member set, so removed or renamed members cannot remain visible.
+- Scans publish a structurally complete catalog first. Formats that must enumerate embedded tracks still do so during scanning; known single-track standard audio can defer optional metadata until playlist hydration without delaying sidebar publication.
 - Disabled paths are excluded from the active database and Scan All, yet remain available for a deliberate per-path scan.
 - Reset Database clears indexed state. The next scan recreates it from the chosen paths.
 

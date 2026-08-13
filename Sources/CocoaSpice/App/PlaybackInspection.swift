@@ -97,10 +97,9 @@ enum PlaybackInspection {
             try Task.checkCancellation()
             let inspector = try PlaybackDecoderFactory.makeInspector(fileURL: fileURL)
             let trackCount = max(1, inspector.trackCount)
-            return try (0..<trackCount).map { trackIndex in
+            return try TrackItem.expanded(url: fileURL, trackCount: trackCount).map { track in
                 try Task.checkCancellation()
-                let track = TrackItem(url: fileURL, trackIndex: trackIndex, trackCount: trackCount)
-                let metadata = try inspector.metadata(trackIndex: trackIndex)
+                let metadata = try inspector.metadata(trackIndex: track.trackIndex)
                 return InspectedTrack(track: track, metadata: metadata)
             }
         }

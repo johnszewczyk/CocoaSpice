@@ -52,6 +52,7 @@ private enum CocoaSpiceWindowDefaults {
 
 @main
 struct CocoaSpiceApp: App {
+    @NSApplicationDelegateAdaptor(CocoaSpiceAppDelegate.self) private var appDelegate
     @State private var model = PlayerViewModel()
 
     init() {
@@ -68,6 +69,9 @@ struct CocoaSpiceApp: App {
     var body: some Scene {
         WindowGroup {
             MainView(model: model)
+                .onAppear {
+                    appDelegate.model = model
+                }
                 .onOpenURL { url in
                     model.openPlaylistM3U(at: url)
                 }
@@ -103,6 +107,35 @@ struct CocoaSpiceApp: App {
         .windowToolbarStyle(.unified)
         .defaultSize(width: 560, height: 620)
         .windowResizability(.contentSize)
+    }
+}
+
+@MainActor
+private final class CocoaSpiceAppDelegate: NSObject, NSApplicationDelegate {
+    private static let scanTerminationGrace: TimeInterval = 30
+    weak var model: PlayerViewModel?
+    private var terminationTask: Task<Void, Never>?
+
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let model else { return .terminateNow }
+        model.saveSessionStateNow()
+        guard model.libraryScanInProgress else { return .terminateNow }
+        guard terminationTask == nil else { return .terminateLater }
+
+        model.stopLibraryScan()
+        terminationTask = Task { @MainActor [weak self, weak model] in
+            let deadline = Date().addingTimeInterval(Self.scanTerminationGrace)
+            while model?.libraryScanInProgress == true, Date() < deadline {
+                try? await Task.sleep(nanoseconds: 100_000_000)
+            }
+            self?.terminationTask = nil
+            // Completed source checkpoints are committed independently. If an
+            // in-process decoder ignores cooperative cancellation, process
+            // termination leaves only the hidden job active; startup recovery
+            // marks it paused and disposable scratch is reclaimed.
+            sender.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 }
 

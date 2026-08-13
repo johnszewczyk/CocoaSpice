@@ -4,6 +4,8 @@ import Foundation
 /// opening an emulator or resolving `_lib` dependencies during a library scan;
 /// playback continues to materialize the complete dependency set.
 enum PSFMetadataReader {
+    private static let maximumTagBytes = 1_048_576
+
     static func read(fileURL: URL) throws -> TrackMetadata? {
         let handle = try FileHandle(forReadingFrom: fileURL)
         defer { try? handle.close() }
@@ -19,7 +21,9 @@ enum PSFMetadataReader {
         guard tagOffset + 5 <= fileSize else { return metadata(tags: [:], fileURL: fileURL) }
 
         try handle.seek(toOffset: tagOffset)
-        guard let footer = try handle.readToEnd(), footer.starts(with: Data("[TAG]".utf8)) else {
+        let footerLength = min(UInt64(maximumTagBytes), fileSize - tagOffset)
+        guard let footer = try handle.read(upToCount: Int(footerLength)),
+              footer.starts(with: Data("[TAG]".utf8)) else {
             return metadata(tags: [:], fileURL: fileURL)
         }
         return metadata(tags: tags(in: footer.dropFirst(5)), fileURL: fileURL)

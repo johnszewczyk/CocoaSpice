@@ -37,6 +37,12 @@ final class LatestTaskOwner {
         self.generation &+= 1
     }
 
+    /// Requests cooperative cancellation without invalidating the generation.
+    /// Use this when UI state must remain active until owned cleanup settles.
+    func requestCancellation() {
+        task?.cancel()
+    }
+
     func cancel() {
         generation &+= 1
         task?.cancel()

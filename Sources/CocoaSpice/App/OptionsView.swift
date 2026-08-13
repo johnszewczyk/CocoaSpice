@@ -572,11 +572,12 @@ struct OptionsView: View {
                         value: model.libraryScanCurrentFile ?? model.libraryScanStatus ?? "Preparing…"
                     )
                     libraryOperationProgressBar(progress)
-                    Button(model.libraryOperationIsLinkTest ? "Cancel Test Links" : (model.queuedLibraryScanCount > 0 ? "Stop Scan + Clear Queue" : "Cancel Scan")) {
+                    Button(model.libraryScanIsCancelling ? "Cancelling…" : (model.libraryOperationIsLinkTest ? "Cancel Test Links" : (model.queuedLibraryScanCount > 0 ? "Stop Scan + Clear Queue" : "Cancel Scan"))) {
                         model.stopLibraryScan()
                     }
                     .frame(maxWidth: .infinity)
                     .keyboardShortcut(.cancelAction)
+                    .disabled(model.libraryScanIsCancelling)
                 }
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }

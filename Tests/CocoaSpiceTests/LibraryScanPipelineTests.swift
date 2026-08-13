@@ -30,13 +30,29 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
 
 @Test func scanSelectionSeparatesNewAndIncrementalModes() {
     let identity = ScanItemIdentity(rootID: 1, path: "/music/set.gbs", archiveEntry: "song.gbs")
-    let fingerprint = ScanFingerprint(fileSize: 10, modifiedAt: Date(timeIntervalSince1970: 1))
-    let changed = ScanFingerprint(fileSize: 11, modifiedAt: Date(timeIntervalSince1970: 2))
+    let fingerprint = ScanFingerprint(
+        fileSize: 10,
+        modifiedAt: Date(timeIntervalSince1970: 1),
+        contentSignature: "content-a"
+    )
+    let changed = ScanFingerprint(
+        fileSize: 11,
+        modifiedAt: Date(timeIntervalSince1970: 2),
+        contentSignature: "content-b"
+    )
 
     let successful = ScanInventoryItem(identity: identity, fingerprint: fingerprint, state: .successful, route: nil)
     #expect(!ScanSelection.includes(successful, mode: .incremental, currentFingerprint: fingerprint))
     #expect(ScanSelection.includes(successful, mode: .incremental, currentFingerprint: changed))
     #expect(ScanSelection.includes(successful, mode: .newScan, currentFingerprint: fingerprint))
+
+    let legacy = ScanInventoryItem(
+        identity: identity,
+        fingerprint: ScanFingerprint(fileSize: 10, modifiedAt: fingerprint.modifiedAt),
+        state: .successful,
+        route: nil
+    )
+    #expect(ScanSelection.includes(legacy, mode: .incremental, currentFingerprint: legacy.fingerprint))
 }
 
 @Test func scanActivitySeparatesSourcePathFromDisplayFilename() {
@@ -55,9 +71,26 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     )
 
     #expect(ScanActivity(candidate: archiveCandidate, detail: "Listing").sourcePath == archiveURL.path)
+    #expect(ScanActivity(candidate: archiveCandidate, phase: .archiveListing, detail: "Listing").phase == .archiveListing)
     #expect(ScanActivity(candidate: archiveCandidate, detail: "Listing").filename == "Katamari.tar.zst")
     #expect(ScanActivity(candidate: memberCandidate, detail: "Inspecting").sourcePath == "\(archiveURL.path)#music/title.txtp")
     #expect(ScanActivity(candidate: memberCandidate, detail: "Inspecting").filename == "title.txtp")
+}
+
+@Test func scannerLifecycleInfersCoordinatorPhases() {
+    #expect(ScanLifecyclePhase.infer(from: "Discovering supported files…") == .discovery)
+    #expect(ScanLifecyclePhase.infer(from: "Publishing scan…") == .publication)
+}
+
+@Test func scannerTimelineReportsPhaseAndTotalElapsedTime() {
+    let timeline = ScanPhaseTimeline()
+    timeline.enter(.discovery)
+    timeline.enter(.planning)
+    let telemetry = timeline.snapshot()
+
+    #expect(telemetry.elapsedMilliseconds >= 0)
+    #expect(telemetry.phaseMilliseconds.keys.contains(.discovery))
+    #expect(telemetry.phaseMilliseconds.keys.contains(.planning))
 }
 
 @Test func archiveManifestSignatureSkipsTimestampOnlyChanges() {
@@ -94,6 +127,22 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
         mode: .incremental,
         currentFingerprint: changedArchive
     ))
+}
+
+@Test func contentSignatureOverridesUnchangedSizeAndTimestamp() {
+    let timestamp = Date(timeIntervalSince1970: 1)
+    let previous = ScanFingerprint(
+        fileSize: 100,
+        modifiedAt: timestamp,
+        contentSignature: "content-a"
+    )
+    let changed = ScanFingerprint(
+        fileSize: 100,
+        modifiedAt: timestamp,
+        contentSignature: "content-b"
+    )
+
+    #expect(!previous.matches(changed))
 }
 
 @Test func scanMetadataShortcutsCentralizeFormatSpecificFastPaths() throws {
@@ -374,7 +423,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     ])
 
     let games = try database.loadGameItems()
-    let selectedGame = try #require(games.first { $0.name == "Game" && $0.systemName == "SNES" })
+    let selectedGame = try #require(games.first { $0.name == "Game" && $0.systemName == "Super Nintendo" })
     let loaded = try database.tracksAndMetadataForGames([selectedGame])
     let files = try database.loadFileItems()
     let sidebarContent = try LibraryDatabase.loadSidebarContent(databaseURL: database.databaseURL)
@@ -704,6 +753,55 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(try database.loadGameItems().isEmpty)
 }
 
+@Test func stagedRediscoveryRestoresDeadSourceOnlyAtPublication() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("cocoaspice-staged-rediscovery-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    try database.addRoot(path: directory.path)
+    let root = try #require(database.loadRoots().first)
+    let sourceURL = directory.appendingPathComponent("Rediscovered.spc")
+    let route = ScanRoute(
+        pluginID: "gme",
+        formatExtension: "spc",
+        supportsArchiveMembers: true,
+        supportsMultiTrack: false
+    )
+    let candidate = ScanCandidate(
+        identity: ScanItemIdentity(rootID: root.id, path: sourceURL.path, archiveEntry: nil),
+        fingerprint: ScanFingerprint(
+            fileSize: 1,
+            modifiedAt: Date(timeIntervalSince1970: 1),
+            contentSignature: "rediscovered-content"
+        ),
+        sourceURL: sourceURL,
+        route: route
+    )
+    let result = ScanPipelineResult.success(
+        candidate,
+        ScanInspection(
+            route: route,
+            tracks: [ScanTrackMetadata(trackIndex: 0, trackCount: 1, metadata: nil)]
+        )
+    )
+    let source = LibraryIndexedSource(rootID: root.id, path: sourceURL.path, archiveEntry: nil)
+
+    try database.persistScanTrackResults([result])
+    try database.markSourcesDead([source])
+    #expect(try database.deadSourceCount() == 1)
+    #expect(try database.loadGameItems().isEmpty)
+
+    try database.beginAtomicScan(rootID: root.id, replacingLiveData: true, mode: .incremental)
+    try database.checkpointScanSource([result])
+    #expect(try database.deadSourceCount() == 1)
+    #expect(try database.loadGameItems().isEmpty)
+
+    try database.commitAtomicScan()
+    #expect(try database.deadSourceCount() == 0)
+    #expect(try database.loadGameItems().map(\.name) == [directory.lastPathComponent])
+}
+
 @Test func atomicScanKeepsLastCommittedLibraryUntilCommitAndRestoresItOnFailure() throws {
     let directory = FileManager.default.temporaryDirectory
         .appendingPathComponent("cocoaspice-atomic-scan-\(UUID().uuidString)", isDirectory: true)
@@ -780,6 +878,147 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(database.lastAtomicScanMetrics?.databaseBytes ?? 0 > 0)
 }
 
+@Test func pausedScanRetainsCompletedSourceCheckpointAcrossDatabaseReopen() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("cocoaspice-resume-scan-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let databaseURL = directory.appendingPathComponent("Library.sqlite")
+    let sourceURL = directory.appendingPathComponent("Resumed.spc")
+    let route = ScanRoute(
+        pluginID: "gme",
+        formatExtension: "spc",
+        supportsArchiveMembers: true,
+        supportsMultiTrack: false
+    )
+
+    do {
+        let database = try LibraryDatabase(databaseURL: databaseURL)
+        try database.addRoot(path: directory.path)
+        let root = try #require(database.loadRoots().first)
+        let candidate = ScanCandidate(
+            identity: ScanItemIdentity(rootID: root.id, path: sourceURL.path, archiveEntry: nil),
+            fingerprint: ScanFingerprint(fileSize: 42, modifiedAt: Date(timeIntervalSince1970: 123)),
+            sourceURL: sourceURL,
+            route: route
+        )
+        let inspection = ScanInspection(
+            route: route,
+            tracks: [ScanTrackMetadata(
+                trackIndex: 0,
+                trackCount: 1,
+                metadata: TrackMetadata(
+                    game: "Resumed",
+                    song: "Theme",
+                    system: "Super Nintendo",
+                    author: "",
+                    comment: "",
+                    introLengthMs: 0,
+                    loopLengthMs: 0,
+                    playLengthMs: 0,
+                    fadeLengthMs: 0
+                )
+            )]
+        )
+        let start = try database.beginAtomicScan(
+            rootID: root.id,
+            replacingLiveData: true,
+            mode: .newScan
+        )
+        #expect(!start.resumed)
+        try database.checkpointScanSource([.success(candidate, inspection)])
+        database.pauseAtomicScan()
+        #expect(try stagedTrackCount(databaseURL: databaseURL) == 1)
+        #expect(try database.trackCount() == 0)
+    }
+
+    let reopened = try LibraryDatabase(databaseURL: databaseURL, recoverAbandonedStages: true)
+    let root = try #require(reopened.loadRoots().first)
+    let resumed = try reopened.beginAtomicScan(
+        rootID: root.id,
+        replacingLiveData: true,
+        mode: .newScan
+    )
+    #expect(resumed.resumed)
+    let checkpoints = try reopened.loadScanSourceCheckpoints(rootID: root.id)
+    #expect(checkpoints.map(\.path) == [sourceURL.path])
+    try reopened.commitAtomicScan()
+    #expect(try reopened.loadGameItems().map(\.name) == ["Resumed"])
+    #expect(try stagingRootCount(databaseURL: databaseURL) == 0)
+}
+
+@Test func lazyPlaylistMetadataWritebackRejectsStaleSourceFingerprint() throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("cocoaspice-lazy-metadata-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let sourceURL = directory.appendingPathComponent("Deferred.flac")
+    try Data("first".utf8).write(to: sourceURL)
+    let values = try sourceURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+    let fingerprint = ScanFingerprint(
+        fileSize: Int64(values.fileSize ?? 0),
+        modifiedAt: values.contentModificationDate ?? .distantPast
+    )
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    try database.addRoot(path: directory.path)
+    let root = try #require(database.loadRoots().first)
+    let route = ScanRoute(
+        pluginID: "standard-audio",
+        formatExtension: "flac",
+        supportsArchiveMembers: true,
+        supportsMultiTrack: false,
+        metadataPolicy: .optionalDeferred
+    )
+    let candidate = ScanCandidate(
+        identity: ScanItemIdentity(rootID: root.id, path: sourceURL.path, archiveEntry: nil),
+        fingerprint: fingerprint,
+        sourceURL: sourceURL,
+        route: route
+    )
+    try database.persistScanResults([.success(
+        candidate,
+        ScanInspection(
+            route: route,
+            tracks: [ScanTrackMetadata(trackIndex: 0, trackCount: 1, metadata: nil)]
+        )
+    )])
+    let track = TrackItem(url: sourceURL)
+    let firstMetadata = TrackMetadata(
+        game: "Deferred",
+        song: "First",
+        system: "",
+        author: "",
+        comment: "",
+        introLengthMs: 0,
+        loopLengthMs: 0,
+        playLengthMs: 1_000,
+        fadeLengthMs: 0
+    )
+    try database.persistPlaylistMetadataIfCurrent([
+        PlaylistMetadataDatabaseUpdate(track: track, metadata: firstMetadata, fingerprint: fingerprint)
+    ])
+    #expect(try sqliteScalarInt(databaseURL: database.databaseURL, sql: "SELECT SUM(play_length_ms) FROM track_metadata;") == 1_000)
+
+    try Data("changed-size".utf8).write(to: sourceURL)
+    let staleMetadata = TrackMetadata(
+        game: "Deferred",
+        song: "Stale",
+        system: "",
+        author: "",
+        comment: "",
+        introLengthMs: 0,
+        loopLengthMs: 0,
+        playLengthMs: 2_000,
+        fadeLengthMs: 0
+    )
+    try database.persistPlaylistMetadataIfCurrent([
+        PlaylistMetadataDatabaseUpdate(track: track, metadata: staleMetadata, fingerprint: ScanFingerprint(
+            fileSize: Int64((try sourceURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0),
+            modifiedAt: Date()
+        ))
+    ])
+    #expect(try sqliteScalarInt(databaseURL: database.databaseURL, sql: "SELECT SUM(play_length_ms) FROM track_metadata;") == 1_000)
+}
+
 private func stagedTrackCount(databaseURL: URL) throws -> Int {
     try sqliteScalarInt(
         databaseURL: databaseURL,
@@ -853,7 +1092,11 @@ private func sqliteScalarInt(databaseURL: URL, sql: String) throws -> Int {
 }
 
 @Test func scanPlannerOnlySchedulesSelectedItemsInStableOrder() {
-    let fingerprint = ScanFingerprint(fileSize: 1, modifiedAt: Date(timeIntervalSince1970: 1))
+    let fingerprint = ScanFingerprint(
+        fileSize: 1,
+        modifiedAt: Date(timeIntervalSince1970: 1),
+        contentSignature: "fixture-content"
+    )
     let first = ScanItemIdentity(rootID: 1, path: "/music/z.7z", archiveEntry: "z.gbs")
     let second = ScanItemIdentity(rootID: 1, path: "/music/a.7z", archiveEntry: "a.gbs")
     let items = [
@@ -908,6 +1151,89 @@ private func sqliteScalarInt(databaseURL: URL, sql: String) throws -> Int {
 
     #expect(try await [first, second] == [1, 2])
     #expect(Date().timeIntervalSince(startedAt) < 0.25)
+}
+
+@Test func scanResourceSchedulerCancelsQueuedWorkWithoutConsumingPermit() async throws {
+    let scheduler = ScanResourceScheduler(permits: 1)
+    let firstCompleted = ScanBooleanRecorder()
+    let first = Task {
+        try await scheduler.withPermit {
+            try await Task.sleep(for: .milliseconds(200))
+            await firstCompleted.setTrue()
+            return 1
+        }
+    }
+    try await Task.sleep(for: .milliseconds(25))
+
+    let queued = Task {
+        try await scheduler.withPermit { 2 }
+    }
+    try await Task.sleep(for: .milliseconds(25))
+    queued.cancel()
+    let queuedResult = await queued.result
+
+    switch queuedResult {
+    case .success:
+        Issue.record("Cancelled queued work unexpectedly acquired a permit")
+    case .failure(let error):
+        #expect(error is CancellationError)
+    }
+    #expect(!(await firstCompleted.value))
+    #expect(try await first.value == 1)
+    #expect(try await scheduler.withPermit { 3 } == 3)
+}
+
+@Test func cancelledFinalScanCandidateCannotReachPersistence() async throws {
+    let scheduler = ScanResourceScheduler(permits: 1)
+    let occupying = Task {
+        try await scheduler.withPermit {
+            try await Task.sleep(for: .milliseconds(250))
+        }
+    }
+    try await Task.sleep(for: .milliseconds(25))
+
+    let descriptor = ScanPluginDescriptor(
+        pluginID: "test-cancellation",
+        displayName: "Cancellation Fixture",
+        supportedExtensions: ["spc"]
+    )
+    let route = ScanRoute(
+        pluginID: descriptor.pluginID,
+        formatExtension: "spc",
+        supportsArchiveMembers: true,
+        supportsMultiTrack: false
+    )
+    let candidate = ScanCandidate(
+        identity: ScanItemIdentity(rootID: 1, path: "/music/cancelled.spc", archiveEntry: nil),
+        fingerprint: ScanFingerprint(fileSize: 1, modifiedAt: .distantPast),
+        sourceURL: URL(fileURLWithPath: "/music/cancelled.spc"),
+        route: route
+    )
+    let recorder = ScanPersistRecorder()
+    let executor = ScanPipelineExecutor(
+        pluginRegistry: ScanPluginRegistry(descriptors: [descriptor]),
+        handlerRegistry: ScanPluginHandlerRegistry(
+            handlers: [RecordingScanFormatHandler(descriptor: descriptor)]
+        ),
+        scheduler: scheduler
+    )
+    let scanTask = Task {
+        try await executor.process(
+            plan: ScanPlan(mode: .newScan, candidates: [candidate]),
+            persist: { batch in await recorder.append(batch) }
+        )
+    }
+    try await Task.sleep(for: .milliseconds(25))
+    scanTask.cancel()
+
+    switch await scanTask.result {
+    case .success:
+        Issue.record("Cancelled final candidate unexpectedly completed")
+    case .failure(let error):
+        #expect(error is CancellationError)
+    }
+    #expect(await recorder.resultCount == 0)
+    _ = try await occupying.value
 }
 
 @Test func scanOperationTimeoutReturnsBeforeItsLimitForCompletedWork() async throws {
@@ -1048,7 +1374,7 @@ private func sqliteScalarInt(databaseURL: URL, sql: String) throws -> Int {
     let rootURL = URL(fileURLWithPath: "/Users/john/Downloads/audio/JoshW/SPC")
     guard FileManager.default.fileExists(atPath: rootURL.path) else { return }
 
-    let candidates = await ScanFilesystemDiscovery.discover(
+    let candidates = try await ScanFilesystemDiscovery.discover(
         rootID: 1,
         rootURL: rootURL,
         registry: ScanCoreHandlers.registry
@@ -1088,7 +1414,7 @@ private func sqliteScalarInt(databaseURL: URL, sql: String) throws -> Int {
         }
         return
     }
-    let candidates = await ScanFilesystemDiscovery.discover(
+    let candidates = try await ScanFilesystemDiscovery.discover(
         rootID: 1,
         rootURL: rootURL,
         registry: ScanCoreHandlers.registry
@@ -1140,6 +1466,47 @@ private func sqliteScalarInt(databaseURL: URL, sql: String) throws -> Int {
     #expect(summary.unsupported == 1)
     #expect(summary.failed == 1)
     #expect(summary.failures.count == 1)
+}
+
+@Test func knownSingleDeferredMetadataCatalogsWithoutLaunchingInspector() async throws {
+    let directory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("cocoaspice-deferred-catalog-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let fileURL = directory.appendingPathComponent("song.flac")
+    try Data("fixture".utf8).write(to: fileURL)
+    let descriptor = ScanPluginDescriptor(
+        pluginID: "deferred-test",
+        displayName: "Deferred Test",
+        supportedExtensions: ["flac"],
+        structurePolicy: .knownSingle,
+        metadataPolicy: .optionalDeferred
+    )
+    let handler = RecordingScanFormatHandler(descriptor: descriptor)
+    let route = try #require(ScanPluginRegistry(descriptors: [descriptor]).route(for: "flac"))
+    let values = try fileURL.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+    let candidate = ScanCandidate(
+        identity: ScanItemIdentity(rootID: 1, path: fileURL.path, archiveEntry: nil),
+        fingerprint: ScanFingerprint(
+            fileSize: Int64(values.fileSize ?? 0),
+            modifiedAt: values.contentModificationDate ?? .distantPast
+        ),
+        sourceURL: fileURL,
+        route: route
+    )
+    let executor = ScanPipelineExecutor(
+        pluginRegistry: ScanPluginRegistry(descriptors: [descriptor]),
+        handlerRegistry: ScanPluginHandlerRegistry(handlers: [handler])
+    )
+    let results = await executor.process(candidate)
+    #expect(results.count == 1)
+    #expect(await handler.inspectedURLs().isEmpty)
+    guard case .success(_, let inspection) = results[0] else {
+        Issue.record("Deferred catalog did not produce a successful structural row")
+        return
+    }
+    #expect(inspection.tracks.count == 1)
+    #expect(inspection.tracks[0].metadata == nil)
 }
 
 private enum CocoaSpiceTestError: Error {
@@ -1228,6 +1595,22 @@ private actor ScanURLRecorder {
     }
 }
 
+private actor ScanPersistRecorder {
+    private(set) var resultCount = 0
+
+    func append(_ results: [ScanPipelineResult]) {
+        resultCount += results.count
+    }
+}
+
+private actor ScanBooleanRecorder {
+    private(set) var value = false
+
+    func setTrue() {
+        value = true
+    }
+}
+
 @Test func scanDiscoveryWalksNestedSupportedFilesAndArchives() async throws {
     let rootURL = FileManager.default.temporaryDirectory
         .appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -1239,7 +1622,7 @@ private actor ScanURLRecorder {
     try Data("archive".utf8).write(to: rootURL.appendingPathComponent("set.7z"))
     try Data("ignored".utf8).write(to: nestedURL.appendingPathComponent("notes.txt"))
 
-    let result = await ScanFilesystemDiscovery.discover(
+    let result = try await ScanFilesystemDiscovery.discover(
         rootID: 1,
         rootURL: rootURL,
         registry: ScanCoreHandlers.registry
@@ -1267,4 +1650,24 @@ private actor ScanURLRecorder {
     #expect(tracks.first?.track.trackIndex == 0)
     #expect(tracks.last?.track.trackIndex == 255)
     #expect(tracks.allSatisfy { $0.track.trackCount == 256 })
+}
+
+@Test func detachedLibraryRootCanBeReattachedWithoutLosingItsIdentity() throws {
+    let temporary = FileManager.default.temporaryDirectory
+        .appendingPathComponent("CocoaSpice-root-lifecycle-\(UUID().uuidString)", isDirectory: true)
+    defer { try? FileManager.default.removeItem(at: temporary) }
+    try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true)
+    let database = try LibraryDatabase(databaseURL: temporary.appendingPathComponent("Library.sqlite"))
+    let rootPath = temporary.appendingPathComponent("Music", isDirectory: true).path
+
+    try database.addRoot(path: rootPath)
+    let original = try #require(database.loadRoots().first)
+    try database.detachRoot(id: original.id)
+    #expect(try database.loadRoots().isEmpty)
+
+    try database.addRoot(path: rootPath)
+    let reattached = try #require(database.loadRoots().first)
+    #expect(reattached.id == original.id)
+    #expect(reattached.path == original.path)
+    #expect(reattached.isEnabled)
 }

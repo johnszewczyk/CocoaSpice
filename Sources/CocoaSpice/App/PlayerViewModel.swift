@@ -252,7 +252,8 @@ final class PlayerViewModel {
     var selectedTrackIDs: Set<TrackItem.ID> = []
     private enum PlaylistMetadataInspectionPolicy: Equatable {
         /// The playlist was built from scan-time database rows. Its presentation
-        /// must never reopen source files merely to fill in optional fields.
+        /// is published immediately, then missing optional fields may hydrate
+        /// lazily without changing playlist identity or structure.
         case databaseSnapshot
         /// Direct imports may inspect source files to fill absent metadata.
         case inspectMissing
@@ -367,6 +368,9 @@ final class PlayerViewModel {
     private(set) var libraryScanInProgress: Bool {
         get { libraryOperations.scanInProgress }
         set { libraryOperations.scanInProgress = newValue }
+    }
+    var libraryScanIsCancelling: Bool {
+        libraryOperations.scanIsCancelling
     }
     var forceLibraryScan: Bool {
         get { libraryOperations.forceScan }
@@ -611,6 +615,10 @@ final class PlayerViewModel {
     }
 
     func chooseLibraryScanRoots() {
+        guard !libraryScanInProgress else {
+            libraryScanStatus = "Wait for the current library operation to finish before adding paths."
+            return
+        }
         let panel = NSOpenPanel()
         panel.title = "Choose Music Scan Roots"
         panel.canChooseDirectories = true
@@ -625,42 +633,30 @@ final class PlayerViewModel {
         }
 
         let addedURLs = panel.urls.map(\.standardizedFileURL)
-        let databaseURL = libraryDatabase.databaseURL
-        let generation = libraryOperations.beginTask()
-        libraryScanInProgress = true
         libraryScanStatus = "Adding library paths…"
-        let task = Task { @MainActor [weak self] in
-            guard let self else { return }
-            await Task.yield()
-            do {
-                try await Task.detached(priority: .utility) {
-                    let database = try LibraryDatabase(databaseURL: databaseURL)
-                    for url in addedURLs {
-                        try database.addRoot(path: url.path)
-                    }
-                }.value
-            } catch {
-                guard self.libraryOperations.isCurrentTask(generation) else { return }
-                self.libraryScanInProgress = false
-                self.libraryScanStatus = "Could not save scan root: \(error.localizedDescription)"
-                self.reloadLibraryScanRoots()
-                self.libraryOperations.finishTask(generation: generation)
-                return
+        do {
+            // Root attachment is a bounded single-row mutation. Keeping it on
+            // the already-open database avoids a second connection and, more
+            // importantly, keeps path management out of the scanner's
+            // cancellable task lifecycle.
+            for url in addedURLs {
+                try libraryDatabase.addRoot(path: url.path)
             }
-
-            guard self.libraryOperations.isCurrentTask(generation), !Task.isCancelled else { return }
-            self.reloadLibraryScanRoots()
-            self.reloadDatabaseSidebar()
-            self.syncActiveRootToLibraryScanRoots(preferredRoot: addedURLs.first)
-            let addedPaths = Set(addedURLs.map(\.path))
-            let addedRoots = self.libraryScanRoots.filter {
-                addedPaths.contains($0.standardizedURL.path) && $0.isEnabled
-            }
-            self.libraryScanInProgress = false
-            self.libraryOperations.finishTask(generation: generation)
-            self.runModernLibraryScan(for: addedRoots, mode: .incremental)
+        } catch {
+            libraryScanStatus = "Could not save scan root: \(error.localizedDescription)"
+            reloadLibraryScanRoots()
+            return
         }
-        libraryOperations.installTask(task, generation: generation)
+
+        reloadLibraryScanRoots()
+        reloadDatabaseSidebar()
+        syncActiveRootToLibraryScanRoots(preferredRoot: addedURLs.first)
+        let addedPaths = Set(addedURLs.map(\.path))
+        let addedRoots = libraryScanRoots.filter {
+            addedPaths.contains($0.standardizedURL.path) && $0.isEnabled
+        }
+        libraryScanStatus = addedRoots.isEmpty ? "No library paths were added." : "Added \(addedRoots.count) library path\(addedRoots.count == 1 ? "" : "s")"
+        runModernLibraryScan(for: addedRoots, mode: .incremental)
     }
 
     func loadLibraryRoot(_ root: LibraryScanRoot) {
@@ -707,41 +703,20 @@ final class PlayerViewModel {
 
     func removeLibraryScanRoot(_ id: Int64) {
         guard !libraryScanInProgress,
-              let databaseURL = libraryDatabase?.databaseURL,
+              let libraryDatabase,
               let root = libraryScanRoots.first(where: { $0.id == id }) else { return }
-        let generation = libraryOperations.beginTask()
-        libraryScanInProgress = true
         libraryScanStatus = "Removing \(root.standardizedURL.lastPathComponent)…"
-
-        let task = Task { @MainActor [weak self] in
-            guard let self else { return }
-            defer {
-                if self.libraryOperations.isCurrentTask(generation) {
-                    self.libraryScanInProgress = false
-                    self.libraryOperations.finishTask(generation: generation)
-                }
-            }
-            await Task.yield()
-            let errorDescription = await Task.detached(priority: .utility) { () -> String? in
-                do {
-                    try LibraryDatabase(databaseURL: databaseURL).detachRoot(id: id)
-                    return nil
-                } catch {
-                    return error.localizedDescription
-                }
-            }.value
-            guard self.libraryOperations.isCurrentTask(generation), !Task.isCancelled else { return }
-            if let errorDescription {
-                self.libraryScanStatus = "Could not remove path: \(errorDescription)"
-                return
-            }
-            self.libraryScanController?.closeLiveLog(rootID: id)
-            self.reloadLibraryScanRoots()
-            self.reloadDatabaseSidebar()
-            self.syncActiveRootToLibraryScanRoots()
-            self.libraryScanStatus = "Removed \(root.standardizedURL.lastPathComponent)"
+        do {
+            try libraryDatabase.detachRoot(id: id)
+        } catch {
+            libraryScanStatus = "Could not remove path: \(error.localizedDescription)"
+            return
         }
-        libraryOperations.installTask(task, generation: generation)
+        libraryScanController?.closeLiveLog(rootID: id)
+        reloadLibraryScanRoots()
+        reloadDatabaseSidebar()
+        syncActiveRootToLibraryScanRoots()
+        libraryScanStatus = "Removed \(root.standardizedURL.lastPathComponent)"
     }
 
     func hasLibraryScanLog(_ id: Int64) -> Bool {
@@ -861,7 +836,15 @@ final class PlayerViewModel {
     }
 
     func rescanEnabledLibraryRoots() {
-        runModernLibraryScan(for: libraryScanRoots.filter(\.isEnabled), mode: requestedLibraryScanMode)
+        // Refresh attachment/enabled state at the action boundary so a stale
+        // Options snapshot cannot turn Scan All into a silent no-op.
+        reloadLibraryScanRoots()
+        let roots = libraryScanRoots.filter(\.isEnabled)
+        guard !roots.isEmpty else {
+            libraryScanStatus = "No enabled library paths to scan."
+            return
+        }
+        runModernLibraryScan(for: roots, mode: requestedLibraryScanMode)
     }
 
     func purgeLibraryDatabase() {
@@ -951,7 +934,10 @@ final class PlayerViewModel {
     }
 
     private func runModernLibraryScan(for roots: [LibraryScanRoot], mode: ScanMode) {
-        guard !roots.isEmpty else { return }
+        guard !roots.isEmpty else {
+            libraryScanStatus = "No library paths selected for scanning."
+            return
+        }
         guard let libraryScanController else {
             libraryScanStatus = "Library database unavailable."
             return
@@ -2874,21 +2860,6 @@ final class PlayerViewModel {
             return
         }
 
-        // A sidebar playlist is a database projection. Selection is required
-        // to remain strictly database-only: no decoder probes, archive
-        // materialization, or filesystem metadata reads are permitted here.
-        guard playlistMetadataInspectionPolicy == .inspectMissing else {
-            if playlistColumnWidthHints == nil {
-                playlistColumnWidthHints = Self.buildPlaylistColumnWidthHints(
-                    tracks: tracks,
-                    metadata: cachedMetadata
-                )
-            }
-            playlistMetadataLoadToken += 1
-            playlistMetadataTaskOwner.finish(generation: generation)
-            return
-        }
-
         let unresolvedTracks = tracks.filter { track in
             guard let metadata = cachedMetadata[track.id] else { return true }
 
@@ -2912,10 +2883,17 @@ final class PlayerViewModel {
                 && metadata.fadeLengthMs == 0
         }
         let missingTracks: [TrackItem]
-        if let limit {
-            missingTracks = Array(unresolvedTracks.prefix(limit))
+        let prioritizedUnresolvedTracks: [TrackItem]
+        if let selectedTrackID,
+           let selected = unresolvedTracks.first(where: { $0.id == selectedTrackID }) {
+            prioritizedUnresolvedTracks = [selected] + unresolvedTracks.filter { $0.id != selectedTrackID }
         } else {
-            missingTracks = unresolvedTracks
+            prioritizedUnresolvedTracks = unresolvedTracks
+        }
+        if let limit {
+            missingTracks = Array(prioritizedUnresolvedTracks.prefix(limit))
+        } else {
+            missingTracks = prioritizedUnresolvedTracks
         }
         if missingTracks.isEmpty {
             if playlistColumnWidthHints == nil {
@@ -3020,6 +2998,7 @@ final class PlayerViewModel {
     private func updatePlaylistMetadata(_ updates: [TrackItem.ID: TrackMetadata]) {
         guard !updates.isEmpty else { return }
         metadataCache.merge(updates) { _, replacement in replacement }
+        persistHydratedPlaylistMetadata(updates)
         for (trackID, metadata) in updates {
             updatePlaylistDuration(for: trackID, metadata: metadata)
         }
@@ -3029,6 +3008,39 @@ final class PlayerViewModel {
         }
         playlistMetadataChangedTrackIDs.formUnion(updates.keys)
         schedulePlaylistMetadataTableRefresh()
+    }
+
+    private func persistHydratedPlaylistMetadata(_ updates: [TrackItem.ID: TrackMetadata]) {
+        guard let databaseURL = libraryDatabase?.databaseURL else { return }
+        let tracksByID = Dictionary(uniqueKeysWithValues: playlist.map { ($0.id, $0) })
+        let pending = updates.compactMap { trackID, metadata in
+            tracksByID[trackID].map { ($0, metadata) }
+        }
+        guard !pending.isEmpty else { return }
+        let preferEmbeddedConsoleTags = self.preferEmbeddedConsoleTags
+        Task.detached(priority: .utility) {
+            let guardedUpdates = pending.compactMap { track, metadata -> PlaylistMetadataDatabaseUpdate? in
+                guard let values = try? track.source.sourceURL.resourceValues(
+                    forKeys: [.fileSizeKey, .contentModificationDateKey]
+                ), let fileSize = values.fileSize,
+                   let modifiedAt = values.contentModificationDate else {
+                    return nil
+                }
+                return PlaylistMetadataDatabaseUpdate(
+                    track: track,
+                    metadata: metadata,
+                    fingerprint: ScanFingerprint(
+                        fileSize: Int64(fileSize),
+                        modifiedAt: modifiedAt
+                    )
+                )
+            }
+            guard !guardedUpdates.isEmpty else { return }
+            try? LibraryDatabase(
+                databaseURL: databaseURL,
+                preferEmbeddedConsoleTags: preferEmbeddedConsoleTags
+            ).persistPlaylistMetadataIfCurrent(guardedUpdates)
+        }
     }
 
     private func updatePlaylistMetadata(for trackID: TrackItem.ID, metadata: TrackMetadata) {

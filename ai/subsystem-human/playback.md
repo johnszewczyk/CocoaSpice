@@ -15,7 +15,7 @@
 - Playback: starts through a streamed audio path.
 - Track changes: starting or skipping to another track clears prior decoded audio before the new track begins.
 - Archives: supported game-music files can play from ZIP, 7z, RSN, and TAR+Zstandard (`.tar.zst`/`.tzst`) containers; the selected member is materialized into the cache.
-- Library playlists: choosing an item in the sidebar reads its stored track list and metadata from the database. It does not reopen or extract files until playback starts.
+- Library playlists: choosing an item in the sidebar publishes its stored track list and cached metadata immediately. Rows missing optional metadata then hydrate in the background; loose files may be inspected and archive rows may share one extraction session. Playback preempts queued hydration work.
 - USF archives: USF and miniUSF playback materializes the complete archive set so miniUSF dependency files remain available.
 - 2SF archives: 2SF and mini2SF playback materializes the complete archive set so mini2SF library dependencies remain available.
 - PSF family: PSF, miniPSF, PSF2, and miniPSF2 use the vendored Play! PSF core. Archive playback materializes the complete set so `_lib` and PSFLIB dependencies resolve relative to the selected file; PSF tags provide scanner metadata and declared length.
