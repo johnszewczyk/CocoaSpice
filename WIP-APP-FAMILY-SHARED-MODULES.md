@@ -39,6 +39,13 @@ separate modules:
   exposes no mutation API, and uses an OS-level read-only SQLite worker.
 - The writer uses rollback-journal (`DELETE`) mode, leaving one self-contained
   database file that either player can open without WAL/SHM writes.
+- MediaScanner loads attached roots from the selected catalog, displays
+  per-root unscanned/clean/issue status, and treats checked roots as the scan or
+  detach selection.
+- Test Files validates distinct physical sources and marks missing sources in
+  `dead_sources` without deleting track, metadata, inventory, or fingerprint
+  rows. Both readers already hide those inactive rows. Clear Dead Links is the
+  confirmed destructive purge.
 
 ## Remaining Scanner Adapter Tranche
 
@@ -54,6 +61,9 @@ catalog rows instead of publishing an invented single track.
    loose and archived sets; direct tags alone must not hide structural needs.
 5. Add malformed/truncated fixtures and child-process termination tests for
    every external archive/decoder adapter.
+6. Add unique, collision-safe relocation recognition for inactive sources so a
+   moved file can reuse retained metadata by strong fingerprint. Same-path
+   restoration works now; path-independent matching is not yet claimed.
 
 ## CocoaSpice Cleanup Tranche
 
@@ -94,10 +104,12 @@ Record cold/warm elapsed time by phase, bytes read/extracted, peak scratch/RSS,
 database growth, reuse rate, cancellation latency, and sidebar-to-playlist
 latency.
 
-The default scan should remain structurally complete. Optional metadata for a
-known single-track source may remain empty; required child/dependency discovery
-may not. Add a second scan mode only if measured interaction, battery, or
-throughput evidence justifies it.
+The ordinary Scan is already the fast path: it performs required discovery and
+structure work, reuses matching fingerprints/checkpoints, and permits optional
+metadata for known single-track sources to remain empty. Rebuild bypasses reuse
+and runs every metadata adapter currently available. Required child/dependency
+discovery may not be deferred. Add a separately named Fast Scan mode only if
+measurements show that the current incremental path is insufficient.
 
 ## Repository Direction
 
