@@ -2,7 +2,7 @@
 
 **A native macOS library and player for game music, archives, and console-native audio.**
 
-CocoaSpice scans a collection into a persistent Database, plays supported files through one low-latency audio path, and keeps an editable Playlist beside the library. It is designed for the way game music is actually collected: multi-track formats, archive members, companion libraries, loop metadata, and unusual console streams—not just ordinary audio files with different extensions.
+CocoaSpice reads a persistent Database produced by the shared native MediaScanner, plays supported files through one low-latency audio path, and keeps an editable Playlist beside the library. It is designed for the way game music is actually collected: multi-track formats, archive members, companion libraries, loop metadata, and unusual console streams—not just ordinary audio files with different extensions.
 
 ## Contents
 
@@ -18,9 +18,9 @@ CocoaSpice scans a collection into a persistent Database, plays supported files 
 
 | Library | Playback | Formats | macOS experience |
 | --- | --- | --- | --- |
-| Persistent scanned database, background scans, archive-member indexing, and direct Files browsing | Low-latency streamed PCM, seeking, repeat/random play, AAC export, and global app volume | Console-native streams, emulator-backed music, standard audio, and dependency-aware archive playback | Native windows, media keys, Finder drag and drop, light/dark-system controls, and independent Options panels |
+| Shared read-only MediaScanner database, indexed Games/Search, and direct Files browsing | Low-latency streamed PCM, seeking, repeat/random play, AAC export, and global app volume | Console-native streams, emulator-backed music, standard audio, and dependency-aware archive playback | Native windows, media keys, Finder drag and drop, light/dark-system controls, and independent Options panels |
 
-The app has one format-admission path. If a type is supported, it works consistently in scans, archives, Finder drag and drop, direct opening, and playlists. A format is not advertised merely because an extension is registered: decoder output is validated as real PCM.
+Playback format admission is centralized. A format is not advertised merely because an extension is registered: decoder output is validated as real PCM. Catalog intake is owned separately by MediaScanner so CocoaSpice, SPCBoy, and future frontends share one database implementation.
 
 ## Long Play — game music the way it was meant to loop
 
@@ -31,11 +31,9 @@ This is not ordinary “repeat the file” behavior. Long Play uses the decoder�
 ## Library workflow
 
 1. **Choose the catalog** in **Options → Data → Database** when a non-default shared `Library.sqlite` is required. CocoaSpice validates schema 23 before saving the path and applies a changed location after restart. The default remains `~/Library/Application Support/CocoaSpice/Library.sqlite`.
-2. **Add paths** in **Options → Library**. Paths can be enabled or disabled without removing their scanned data.
-3. **Scan All** queues enabled paths. A direct row scan also works for an unchecked path. Scanning is background work; the Scan Status panel shows separately ellipsized **Current Activity**, **File Path**, and **File Name** fields, plus progress and cancellation. Stop retains every completed source/archive checkpoint, and the next matching scan resumes after rediscovery validates those sources.
+2. **Build or update the catalog in MediaScanner.** Add complete roots there, choose folder-first or embedded-metadata-first console grouping, and run Scan or Rebuild. Cancel retains completed source/archive checkpoints for resume.
+3. **Restart CocoaSpice** after choosing a different database. CocoaSpice opens it read-only and never changes roots, rows, metadata, or projections.
 4. **Browse** Games for metadata-grouped titles, or Files for the scanned folder tree. Neither mode walks the live filesystem during ordinary browsing.
-5. **Test Links** marks absent sources as unlinked but preserves their file data for fast rediscovery after a move. **Clean Unlinked** is the deliberate, permanent removal step.
-6. **Deep Scan** means force-reinspect: it bypasses unchanged-source reuse and replaces the stored scan results for that path. It is not a separate metadata-depth mode.
 
 ### Database rules
 
@@ -43,10 +41,8 @@ This is not ordinary “repeat the file” behavior. Long Play uses the decoder�
 - A source is identified by its library root, source path, archive member, and subtrack index. One source does not produce duplicate database rows.
 - A Games row is identified by its library root, game, and system. Matching titles from separate roots remain separate and load only that root's stored playlist rows.
 - Game tags are used when present; otherwise archives use their filename and loose tracks use their parent folder. A recognized terminal filename tag such as `[PS2]`, then a recognized console folder, supplies collection console identity by default; the Options switch prefers normalized embedded console tags instead.
-- Incremental scans reuse unchanged results. A changed archive replaces its complete stored member set, so removed or renamed members cannot remain visible.
-- Scans publish a structurally complete catalog first. Formats that must enumerate embedded tracks still do so during scanning; known single-track standard audio can defer optional metadata until playlist hydration without delaying sidebar publication.
-- Disabled paths are excluded from the active database and Scan All, yet remain available for a deliberate per-path scan.
-- Reset Database clears indexed state. The next scan recreates it from the chosen paths.
+- MediaScanner incremental scans reuse unchanged results. A changed archive replaces its complete stored member set, so removed or renamed members cannot remain visible.
+- MediaScanner publishes a structurally complete catalog atomically. Required embedded tracks are enumerated before publication; optional metadata for known single-track media may remain empty.
 
 ## Playback and interface
 
@@ -69,7 +65,7 @@ This is not ordinary “repeat the file” behavior. Long Play uses the decoder�
 
 ## Supported playback formats
 
-All listed playable formats are admitted by the scanner, drag and drop, playlists, and direct opening. Archive members receive the same format handling as files on disk.
+All listed formats are supported for CocoaSpice playback, drag and drop, playlists, and direct opening. MediaScanner catalog support is independently verified because required enumeration and dependency handling may need a shared native adapter.
 
 | Family | Extensions | Playback layer |
 | --- | --- | --- |
@@ -96,7 +92,7 @@ For the live, implementation-level inventory, see [Supported Formats](ai/subsyst
 | `.zip`, `.7z`, `.rsn` | Scanned and opened when playable members are present. |
 | `.tar.zst`, `.tzst` | Listed and extracted through an explicit Zstandard/TAR pipeline for reliable archive handling. |
 
-Containers are sources, not tracks: CocoaSpice indexes and queues their supported members while retaining each member’s archive provenance. A normal incremental scan reuses unchanged archives; when an archive is edited or repacked, CocoaSpice refreshes its current member set so renamed or removed members do not remain in the Database.
+Containers are sources, not tracks: MediaScanner indexes supported members with archive provenance, while CocoaSpice queues those stored rows and materializes them for playback. A normal incremental scan reuses unchanged archives; an edited or repacked archive replaces its complete member set.
 
 ## Decoder, emulator, and codec credits
 
@@ -130,7 +126,7 @@ Requires macOS, Xcode, Homebrew `game-music-emu`, `ffmpeg`, `libopenmpt`, CMake,
 
 | Path | Purpose |
 | --- | --- |
-| `Sources/CocoaSpice/App/` | Native SwiftUI/AppKit application, database, scanner, archive, playback, and UI logic. |
+| `Sources/CocoaSpice/App/` | Native SwiftUI/AppKit application, read-only database browser, playback archives, playback, and UI logic. |
 | `Sources/C*/` | Narrow C/C++ bridges around decoder and emulator cores. |
 | `vendor/` | Vendored upstream decoder, emulator, and codec source trees. |
 | `ai/subsystem-human/` | Short current feature documentation. |

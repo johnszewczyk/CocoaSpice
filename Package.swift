@@ -228,7 +228,7 @@ let package = Package(
         ),
         .testTarget(
             name: "CocoaSpiceTests",
-            dependencies: ["CocoaSpice", "C2SF"],
+            dependencies: ["CocoaSpice", "C2SF", .product(name: "MediaScannerKit", package: "MediaScanner")],
             resources: [
                 .copy("cross-app-library-identity-v1.json"),
                 .copy("cross-app-sidebar-search-view-v1.json"),

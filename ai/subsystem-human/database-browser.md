@@ -10,9 +10,9 @@
 - Group by Console: Options can group games under expandable console headings. A recognized terminal filename tag such as `[PS2]`, then the nearest recognized collection console folder, takes priority by default; `Prefer Embedded Console Tags` reverses that source priority. Known labels are normalized, so `Playstation`, `PS1`, and `PSX` display as `Sony PlayStation`.
 - Game names: use the inspected game tag when present, otherwise the archive filename for archived tracks or immediate parent-folder name for loose tracks. A recognized terminal console tag is omitted from an archive game name, while unrelated suffixes such as `[USA]` remain part of the title.
 - Rows: show track counts and scan-root status. The same game/system scanned from different library paths remains separate; only those duplicate rows include their compact source-root name (for example, `JoshW` or `SNESMusicOrg`).
-- Incremental scans retain successful unchanged ZIP, 7z, and TAR+Zstandard archive results instead of re-inspecting their playable members.
+- MediaScanner incremental scans retain successful unchanged ZIP, 7z, and TAR+Zstandard archive results instead of re-inspecting their playable members.
 - When a changed archive is rescanned, its stored member set is replaced as a whole. Renamed or removed members therefore cannot remain in the Database after a repack.
-- During any scan, Games and Files continue showing the last completed library. Both incremental and Deep Scan work build a hidden staged replacement and publish it only after the scan succeeds. A cancelled or failed scan keeps the previous library while retaining completed source checkpoints for a matching resume.
+- While MediaScanner writes, CocoaSpice continues showing its opened read-only snapshot. Restart or reopen after publication to consume a newly selected catalog state.
 - If a database sidebar read fails, the existing list remains available and an inline Retry message shows the error instead of presenting an empty library.
 
 ## Search
