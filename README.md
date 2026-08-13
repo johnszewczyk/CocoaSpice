@@ -34,6 +34,7 @@ This is not ordinary “repeat the file” behavior. Long Play uses the decoder�
 2. **Build or update the catalog in MediaScanner.** Add complete roots there, choose folder-first or embedded-metadata-first console grouping, and run Scan or Rebuild. Cancel retains completed source/archive checkpoints for resume.
 3. **Restart CocoaSpice** after choosing a different database. CocoaSpice opens it read-only and never changes roots, rows, metadata, or projections.
 4. **Browse** Games for metadata-grouped titles, or Files for the scanned folder tree. Neither mode walks the live filesystem during ordinary browsing.
+5. **Play from the database.** Activating a stored game or file loads its exact source, archive-member, and subtrack rows into the Playlist; playback materialization does not modify the catalog.
 
 ### Database rules
 

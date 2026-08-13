@@ -26,4 +26,9 @@ import Testing
     #expect(content.gameItems[0].name == "Castlevania")
     #expect(content.gameItems[0].systemName == "Sony PlayStation 2")
     #expect(content.fileItems.count == 1)
+
+    let playlist = try database.tracksAndMetadataForGames([content.gameItems[0]])
+    #expect(playlist.tracks.count == 1)
+    #expect(playlist.tracks[0].filename == "Prologue.wav")
+    #expect(playlist.tracks[0].url.path == game.appendingPathComponent("Prologue.wav").path)
 }
