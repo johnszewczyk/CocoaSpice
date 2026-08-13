@@ -247,7 +247,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     let directory = FileManager.default.temporaryDirectory
         .appendingPathComponent("cocoaspice-archive-signature-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: directory) }
-    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"), accessMode: .readWrite)
     try database.addRoot(path: directory.path)
     let root = try #require(database.loadRoots().first)
     let fingerprint = ScanFingerprint(
@@ -281,7 +281,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     let directory = FileManager.default.temporaryDirectory
         .appendingPathComponent("cocoaspice-archive-member-refresh-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: directory) }
-    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"), accessMode: .readWrite)
     try database.addRoot(path: directory.path)
     let root = try #require(database.loadRoots().first)
     let archivePath = directory.appendingPathComponent("Example.tar.zst").path
@@ -319,7 +319,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     let directory = FileManager.default.temporaryDirectory
         .appendingPathComponent("cocoaspice-stale-archive-member-repair-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: directory) }
-    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"), accessMode: .readWrite)
     try database.addRoot(path: directory.path)
     let root = try #require(database.loadRoots().first)
     let archivePath = directory.appendingPathComponent("Cool Spot.tar.zst").path
@@ -372,7 +372,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
         .appendingPathComponent("cocoaspice-browser-bucket-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: directory) }
 
-    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"), accessMode: .readWrite)
     try database.addRoot(path: directory.path)
     let root = try #require(database.loadRoots().first)
     let route = ScanRoute(
@@ -466,7 +466,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
         .appendingPathComponent("cocoaspice-file-sidebar-archive-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: directory) }
 
-    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"), accessMode: .readWrite)
     try database.addRoot(path: directory.path)
     let root = try #require(database.loadRoots().first)
     let archivePath = directory.appendingPathComponent("Game.rsn").path
@@ -527,7 +527,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
         .appendingPathComponent("cocoaspice-file-sidebar-error-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: directory) }
 
-    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"), accessMode: .readWrite)
     try database.addRoot(path: directory.path)
     let root = try #require(database.loadRoots().first)
     #expect(sqlite3_exec(database.db, "DROP INDEX tracks_source_lookup_index;", nil, nil, nil) == SQLITE_OK)
@@ -556,7 +556,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
         .appendingPathComponent("cocoaspice-file-sidebar-empty-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: directory) }
 
-    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"), accessMode: .readWrite)
     try database.addRoot(path: directory.path)
     let root = try #require(database.loadRoots().first)
     let source = DatabaseFileItem(
@@ -657,7 +657,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     defer { try? FileManager.default.removeItem(at: directory) }
     let rootPath = directory.appendingPathComponent("JoshW", isDirectory: true).path
     let databaseURL = directory.appendingPathComponent("Library.sqlite")
-    var database: LibraryDatabase? = try LibraryDatabase(databaseURL: databaseURL)
+    var database: LibraryDatabase? = try LibraryDatabase(databaseURL: databaseURL, accessMode: .readWrite)
     try database?.addRoot(path: rootPath)
     let root = try #require(database?.loadRoots().first)
     let route = ScanRoute(
@@ -692,7 +692,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     try database?.execute("PRAGMA user_version = 17;")
     database = nil
 
-    let migrated = try LibraryDatabase(databaseURL: databaseURL)
+    let migrated = try LibraryDatabase(databaseURL: databaseURL, accessMode: .readWrite)
     let games = try migrated.loadGameItems()
     #expect(games.map(\.systemName) == ["Sega Saturn"])
 }
@@ -702,7 +702,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
         .appendingPathComponent("cocoaspice-dead-links-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: directory) }
 
-    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"), accessMode: .readWrite)
     try database.addRoot(path: directory.path)
     let root = try #require(database.loadRoots().first)
     let path = directory.appendingPathComponent("retained.spc").path
@@ -749,7 +749,11 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(summary.indexedTrackCount == 1)
     #expect(summary.unlinkedTrackCount == 1)
     #expect(summary.deadLinkSummaryText == "1 unlinked source retained")
-    #expect(try LibraryDatabaseMaintenance.clearDeadLinks(databaseURL: database.databaseURL) == 1)
+    #expect(throws: Error.self) {
+        try LibraryDatabaseMaintenance.clearDeadLinks(databaseURL: database.databaseURL)
+    }
+    #expect(try database.deadSourceCount() == 1)
+    #expect(try database.deleteDeadSources() == 1)
     #expect(try database.loadGameItems().isEmpty)
 }
 
@@ -758,7 +762,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
         .appendingPathComponent("cocoaspice-staged-rediscovery-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: directory) }
 
-    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"), accessMode: .readWrite)
     try database.addRoot(path: directory.path)
     let root = try #require(database.loadRoots().first)
     let sourceURL = directory.appendingPathComponent("Rediscovered.spc")
@@ -807,7 +811,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
         .appendingPathComponent("cocoaspice-atomic-scan-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: directory) }
 
-    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"), accessMode: .readWrite)
     try database.addRoot(path: directory.path)
     let root = try #require(database.loadRoots().first)
     let route = ScanRoute(pluginID: "gme", formatExtension: "spc", supportsArchiveMembers: true, supportsMultiTrack: false)
@@ -838,7 +842,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(try LibraryDatabase.loadGameSidebarItems(databaseURL: database.databaseURL).map(\.name) == ["Old"])
     try database.persistScanTrackResults([result(name: "Uncommitted")])
     #expect(try stagedTrackCount(databaseURL: database.databaseURL) == 1)
-    let secondaryConnection = try LibraryDatabase(databaseURL: database.databaseURL)
+    let secondaryConnection = try LibraryDatabase(databaseURL: database.databaseURL, accessMode: .readWrite)
     #expect(try secondaryConnection.trackCount() == 1)
     #expect(try stagedTrackCount(databaseURL: database.databaseURL) == 1)
     database.rollbackAtomicScan()
@@ -892,7 +896,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     )
 
     do {
-        let database = try LibraryDatabase(databaseURL: databaseURL)
+        let database = try LibraryDatabase(databaseURL: databaseURL, accessMode: .readWrite)
         try database.addRoot(path: directory.path)
         let root = try #require(database.loadRoots().first)
         let candidate = ScanCandidate(
@@ -931,7 +935,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
         #expect(try database.trackCount() == 0)
     }
 
-    let reopened = try LibraryDatabase(databaseURL: databaseURL, recoverAbandonedStages: true)
+    let reopened = try LibraryDatabase(databaseURL: databaseURL, accessMode: .readWrite, recoverAbandonedStages: true)
     let root = try #require(reopened.loadRoots().first)
     let resumed = try reopened.beginAtomicScan(
         rootID: root.id,
@@ -958,7 +962,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
         fileSize: Int64(values.fileSize ?? 0),
         modifiedAt: values.contentModificationDate ?? .distantPast
     )
-    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"), accessMode: .readWrite)
     try database.addRoot(path: directory.path)
     let root = try #require(database.loadRoots().first)
     let route = ScanRoute(
@@ -1052,7 +1056,7 @@ private func sqliteScalarInt(databaseURL: URL, sql: String) throws -> Int {
     defer { try? FileManager.default.removeItem(at: directory) }
     let databaseURL = directory.appendingPathComponent("Library.sqlite")
 
-    var database: LibraryDatabase? = try LibraryDatabase(databaseURL: databaseURL)
+    var database: LibraryDatabase? = try LibraryDatabase(databaseURL: databaseURL, accessMode: .readWrite)
     try database?.addRoot(path: directory.path)
     let root = try #require(database?.loadRoots().first)
     let route = ScanRoute(pluginID: "gme", formatExtension: "spc", supportsArchiveMembers: false, supportsMultiTrack: false)
@@ -1070,7 +1074,7 @@ private func sqliteScalarInt(databaseURL: URL, sql: String) throws -> Int {
     try database?.execute("PRAGMA user_version = 19;")
     database = nil
 
-    database = try LibraryDatabase(databaseURL: databaseURL, recoverAbandonedStages: true)
+    database = try LibraryDatabase(databaseURL: databaseURL, accessMode: .readWrite, recoverAbandonedStages: true)
     #expect(try database?.trackCount() == 1)
     try database?.beginAtomicScan(rootID: root.id, replacingLiveData: true)
     try database?.persistScanTrackResults([.success(candidate, ScanInspection(
@@ -1079,13 +1083,13 @@ private func sqliteScalarInt(databaseURL: URL, sql: String) throws -> Int {
     ))])
     database = nil
 
-    database = try LibraryDatabase(databaseURL: databaseURL)
+    database = try LibraryDatabase(databaseURL: databaseURL, accessMode: .readWrite)
     #expect(try database?.trackCount() == 1)
     #expect(try stagedTrackCount(databaseURL: databaseURL) == 1)
     #expect(try stagingRootCount(databaseURL: databaseURL) == 1)
     database = nil
 
-    database = try LibraryDatabase(databaseURL: databaseURL, recoverAbandonedStages: true)
+    database = try LibraryDatabase(databaseURL: databaseURL, accessMode: .readWrite, recoverAbandonedStages: true)
     #expect(try database?.trackCount() == 1)
     #expect(try stagedTrackCount(databaseURL: databaseURL) == 0)
     #expect(try stagingRootCount(databaseURL: databaseURL) == 0)
@@ -1657,7 +1661,7 @@ private actor ScanBooleanRecorder {
         .appendingPathComponent("CocoaSpice-root-lifecycle-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: temporary) }
     try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: true)
-    let database = try LibraryDatabase(databaseURL: temporary.appendingPathComponent("Library.sqlite"))
+    let database = try LibraryDatabase(databaseURL: temporary.appendingPathComponent("Library.sqlite"), accessMode: .readWrite)
     let rootPath = temporary.appendingPathComponent("Music", isDirectory: true).path
 
     try database.addRoot(path: rootPath)

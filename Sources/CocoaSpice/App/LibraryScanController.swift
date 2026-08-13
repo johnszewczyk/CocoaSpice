@@ -145,7 +145,7 @@ final class LibraryScanController {
         do {
             let databaseURL = database.databaseURL
             let scanTask = Task.detached(priority: .utility) {
-                let scanDatabase = try LibraryDatabase(databaseURL: databaseURL)
+                let scanDatabase = try LibraryDatabase(databaseURL: databaseURL, accessMode: .readOnly)
                 let coordinator = LibraryScanCoordinator(database: scanDatabase)
                 return try await coordinator.run(root: root, mode: mode) { [weak self] status in
                     Task { @MainActor in

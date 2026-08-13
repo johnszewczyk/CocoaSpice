@@ -14,7 +14,7 @@ struct LibraryDatabaseMaintenanceSummary: Sendable, Equatable {
 
 enum LibraryDatabaseMaintenance {
     static func summary(databaseURL: URL) throws -> LibraryDatabaseMaintenanceSummary {
-        let database = try LibraryDatabase(databaseURL: databaseURL)
+        let database = try LibraryDatabase(databaseURL: databaseURL, accessMode: .readOnly)
         return LibraryDatabaseMaintenanceSummary(
             deadLinkCount: try database.deadSourceCount(),
             indexedTrackCount: try database.trackCount(),
@@ -23,7 +23,7 @@ enum LibraryDatabaseMaintenance {
     }
 
     static func clearDeadLinks(databaseURL: URL) throws -> Int {
-        let database = try LibraryDatabase(databaseURL: databaseURL)
+        let database = try LibraryDatabase(databaseURL: databaseURL, accessMode: .readOnly)
         return try database.deleteDeadSources()
     }
 }

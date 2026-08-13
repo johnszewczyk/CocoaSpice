@@ -365,7 +365,7 @@ struct OptionsView: View {
                     }
                 }
                 .toggleStyle(.checkbox)
-                .disabled(model.isLibraryScanInProgress)
+                .disabled(model.libraryDatabaseIsReadOnly || model.isLibraryScanInProgress)
 
                 Toggle(isOn: Binding(
                     get: { model.databaseSidebarHidesFileExtensions },
@@ -499,6 +499,12 @@ struct OptionsView: View {
 
     private var libraryPage: some View {
         VStack(alignment: .leading, spacing: 16) {
+            if model.libraryDatabaseIsReadOnly {
+                Text("MediaScanner owns library paths, scanning, and catalog maintenance. CocoaSpice uses the selected database read-only.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
             sectionCard(title: "Library Paths") {
                 if model.libraryScanRoots.isEmpty {
                     Text("No scan roots configured.")
@@ -524,23 +530,23 @@ struct OptionsView: View {
                     }
                     .help("Enable All / Disable All")
                     .accessibilityLabel("Enable All / Disable All Paths")
-                    .disabled(model.libraryScanInProgress || model.libraryScanRoots.isEmpty)
+                    .disabled(model.libraryDatabaseIsReadOnly || model.libraryScanInProgress || model.libraryScanRoots.isEmpty)
                     libraryActionButton("Add Path") {
                         model.chooseLibraryScanRoots()
                     }
-                    .disabled(model.libraryScanInProgress)
+                    .disabled(model.libraryDatabaseIsReadOnly || model.libraryScanInProgress)
                     libraryActionButton("Reset Paths") {
                         confirmsResetPaths = true
                     }
-                    .disabled(model.libraryScanInProgress || model.libraryScanRoots.isEmpty)
+                    .disabled(model.libraryDatabaseIsReadOnly || model.libraryScanInProgress || model.libraryScanRoots.isEmpty)
                     libraryActionButton("Scan All") {
                         model.rescanEnabledLibraryRoots()
                     }
-                    .disabled(model.libraryScanRoots.allSatisfy { !$0.isEnabled })
+                    .disabled(model.libraryDatabaseIsReadOnly || model.libraryScanRoots.allSatisfy { !$0.isEnabled })
                     libraryActionButton("Test Links") {
                         model.trimMissingLibrary()
                     }
-                    .disabled(model.libraryScanInProgress)
+                    .disabled(model.libraryDatabaseIsReadOnly || model.libraryScanInProgress)
                 }
             }
 
@@ -554,7 +560,7 @@ struct OptionsView: View {
                     }
                 }
                     .toggleStyle(.checkbox)
-                    .disabled(model.libraryScanInProgress)
+                    .disabled(model.libraryDatabaseIsReadOnly || model.libraryScanInProgress)
             }
 
             if let progress = model.libraryOperationProgress {
@@ -613,7 +619,7 @@ struct OptionsView: View {
                         .font(.system(size: 11))
                         .foregroundStyle(status.hasPrefix("Database not selected") ? .red : .secondary)
                 } else {
-                    Text("Only a validated MediaScanner catalog can be selected. A restart applies a changed location.")
+                    Text("Only a validated MediaScanner catalog can be selected. CocoaSpice opens it read-only; use MediaScanner for scans and maintenance. A restart applies a changed location.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
@@ -629,7 +635,7 @@ struct OptionsView: View {
                     Button("Reset Database") {
                         confirmsResetDatabase = true
                     }
-                    .disabled(model.libraryScanInProgress || model.databaseEntryCount == 0)
+                    .disabled(model.libraryDatabaseIsReadOnly || model.libraryScanInProgress || model.databaseEntryCount == 0)
                 }
 
                 HStack(alignment: .center, spacing: 12) {
@@ -643,7 +649,7 @@ struct OptionsView: View {
                     Button("Clean Unlinked") {
                         model.deleteDeadLinks()
                     }
-                    .disabled(model.isDeletingDeadLinks || model.libraryScanInProgress || model.deadLinkCount == 0)
+                    .disabled(model.libraryDatabaseIsReadOnly || model.isDeletingDeadLinks || model.libraryScanInProgress || model.deadLinkCount == 0)
                 }
 
                 Text("The database retains file data even when files move on disk to speed up scans. One unlinked source can retain many tracks, so source and track counts need not match.")
@@ -886,7 +892,7 @@ struct OptionsView: View {
                 )
                 .labelsHidden()
                 .toggleStyle(.checkbox)
-                .disabled(model.libraryScanInProgress)
+                .disabled(model.libraryDatabaseIsReadOnly || model.libraryScanInProgress)
 
                 scanRootStatusIcon(root)
 
@@ -903,7 +909,7 @@ struct OptionsView: View {
                     Image(systemName: "magnifyingglass")
                 }
                 .help(root.isEnabled ? "Scan Path" : "Scan Path Without Enabling It")
-                .disabled(model.libraryScanInProgress)
+                .disabled(model.libraryDatabaseIsReadOnly || model.libraryScanInProgress)
                 Button { model.openLibraryScanLog(root.id) } label: {
                     Image(systemName: "doc.text")
                 }
@@ -913,7 +919,7 @@ struct OptionsView: View {
                     Image(systemName: "trash")
                 }
                 .help("Remove Path")
-                .disabled(model.libraryScanInProgress)
+                .disabled(model.libraryDatabaseIsReadOnly || model.libraryScanInProgress)
             }
         }
         .padding(.horizontal, 12)

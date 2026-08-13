@@ -459,6 +459,10 @@ final class PlayerViewModel {
         libraryDatabase?.databaseURL
     }
 
+    var libraryDatabaseIsReadOnly: Bool {
+        libraryDatabase?.isReadOnly ?? true
+    }
+
     var configuredLibraryDatabasePath: String {
         (try? LibraryDatabase.configuredDatabaseURL().path) ?? "Library database unavailable"
     }
@@ -607,7 +611,7 @@ final class PlayerViewModel {
             libraryDatabase = nil
             libraryScanStatus = "Library database unavailable: \(error.localizedDescription)"
         }
-        if let libraryDatabase {
+        if let libraryDatabase, !libraryDatabase.isReadOnly {
             libraryScanController = LibraryScanController(
                 database: libraryDatabase,
                 operations: libraryOperations,
@@ -653,6 +657,10 @@ final class PlayerViewModel {
     }
 
     func chooseLibraryScanRoots() {
+        guard !libraryDatabaseIsReadOnly else {
+            libraryScanStatus = "Library paths are managed by MediaScanner."
+            return
+        }
         guard !libraryScanInProgress else {
             libraryScanStatus = "Wait for the current library operation to finish before adding paths."
             return
@@ -720,6 +728,10 @@ final class PlayerViewModel {
     }
 
     func setLibraryScanRootEnabled(_ id: Int64, isEnabled: Bool) {
+        guard !libraryDatabaseIsReadOnly else {
+            libraryScanStatus = "Library path state is managed by MediaScanner."
+            return
+        }
         guard let index = libraryScanRoots.firstIndex(where: { $0.id == id }),
               libraryScanRoots[index].isEnabled != isEnabled else {
             return
@@ -730,6 +742,10 @@ final class PlayerViewModel {
     }
 
     func toggleAllLibraryScanRootsEnabled() {
+        guard !libraryDatabaseIsReadOnly else {
+            libraryScanStatus = "Library path state is managed by MediaScanner."
+            return
+        }
         guard !libraryScanRoots.isEmpty else { return }
         let isEnabled = !areAllLibraryScanRootsEnabled
         for index in libraryScanRoots.indices {
@@ -740,6 +756,10 @@ final class PlayerViewModel {
     }
 
     func removeLibraryScanRoot(_ id: Int64) {
+        guard !libraryDatabaseIsReadOnly else {
+            libraryScanStatus = "Library paths are managed by MediaScanner."
+            return
+        }
         guard !libraryScanInProgress,
               let libraryDatabase,
               let root = libraryScanRoots.first(where: { $0.id == id }) else { return }
@@ -789,16 +809,28 @@ final class PlayerViewModel {
     }
 
     func rescanLibraryRoot(_ id: Int64) {
+        guard !libraryDatabaseIsReadOnly else {
+            libraryScanStatus = "Scanning is managed by MediaScanner."
+            return
+        }
         guard let root = libraryScanRoots.first(where: { $0.id == id }) else { return }
         runModernLibraryScan(for: [root], mode: requestedLibraryScanMode)
     }
 
     func scanLibraryRoot(_ id: Int64) {
+        guard !libraryDatabaseIsReadOnly else {
+            libraryScanStatus = "Scanning is managed by MediaScanner."
+            return
+        }
         guard let root = libraryScanRoots.first(where: { $0.id == id }) else { return }
         runModernLibraryScan(for: [root], mode: requestedLibraryScanMode)
     }
 
     func trimMissingLibrary() {
+        guard !libraryDatabaseIsReadOnly else {
+            libraryScanStatus = "Link maintenance is managed by MediaScanner."
+            return
+        }
         guard !libraryScanInProgress,
               let databaseURL = libraryDatabase?.databaseURL else { return }
         let generation = libraryOperations.beginTask()
@@ -819,7 +851,7 @@ final class PlayerViewModel {
             }
             await Task.yield()
             let sources = await Task.detached(priority: .utility) {
-                try? LibraryDatabase(databaseURL: databaseURL).indexedSources()
+                try? LibraryDatabase(databaseURL: databaseURL, accessMode: .readOnly).indexedSources()
             }.value
             guard let sources else {
                 guard self.libraryOperations.isCurrentTask(generation) else { return }
@@ -850,7 +882,7 @@ final class PlayerViewModel {
             guard self.libraryOperations.isCurrentTask(generation), !Task.isCancelled else { return }
             let writeError = await Task.detached(priority: .utility) { () -> String? in
                 do {
-                    let database = try LibraryDatabase(databaseURL: databaseURL)
+                    let database = try LibraryDatabase(databaseURL: databaseURL, accessMode: .readOnly)
                     try database.markSourcesDead(result.missingSources)
                     try database.refreshDirtySidebarBuckets()
                     return nil
@@ -874,6 +906,10 @@ final class PlayerViewModel {
     }
 
     func rescanEnabledLibraryRoots() {
+        guard !libraryDatabaseIsReadOnly else {
+            libraryScanStatus = "Scanning is managed by MediaScanner."
+            return
+        }
         // Refresh attachment/enabled state at the action boundary so a stale
         // Options snapshot cannot turn Scan All into a silent no-op.
         reloadLibraryScanRoots()
@@ -886,6 +922,10 @@ final class PlayerViewModel {
     }
 
     func purgeLibraryDatabase() {
+        guard !libraryDatabaseIsReadOnly else {
+            libraryScanStatus = "Database maintenance is managed by MediaScanner."
+            return
+        }
         guard !libraryScanInProgress, let libraryDatabase else { return }
         do {
             try libraryDatabase.purgeIndexedLibrary()
@@ -905,6 +945,10 @@ final class PlayerViewModel {
     }
 
     func resetLibraryPaths() {
+        guard !libraryDatabaseIsReadOnly else {
+            libraryScanStatus = "Library paths are managed by MediaScanner."
+            return
+        }
         guard !libraryScanInProgress,
               !libraryScanRoots.isEmpty,
               let databaseURL = libraryDatabase?.databaseURL else { return }
@@ -924,7 +968,7 @@ final class PlayerViewModel {
             await Task.yield()
             let errorDescription = await Task.detached(priority: .utility) { () -> String? in
                 do {
-                    try LibraryDatabase(databaseURL: databaseURL).detachAttachedRoots()
+                    try LibraryDatabase(databaseURL: databaseURL, accessMode: .readOnly).detachAttachedRoots()
                     return nil
                 } catch {
                     return error.localizedDescription
@@ -972,6 +1016,10 @@ final class PlayerViewModel {
     }
 
     private func runModernLibraryScan(for roots: [LibraryScanRoot], mode: ScanMode) {
+        guard !libraryDatabaseIsReadOnly else {
+            libraryScanStatus = "Scanning is managed by MediaScanner."
+            return
+        }
         guard !roots.isEmpty else {
             libraryScanStatus = "No library paths selected for scanning."
             return
@@ -1699,6 +1747,10 @@ final class PlayerViewModel {
     }
 
     func setPreferEmbeddedConsoleTags(_ enabled: Bool) {
+        guard !libraryDatabaseIsReadOnly else {
+            libraryScanStatus = "Console-tag indexing is managed by MediaScanner."
+            return
+        }
         guard !libraryScanInProgress,
               preferEmbeddedConsoleTags != enabled,
               let databaseURL = libraryDatabase?.databaseURL else { return }
@@ -1718,7 +1770,11 @@ final class PlayerViewModel {
             }
             let errorDescription = await Task.detached(priority: .utility) {
                 do {
-                    let database = try LibraryDatabase(databaseURL: databaseURL, preferEmbeddedConsoleTags: enabled)
+                    let database = try LibraryDatabase(
+                        databaseURL: databaseURL,
+                        accessMode: .readOnly,
+                        preferEmbeddedConsoleTags: enabled
+                    )
                     try database.rewriteSidebarIdentity(preferEmbeddedMetadata: enabled)
                     return nil as String?
                 } catch {
@@ -1824,6 +1880,10 @@ final class PlayerViewModel {
     }
 
     func deleteDeadLinks() {
+        guard !libraryDatabaseIsReadOnly else {
+            libraryScanStatus = "Database maintenance is managed by MediaScanner."
+            return
+        }
         guard !isDeletingDeadLinks,
               !libraryScanInProgress,
               let databaseURL = libraryDatabase?.databaseURL else { return }
@@ -3049,6 +3109,7 @@ final class PlayerViewModel {
     }
 
     private func persistHydratedPlaylistMetadata(_ updates: [TrackItem.ID: TrackMetadata]) {
+        guard !libraryDatabaseIsReadOnly else { return }
         guard let databaseURL = libraryDatabase?.databaseURL else { return }
         let tracksByID = Dictionary(uniqueKeysWithValues: playlist.map { ($0.id, $0) })
         let pending = updates.compactMap { trackID, metadata in
@@ -3076,6 +3137,7 @@ final class PlayerViewModel {
             guard !guardedUpdates.isEmpty else { return }
             try? LibraryDatabase(
                 databaseURL: databaseURL,
+                accessMode: .readOnly,
                 preferEmbeddedConsoleTags: preferEmbeddedConsoleTags
             ).persistPlaylistMetadataIfCurrent(guardedUpdates)
         }
@@ -3128,6 +3190,7 @@ final class PlayerViewModel {
     /// sidebar for every individual root made a simple sequence of checks
     /// feel like a library recalculation and blocked further interaction.
     private func persistLibraryRootEnabledStatesAfterInteraction() {
+        guard !libraryDatabaseIsReadOnly else { return }
         guard let databaseURL = libraryDatabase?.databaseURL else { return }
         let enabledStates = Dictionary(
             uniqueKeysWithValues: libraryScanRoots.map { ($0.id, $0.isEnabled) }
@@ -3143,7 +3206,7 @@ final class PlayerViewModel {
 
             let errorDescription = await Task.detached(priority: .utility) { () -> String? in
                 do {
-                    try LibraryDatabase(databaseURL: databaseURL).setRootEnabledStates(enabledStates)
+                    try LibraryDatabase(databaseURL: databaseURL, accessMode: .readOnly).setRootEnabledStates(enabledStates)
                     return nil
                 } catch {
                     return error.localizedDescription

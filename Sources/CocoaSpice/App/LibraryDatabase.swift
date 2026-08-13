@@ -27,6 +27,11 @@ struct PlaylistMetadataDatabaseUpdate: Sendable {
     let fingerprint: ScanFingerprint
 }
 
+enum LibraryDatabaseAccessMode: Sendable {
+    case readOnly
+    case readWrite
+}
+
 final class LibraryDatabase: @unchecked Sendable {
     static let schemaVersion = 23
     static let performanceLogger = Logger(subsystem: "com.local.cocoaspice", category: "library-database")
@@ -38,14 +43,16 @@ final class LibraryDatabase: @unchecked Sendable {
     private var atomicScanStagingRootID: Int64?
     private(set) var lastAtomicScanMetrics: LibraryDatabaseScanMetrics?
     var preferEmbeddedConsoleTags: Bool
+    let accessMode: LibraryDatabaseAccessMode
 
     var databaseURL: URL { dbURL }
+    var isReadOnly: Bool { accessMode == .readOnly }
 
     convenience init() throws {
         let dbURL = try Self.configuredDatabaseURL()
         try self.init(
             databaseURL: dbURL,
-            recoverAbandonedStages: true,
+            accessMode: .readOnly,
             preferEmbeddedConsoleTags: UserDefaults.standard.bool(forKey: AppDefaultsKey.preferEmbeddedConsoleTags)
         )
     }
@@ -72,19 +79,27 @@ final class LibraryDatabase: @unchecked Sendable {
 
     init(
         databaseURL: URL,
+        accessMode: LibraryDatabaseAccessMode,
         recoverAbandonedStages: Bool = false,
         preferEmbeddedConsoleTags: Bool = false
     ) throws {
-        try FileManager.default.createDirectory(
-            at: databaseURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true
-        )
         let dbURL = databaseURL.standardizedFileURL
         self.dbURL = dbURL
+        self.accessMode = accessMode
         self.preferEmbeddedConsoleTags = preferEmbeddedConsoleTags
 
+        if accessMode == .readWrite {
+            try FileManager.default.createDirectory(
+                at: dbURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true
+            )
+        }
+
         var handle: OpaquePointer?
-        if sqlite3_open(dbURL.path, &handle) != SQLITE_OK {
+        let flags = accessMode == .readOnly
+            ? SQLITE_OPEN_READONLY | SQLITE_OPEN_URI
+            : SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE | SQLITE_OPEN_URI
+        if sqlite3_open_v2(dbURL.path, &handle, flags, nil) != SQLITE_OK {
             let message = handle.flatMap { String(cString: sqlite3_errmsg($0)) } ?? "Unknown SQLite error"
             sqlite3_close(handle)
             throw NSError(domain: "LibraryDatabase", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
@@ -92,17 +107,31 @@ final class LibraryDatabase: @unchecked Sendable {
 
         db = handle
         sqlite3_extended_result_codes(handle, 1)
-        guard sqlite3_exec(handle, "PRAGMA journal_mode = WAL;", nil, nil, nil) == SQLITE_OK else {
-            throw Self.databaseError(handle: handle)
+        if accessMode == .readOnly {
+            try execute("PRAGMA query_only = ON;")
+            let version = try scalarInt("PRAGMA user_version;")
+            guard version == Self.schemaVersion else {
+                throw NSError(
+                    domain: "LibraryDatabase",
+                    code: 4,
+                    userInfo: [NSLocalizedDescriptionKey: "Unsupported library schema \(version); expected \(Self.schemaVersion)."]
+                )
+            }
+        } else {
+            guard sqlite3_exec(handle, "PRAGMA journal_mode = WAL;", nil, nil, nil) == SQLITE_OK else {
+                throw Self.databaseError(handle: handle)
+            }
         }
         try execute("PRAGMA foreign_keys = ON;")
         // The scan writes many short transactions while sidebar readers may
         // still hold a statement. Wait for that ordinary contention instead
         // of misreporting a healthy member as a persistence failure.
         sqlite3_busy_timeout(handle, 5_000)
-        try migrateSchemaIfNeeded()
-        if recoverAbandonedStages {
-            try cleanupAbandonedScanStagingRoots()
+        if accessMode == .readWrite {
+            try migrateSchemaIfNeeded()
+            if recoverAbandonedStages {
+                try cleanupAbandonedScanStagingRoots()
+            }
         }
     }
 

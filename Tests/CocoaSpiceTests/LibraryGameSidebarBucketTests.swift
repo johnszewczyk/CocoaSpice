@@ -13,7 +13,7 @@ import Testing
         .appendingPathComponent("Castlevania", isDirectory: true)
     try FileManager.default.createDirectory(at: gameFolder, withIntermediateDirectories: true)
 
-    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"), accessMode: .readWrite)
     try database.addRoot(path: rootPath.path)
     let root = try #require(database.loadRoots().first)
     let trackPath = gameFolder.appendingPathComponent("track.psf").path
@@ -64,7 +64,7 @@ import Testing
     try FileManager.default.createDirectory(at: rootPath, withIntermediateDirectories: true)
     let databaseURL = directory.appendingPathComponent("Library.sqlite")
 
-    var database: LibraryDatabase? = try LibraryDatabase(databaseURL: databaseURL)
+    var database: LibraryDatabase? = try LibraryDatabase(databaseURL: databaseURL, accessMode: .readWrite)
     try database?.addRoot(path: rootPath.path)
     let root = try #require(database?.loadRoots().first)
     let archivePath = rootPath.appendingPathComponent("Unsorted/Castlevania [PS2].tzst").path
@@ -104,7 +104,7 @@ import Testing
     try database?.execute("PRAGMA user_version = 21;")
     database = nil
 
-    database = try LibraryDatabase(databaseURL: databaseURL, preferEmbeddedConsoleTags: true)
+    database = try LibraryDatabase(databaseURL: databaseURL, accessMode: .readWrite, preferEmbeddedConsoleTags: true)
     let migrated = try #require(database?.loadGameItems().first)
     #expect(migrated.name == "Castlevania")
     #expect(migrated.systemName == "Nintendo DS")
@@ -116,7 +116,7 @@ import Testing
         .appendingPathComponent("cocoaspice-game-sidebar-buckets-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: directory) }
 
-    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"), accessMode: .readWrite)
     try database.addRoot(path: directory.path)
     let root = try #require(database.loadRoots().first)
     let route = ScanRoute(
@@ -192,7 +192,7 @@ import Testing
     try FileManager.default.createDirectory(atPath: firstRootPath, withIntermediateDirectories: true)
     try FileManager.default.createDirectory(atPath: secondRootPath, withIntermediateDirectories: true)
 
-    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"), accessMode: .readWrite)
     try database.addRoot(path: firstRootPath)
     try database.addRoot(path: secondRootPath)
     let rootsByPath = Dictionary(uniqueKeysWithValues: try database.loadRoots().map { ($0.path, $0) })
@@ -256,7 +256,7 @@ import Testing
         .appendingPathComponent("cocoaspice-file-sidebar-buckets-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: directory) }
 
-    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"), accessMode: .readWrite)
     try database.addRoot(path: directory.path)
     let root = try #require(database.loadRoots().first)
     let path = directory.appendingPathComponent("Soundtrack.nsf").path
@@ -313,7 +313,7 @@ import Testing
         .appendingPathComponent("cocoaspice-sidebar-loader-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: directory) }
 
-    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"))
+    let database = try LibraryDatabase(databaseURL: directory.appendingPathComponent("Library.sqlite"), accessMode: .readWrite)
     try database.addRoot(path: directory.path)
     let root = try #require(database.loadRoots().first)
     let path = directory.appendingPathComponent("Theme.spc").path
@@ -461,7 +461,7 @@ private func fileSidebarBucketCount(database: LibraryDatabase, rootID: Int64) th
     sqlite3_close(handle)
     handle = nil
 
-    let database = try LibraryDatabase(databaseURL: databaseURL)
+    let database = try LibraryDatabase(databaseURL: databaseURL, accessMode: .readWrite)
     #expect(try database.loadRoots().isEmpty)
     #expect(try database.loadGameItems().isEmpty)
 }
