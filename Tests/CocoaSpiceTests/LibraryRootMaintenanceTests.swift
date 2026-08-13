@@ -2,6 +2,26 @@ import Foundation
 import Testing
 @testable import CocoaSpice
 
+@Test func configuredLibraryDatabasePathIsExplicitAndStandardized() throws {
+    let suiteName = "CocoaSpiceTests.database-path.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set("/tmp/Shared Library/../Shared Library/Library.sqlite", forKey: AppDefaultsKey.libraryDatabasePath)
+
+    #expect(try LibraryDatabase.configuredDatabaseURL(defaults: defaults).path == "/tmp/Shared Library/Library.sqlite")
+}
+
+@Test func configuredLibraryDatabasePathRejectsRelativeValues() throws {
+    let suiteName = "CocoaSpiceTests.database-relative-path.\(UUID().uuidString)"
+    let defaults = try #require(UserDefaults(suiteName: suiteName))
+    defer { defaults.removePersistentDomain(forName: suiteName) }
+    defaults.set("Library.sqlite", forKey: AppDefaultsKey.libraryDatabasePath)
+
+    #expect(throws: Error.self) {
+        try LibraryDatabase.configuredDatabaseURL(defaults: defaults)
+    }
+}
+
 @Test func detachingAttachedRootsPreservesTheirDatabaseIdentity() throws {
     let directory = FileManager.default.temporaryDirectory
         .appendingPathComponent("cocoaspice-detach-roots-\(UUID().uuidString)", isDirectory: true)

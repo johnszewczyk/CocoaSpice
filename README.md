@@ -30,14 +30,16 @@ This is not ordinary “repeat the file” behavior. Long Play uses the decoder�
 
 ## Library workflow
 
-1. **Add paths** in **Options → Library**. Paths can be enabled or disabled without removing their scanned data.
-2. **Scan All** queues enabled paths. A direct row scan also works for an unchecked path. Scanning is background work; the Scan Status panel shows separately ellipsized **Current Activity**, **File Path**, and **File Name** fields, plus progress and cancellation. Stop retains every completed source/archive checkpoint, and the next matching scan resumes after rediscovery validates those sources.
-3. **Browse** Games for metadata-grouped titles, or Files for the scanned folder tree. Neither mode walks the live filesystem during ordinary browsing.
-4. **Test Links** marks absent sources as unlinked but preserves their file data for fast rediscovery after a move. **Clean Unlinked** is the deliberate, permanent removal step.
-5. **Deep Scan** means force-reinspect: it bypasses unchanged-source reuse and replaces the stored scan results for that path. It is not a separate metadata-depth mode.
+1. **Choose the catalog** in **Options → Data → Database** when a non-default shared `Library.sqlite` is required. CocoaSpice validates schema 23 before saving the path and applies a changed location after restart. The default remains `~/Library/Application Support/CocoaSpice/Library.sqlite`.
+2. **Add paths** in **Options → Library**. Paths can be enabled or disabled without removing their scanned data.
+3. **Scan All** queues enabled paths. A direct row scan also works for an unchecked path. Scanning is background work; the Scan Status panel shows separately ellipsized **Current Activity**, **File Path**, and **File Name** fields, plus progress and cancellation. Stop retains every completed source/archive checkpoint, and the next matching scan resumes after rediscovery validates those sources.
+4. **Browse** Games for metadata-grouped titles, or Files for the scanned folder tree. Neither mode walks the live filesystem during ordinary browsing.
+5. **Test Links** marks absent sources as unlinked but preserves their file data for fast rediscovery after a move. **Clean Unlinked** is the deliberate, permanent removal step.
+6. **Deep Scan** means force-reinspect: it bypasses unchanged-source reuse and replaces the stored scan results for that path. It is not a separate metadata-depth mode.
 
 ### Database rules
 
+- The selected database path is explicit, absolute, persisted, and validated against the shared MediaScanner catalog contract before it can replace the launch-time path.
 - A source is identified by its library root, source path, archive member, and subtrack index. One source does not produce duplicate database rows.
 - A Games row is identified by its library root, game, and system. Matching titles from separate roots remain separate and load only that root's stored playlist rows.
 - Game tags are used when present; otherwise archives use their filename and loose tracks use their parent folder. A recognized terminal filename tag such as `[PS2]`, then a recognized console folder, supplies collection console identity by default; the Options switch prefers normalized embedded console tags instead.

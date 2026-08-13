@@ -8,6 +8,7 @@
 
 ## Current State
 
+- `LibraryDatabase.configuredDatabaseURL` owns launch-time path selection. Options validates a selected file through `MediaScannerKit.CanonicalCatalog`, persists only an absolute standardized path, and requires restart rather than replacing a live connection. CocoaSpice is still a database writer during the MediaScanner extraction; sole-writer cutover is not complete.
 - Track identity is root-scoped: `tracks` is unique on root, source path, archive member, and subtrack index. This permits an intentionally overlapping root (for example, `JoshW` and `JoshW/USF`) to index the same archive without turning valid tracks into persistence failures.
 
 - The sidebar database browser is a scanned persistent browser, not a raw filesystem tree.

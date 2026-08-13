@@ -2,6 +2,7 @@ import AppKit
 import Foundation
 
 enum AppDefaultsKey {
+    static let libraryDatabasePath = "CocoaSpice.libraryDatabasePath"
     static let lastRootPath = "CocoaSpice.lastRootPath"
     static let lastSelectedFolderPath = "CocoaSpice.lastSelectedFolderPath"
     static let lastLibrarySelectedFolderPath = "CocoaSpice.lastLibrarySelectedFolderPath"

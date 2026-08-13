@@ -591,6 +591,35 @@ struct OptionsView: View {
             sectionCard(title: "Database") {
                 HStack(alignment: .center, spacing: 12) {
                     VStack(alignment: .leading, spacing: 3) {
+                        Text("Library Database")
+                        Text(model.configuredLibraryDatabasePath)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .textSelection(.enabled)
+                    }
+                    Spacer()
+                    Button("Use Default") {
+                        model.useDefaultLibraryDatabase()
+                    }
+                    Button("Browse…") {
+                        model.chooseLibraryDatabase()
+                    }
+                }
+
+                if let status = model.libraryDatabaseLocationStatus {
+                    Text(status)
+                        .font(.system(size: 11))
+                        .foregroundStyle(status.hasPrefix("Database not selected") ? .red : .secondary)
+                } else {
+                    Text("Only a validated MediaScanner catalog can be selected. A restart applies a changed location.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
                         Text("Entries")
                         Text("\(model.databaseEntryCount) indexed tracks • \(model.unlinkedDatabaseEntryCount) unlinked tracks")
                             .font(.system(size: 11))

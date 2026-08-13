@@ -42,14 +42,32 @@ final class LibraryDatabase: @unchecked Sendable {
     var databaseURL: URL { dbURL }
 
     convenience init() throws {
-        let supportURL = try Self.applicationSupportDirectory()
-        try FileManager.default.createDirectory(at: supportURL, withIntermediateDirectories: true)
-        let dbURL = supportURL.appendingPathComponent("Library.sqlite", isDirectory: false)
+        let dbURL = try Self.configuredDatabaseURL()
         try self.init(
             databaseURL: dbURL,
             recoverAbandonedStages: true,
             preferEmbeddedConsoleTags: UserDefaults.standard.bool(forKey: AppDefaultsKey.preferEmbeddedConsoleTags)
         )
+    }
+
+    static func defaultDatabaseURL() throws -> URL {
+        try applicationSupportDirectory().appendingPathComponent("Library.sqlite", isDirectory: false)
+    }
+
+    static func configuredDatabaseURL(defaults: UserDefaults = .standard) throws -> URL {
+        guard let storedPath = defaults.string(forKey: AppDefaultsKey.libraryDatabasePath)?
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+              !storedPath.isEmpty else {
+            return try defaultDatabaseURL()
+        }
+        guard (storedPath as NSString).isAbsolutePath else {
+            throw NSError(
+                domain: "LibraryDatabase",
+                code: 3,
+                userInfo: [NSLocalizedDescriptionKey: "The configured library database path must be absolute."]
+            )
+        }
+        return URL(fileURLWithPath: storedPath).standardizedFileURL
     }
 
     init(

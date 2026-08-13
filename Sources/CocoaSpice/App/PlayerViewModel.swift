@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import MediaScannerKit
 import OSLog
 import Observation
 import UniformTypeIdentifiers
@@ -357,6 +358,7 @@ final class PlayerViewModel {
         get { libraryOperations.status }
         set { libraryOperations.status = newValue }
     }
+    var libraryDatabaseLocationStatus: String?
     private(set) var cleanLibraryScanRootIDs: Set<Int64> {
         get { libraryOperations.cleanRootIDs }
         set { libraryOperations.cleanRootIDs = newValue }
@@ -455,6 +457,42 @@ final class PlayerViewModel {
 
     var libraryDatabaseURL: URL? {
         libraryDatabase?.databaseURL
+    }
+
+    var configuredLibraryDatabasePath: String {
+        (try? LibraryDatabase.configuredDatabaseURL().path) ?? "Library database unavailable"
+    }
+
+    func chooseLibraryDatabase() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose Library Database"
+        panel.prompt = "Choose Database"
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        panel.allowedContentTypes = [.database]
+        if let current = try? LibraryDatabase.configuredDatabaseURL() {
+            panel.directoryURL = current.deletingLastPathComponent()
+            panel.nameFieldStringValue = current.lastPathComponent
+        }
+        guard panel.runModal() == .OK, let selectedURL = panel.url else { return }
+        do {
+            let summary = try CanonicalCatalog.inspect(databaseURL: selectedURL)
+            UserDefaults.standard.set(summary.path, forKey: AppDefaultsKey.libraryDatabasePath)
+            libraryDatabaseLocationStatus = selectedURL.standardizedFileURL == libraryDatabaseURL?.standardizedFileURL
+                ? "This database is already active."
+                : "Validated \(summary.trackCount) tracks. Restart CocoaSpice to use this database."
+        } catch {
+            libraryDatabaseLocationStatus = "Database not selected: \(error.localizedDescription)"
+        }
+    }
+
+    func useDefaultLibraryDatabase() {
+        UserDefaults.standard.removeObject(forKey: AppDefaultsKey.libraryDatabasePath)
+        let defaultPath = (try? LibraryDatabase.defaultDatabaseURL().path) ?? "the default database"
+        libraryDatabaseLocationStatus = libraryDatabaseURL?.path == defaultPath
+            ? "The default database is already active."
+            : "Restart CocoaSpice to use the default database."
     }
 
     @ObservationIgnored private var playbackStorage: PlaybackEngine?
