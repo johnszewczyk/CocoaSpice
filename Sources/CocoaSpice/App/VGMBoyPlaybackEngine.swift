@@ -105,8 +105,17 @@ final class PlaybackEngine: @unchecked Sendable {
     private func load(track: TrackItem, plan: PlaybackPlan, resumeAt: TimeInterval, autoplay: Bool) throws {
         let url = try ZipArchiveSupport.materializePlayableFile(for: track)
         let mode: VGMBoyKit.PlaybackMode = plan.isLongPlay ? .longPlay : (plan.usesNativeEnding ? .fileDefault : .timed)
-        try requireSuccess(controller.perform(.init(command: .setPlaybackMode, payload: .init(playbackMode: mode, playMilliseconds: plan.preFadeSeconds * 1_000, fadeMilliseconds: plan.fadeSeconds * 1_000))))
-        try requireSuccess(controller.perform(.init(command: .load, payload: .init(path: url.path, trackIndex: track.trackIndex))))
+        // A mode command normally reconfigures the currently loaded track.
+        // Supplying it atomically with the new load avoids briefly resuming
+        // that old decoder, then tearing it back down before the selected
+        // track starts. The output sees one prime and one de-click ramp.
+        try requireSuccess(controller.perform(.init(command: .load, payload: .init(
+            path: url.path,
+            trackIndex: track.trackIndex,
+            playbackMode: mode,
+            playMilliseconds: plan.preFadeSeconds * 1_000,
+            fadeMilliseconds: plan.fadeSeconds * 1_000
+        ))))
         if resumeAt > 0 {
             try requireSuccess(controller.perform(.init(command: .seek, payload: .init(positionMilliseconds: Int(resumeAt * 1_000)))))
         }
