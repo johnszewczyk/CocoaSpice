@@ -6,18 +6,24 @@ extension LibraryDatabase {
         try Self.searchSidebarItems(databaseURL: databaseURL, query: query, limit: limit)
     }
 
-    func loadGameItems() throws -> [DatabaseGameItem] {
-        try Self.loadGameItems(databaseURL: databaseURL)
+    func loadGameItems(preferFoldersOverMetadata: Bool = true) throws -> [DatabaseGameItem] {
+        try Self.loadGameItems(
+            databaseURL: databaseURL,
+            preferFoldersOverMetadata: preferFoldersOverMetadata
+        )
     }
 
     func loadFileItems() throws -> [DatabaseFileItem] {
         try Self.loadFileItems(databaseURL: databaseURL)
     }
 
-    static func loadGameItems(databaseURL: URL) throws -> [DatabaseGameItem] {
+    static func loadGameItems(
+        databaseURL: URL,
+        preferFoldersOverMetadata: Bool = true
+    ) throws -> [DatabaseGameItem] {
         let handle = try openReadOnlyConnection(databaseURL: databaseURL)
         defer { sqlite3_close(handle) }
-        return try loadGameItems(handle: handle)
+        return try loadGameItems(handle: handle, preferFoldersOverMetadata: preferFoldersOverMetadata)
     }
 
     static func loadFileItems(databaseURL: URL) throws -> [DatabaseFileItem] {
@@ -28,22 +34,28 @@ extension LibraryDatabase {
 
     /// Loads both sidebar modes through one read-only handle so they represent
     /// the same SQLite snapshot and avoid duplicate connection setup.
-    static func loadSidebarContent(databaseURL: URL) throws -> DatabaseSidebarContent {
+    static func loadSidebarContent(
+        databaseURL: URL,
+        preferFoldersOverMetadata: Bool = true
+    ) throws -> DatabaseSidebarContent {
         let handle = try openReadOnlyConnection(databaseURL: databaseURL)
         defer { sqlite3_close(handle) }
         return DatabaseSidebarContent(
-            gameItems: try loadGameItems(handle: handle),
+            gameItems: try loadGameItems(handle: handle, preferFoldersOverMetadata: preferFoldersOverMetadata),
             fileItems: try loadFileItems(handle: handle)
         )
     }
 
     /// The Games sidebar is the startup browser. Keep its compact grouped
     /// result separate from the potentially very large Files listing.
-    static func loadGameSidebarItems(databaseURL: URL) throws -> [DatabaseGameItem] {
+    static func loadGameSidebarItems(
+        databaseURL: URL,
+        preferFoldersOverMetadata: Bool = true
+    ) throws -> [DatabaseGameItem] {
         let startedAt = Date()
         let handle = try openReadOnlyConnection(databaseURL: databaseURL)
         defer { sqlite3_close(handle) }
-        let items = try loadGameItems(handle: handle)
+        let items = try loadGameItems(handle: handle, preferFoldersOverMetadata: preferFoldersOverMetadata)
         logSlowSidebarRead(name: "Games", itemCount: items.count, startedAt: startedAt)
         return items
     }
@@ -66,11 +78,21 @@ extension LibraryDatabase {
         performanceLogger.info("Slow \(name) sidebar read: \(itemCount) items in \(Int((elapsed * 1_000).rounded())) ms")
     }
 
-    private static func loadGameItems(handle: OpaquePointer) throws -> [DatabaseGameItem] {
-        if try gameSidebarBucketsAreCurrent(handle: handle) {
+    private static func loadGameItems(
+        handle: OpaquePointer,
+        preferFoldersOverMetadata: Bool
+    ) throws -> [DatabaseGameItem] {
+        // The default folder-first view can use MediaScanner's compact durable
+        // projection. Do not regroup the whole catalog when the sidebar opens.
+        if preferFoldersOverMetadata,
+           try gameSidebarBucketsAreCurrent(handle: handle) {
             return try loadGameItemsFromBuckets(handle: handle)
         }
-        return try loadGameItemsFromTracks(handle: handle)
+        // Metadata-first is an optional read-only projection.
+        return try loadGameItemsFromTracks(
+            handle: handle,
+            preferFoldersOverMetadata: preferFoldersOverMetadata
+        )
     }
 
     /// An interrupted or active scan can leave one root's projection dirty.
@@ -125,16 +147,21 @@ extension LibraryDatabase {
         return DatabaseSidebarPresentation.disambiguateGameItems(items)
     }
 
-    private static func loadGameItemsFromTracks(handle: OpaquePointer) throws -> [DatabaseGameItem] {
+    private static func loadGameItemsFromTracks(
+        handle: OpaquePointer,
+        preferFoldersOverMetadata: Bool
+    ) throws -> [DatabaseGameItem] {
+        let systemName = consoleSystemExpression(preferFoldersOverMetadata: preferFoldersOverMetadata)
         let sql = """
         SELECT
             t.root_id,
             r.path,
             t.browser_game AS game_name,
-            t.browser_system AS system_name,
+            \(systemName) AS system_name,
             COUNT(*)
         FROM tracks t
         INNER JOIN library_roots r ON r.id = t.root_id
+        LEFT JOIN track_metadata m ON m.track_id = t.id
         WHERE r.is_enabled = 1
           AND NOT EXISTS (SELECT 1 FROM dead_sources d WHERE d.root_id = t.root_id AND d.path = t.path)
         GROUP BY t.root_id, r.path, game_name, system_name
@@ -255,12 +282,26 @@ extension LibraryDatabase {
         return handle
     }
 
-    func tracksForGame(_ gameItem: DatabaseGameItem) throws -> [TrackItem] {
-        try Self.tracksForGame(databaseURL: databaseURL, gameItem: gameItem)
+    func tracksForGame(
+        _ gameItem: DatabaseGameItem,
+        preferFoldersOverMetadata: Bool = true
+    ) throws -> [TrackItem] {
+        try Self.tracksForGame(
+            databaseURL: databaseURL,
+            gameItem: gameItem,
+            preferFoldersOverMetadata: preferFoldersOverMetadata
+        )
     }
 
-    func tracksAndMetadataForGames(_ gameItems: [DatabaseGameItem]) throws -> (tracks: [TrackItem], metadata: [String: TrackMetadata], widthHints: PlaylistColumnWidthHints) {
-        try Self.tracksAndMetadataForGames(databaseURL: databaseURL, gameItems: gameItems)
+    func tracksAndMetadataForGames(
+        _ gameItems: [DatabaseGameItem],
+        preferFoldersOverMetadata: Bool = true
+    ) throws -> (tracks: [TrackItem], metadata: [String: TrackMetadata], widthHints: PlaylistColumnWidthHints) {
+        try Self.tracksAndMetadataForGames(
+            databaseURL: databaseURL,
+            gameItems: gameItems,
+            preferFoldersOverMetadata: preferFoldersOverMetadata
+        )
     }
 
     func tracksAndMetadataForFiles(_ fileItems: [DatabaseFileItem]) throws -> (tracks: [TrackItem], metadata: [String: TrackMetadata], widthHints: PlaylistColumnWidthHints) {
@@ -275,7 +316,11 @@ extension LibraryDatabase {
         try Self.tracksAndMetadataForPaths(databaseURL: databaseURL, paths: paths)
     }
 
-    static func tracksForGame(databaseURL: URL, gameItem: DatabaseGameItem) throws -> [TrackItem] {
+    static func tracksForGame(
+        databaseURL: URL,
+        gameItem: DatabaseGameItem,
+        preferFoldersOverMetadata: Bool = true
+    ) throws -> [TrackItem] {
         var handle: OpaquePointer?
         if sqlite3_open_v2(databaseURL.path, &handle, SQLITE_OPEN_READONLY, nil) != SQLITE_OK {
             let message = Self.databaseError(handle: handle).localizedDescription
@@ -284,15 +329,17 @@ extension LibraryDatabase {
         }
         defer { sqlite3_close(handle) }
 
+        let systemPredicate = consoleSystemPredicate(preferFoldersOverMetadata: preferFoldersOverMetadata)
         let sql = """
         SELECT t.path, t.archive_path, t.archive_entry, t.track_index, t.track_count
         FROM tracks t
         INNER JOIN library_roots r ON r.id = t.root_id
+        LEFT JOIN track_metadata m ON m.track_id = t.id
         WHERE r.is_enabled = 1
           AND NOT EXISTS (SELECT 1 FROM dead_sources d WHERE d.root_id = t.root_id AND d.path = t.path)
           AND t.root_id = ?
           AND t.browser_game = ?
-          AND t.browser_system = ?
+          AND \(systemPredicate)
         ORDER BY t.folder_path ASC, t.filename ASC, t.track_index ASC;
         """
 
@@ -315,7 +362,11 @@ extension LibraryDatabase {
         return tracks
     }
 
-    static func tracksAndMetadataForGames(databaseURL: URL, gameItems: [DatabaseGameItem]) throws -> (tracks: [TrackItem], metadata: [String: TrackMetadata], widthHints: PlaylistColumnWidthHints) {
+    static func tracksAndMetadataForGames(
+        databaseURL: URL,
+        gameItems: [DatabaseGameItem],
+        preferFoldersOverMetadata: Bool = true
+    ) throws -> (tracks: [TrackItem], metadata: [String: TrackMetadata], widthHints: PlaylistColumnWidthHints) {
         let normalizedItems = Array(NSOrderedSet(array: gameItems)) as? [DatabaseGameItem] ?? []
         guard !normalizedItems.isEmpty else {
             return ([], [:], PlaylistColumnWidthHints(indexText: "1", fileText: "", titleText: "", gameText: "", authorText: "", systemText: "", lengthText: "—"))
@@ -329,8 +380,9 @@ extension LibraryDatabase {
         }
         defer { sqlite3_close(handle) }
 
+        let systemPredicate = consoleSystemPredicate(preferFoldersOverMetadata: preferFoldersOverMetadata)
         let bucketPredicate = Array(
-            repeating: "(t.root_id = ? AND t.browser_game = ? AND t.browser_system = ?)",
+            repeating: "(t.root_id = ? AND t.browser_game = ? AND \(systemPredicate))",
             count: normalizedItems.count
         ).joined(separator: " OR ")
         let sql = """
@@ -423,6 +475,18 @@ extension LibraryDatabase {
         )
 
         return (tracks, metadata, widthHints)
+    }
+
+    private static func consoleSystemExpression(preferFoldersOverMetadata: Bool) -> String {
+        preferFoldersOverMetadata
+            ? "COALESCE(NULLIF(t.browser_system, ''), NULLIF(m.system, ''), '')"
+            : "COALESCE(NULLIF(m.system, ''), NULLIF(t.browser_system, ''), '')"
+    }
+
+    private static func consoleSystemPredicate(preferFoldersOverMetadata: Bool) -> String {
+        preferFoldersOverMetadata
+            ? "t.browser_system = ?"
+            : "\(consoleSystemExpression(preferFoldersOverMetadata: false)) = ?"
     }
 
     static func tracksAndMetadataForFiles(databaseURL: URL, fileItems: [DatabaseFileItem]) throws -> (tracks: [TrackItem], metadata: [String: TrackMetadata], widthHints: PlaylistColumnWidthHints) {

@@ -65,7 +65,8 @@ enum PlaylistQueueLoader {
 
     static func loadLibraryTracksForGames(
         databaseURL: URL?,
-        gameItems: [DatabaseGameItem]
+        gameItems: [DatabaseGameItem],
+        preferFoldersOverMetadata: Bool = true
     ) async throws -> LoadedPlaylistData {
         guard let databaseURL else { throw PlaylistQueueLoaderError.databaseUnavailable }
         return try await withCheckedThrowingContinuation { continuation in
@@ -73,10 +74,20 @@ enum PlaylistQueueLoader {
                 Self.playlistLoadLogger.info("sidebar database worker began")
                 let queryStartedAt = ContinuousClock.now
                 do {
-                    let loaded = loadedPlaylistData(from: try LibraryDatabase.tracksAndMetadataForGames(
+                    // This is CocoaSpice's original compact read-only queue
+                    // projection. Keep queue construction on the one proven
+                    // root/game/system query while CatalogReader remains
+                    // limited to sidebar snapshots.
+                    let result = try LibraryDatabase.tracksAndMetadataForGames(
                         databaseURL: databaseURL,
-                        gameItems: gameItems
-                    ))
+                        gameItems: gameItems,
+                        preferFoldersOverMetadata: preferFoldersOverMetadata
+                    )
+                    let loaded = LoadedPlaylistData(
+                        tracks: result.tracks,
+                        metadata: result.metadata,
+                        widthHints: result.widthHints
+                    )
                     let queryElapsed = queryStartedAt.duration(to: .now)
                     Self.playlistLoadLogger.info(
                         "sidebar SQLite query finished: \(loaded.tracks.count) tracks in \(String(describing: queryElapsed), privacy: .public)"
@@ -92,11 +103,16 @@ enum PlaylistQueueLoader {
 
     static func loadLibraryTracks(
         databaseURL: URL?,
-        request: LibraryPlaylistLoadRequest
+        request: LibraryPlaylistLoadRequest,
+        preferFoldersOverMetadata: Bool = true
     ) async throws -> LoadedPlaylistData {
         switch request {
         case .games(let gameItems):
-            return try await loadLibraryTracksForGames(databaseURL: databaseURL, gameItems: gameItems)
+            return try await loadLibraryTracksForGames(
+                databaseURL: databaseURL,
+                gameItems: gameItems,
+                preferFoldersOverMetadata: preferFoldersOverMetadata
+            )
         case .files(let fileItems):
             return try await loadLibraryTracksForFiles(databaseURL: databaseURL, fileItems: fileItems)
         case .fileSidebar(let fileItems, let folders):
@@ -114,10 +130,11 @@ enum PlaylistQueueLoader {
     ) async throws -> LoadedPlaylistData {
         try await Task.detached(priority: .userInitiated) {
             guard let databaseURL else { throw PlaylistQueueLoaderError.databaseUnavailable }
-            return loadedPlaylistData(from: try LibraryDatabase.tracksAndMetadataForFiles(
+            let result = try LibraryDatabase.tracksAndMetadataForFiles(
                 databaseURL: databaseURL,
                 fileItems: fileItems
-            ))
+            )
+            return LoadedPlaylistData(tracks: result.tracks, metadata: result.metadata, widthHints: result.widthHints)
         }.value
     }
 
@@ -128,11 +145,12 @@ enum PlaylistQueueLoader {
     ) async throws -> LoadedPlaylistData {
         try await Task.detached(priority: .userInitiated) {
             guard let databaseURL else { throw PlaylistQueueLoaderError.databaseUnavailable }
-            return loadedPlaylistData(from: try LibraryDatabase.tracksAndMetadataForFolder(
+            let result = try LibraryDatabase.tracksAndMetadataForFolder(
                 databaseURL: databaseURL,
                 rootPath: rootPath,
                 folderPath: folderPath
-            ))
+            )
+            return LoadedPlaylistData(tracks: result.tracks, metadata: result.metadata, widthHints: result.widthHints)
         }.value
     }
 
@@ -148,7 +166,7 @@ enum PlaylistQueueLoader {
             var metadata: [String: TrackMetadata] = [:]
             var seenTrackIDs = Set<String>()
 
-            func merge(_ loaded: (tracks: [TrackItem], metadata: [String: TrackMetadata], widthHints: PlaylistColumnWidthHints)) {
+            func merge(_ loaded: LoadedPlaylistData) {
                 for track in loaded.tracks where seenTrackIDs.insert(track.id).inserted {
                     tracks.append(track)
                     if let itemMetadata = loaded.metadata[track.id] {
@@ -158,18 +176,17 @@ enum PlaylistQueueLoader {
             }
 
             if !fileItems.isEmpty {
-                merge(try LibraryDatabase.tracksAndMetadataForFiles(
-                    databaseURL: databaseURL,
-                    fileItems: fileItems
-                ))
+                let result = try LibraryDatabase.tracksAndMetadataForFiles(databaseURL: databaseURL, fileItems: fileItems)
+                merge(LoadedPlaylistData(tracks: result.tracks, metadata: result.metadata, widthHints: result.widthHints))
             }
 
             for folder in folders.sorted(by: { $0.path.localizedStandardCompare($1.path) == .orderedAscending }) {
-                let loaded = try LibraryDatabase.tracksAndMetadataForFolder(
+                let result = try LibraryDatabase.tracksAndMetadataForFolder(
                     databaseURL: databaseURL,
                     rootPath: folder.rootPath,
                     folderPath: folder.path
                 )
+                let loaded = LoadedPlaylistData(tracks: result.tracks, metadata: result.metadata, widthHints: result.widthHints)
                 merge(loaded)
             }
 
@@ -188,10 +205,8 @@ enum PlaylistQueueLoader {
     ) async throws -> LoadedPlaylistData {
         try await Task.detached(priority: .userInitiated) {
             guard let databaseURL else { throw PlaylistQueueLoaderError.databaseUnavailable }
-            return loadedPlaylistData(from: try LibraryDatabase.tracksAndMetadataForPaths(
-                databaseURL: databaseURL,
-                paths: paths
-            ))
+            let result = try LibraryDatabase.tracksAndMetadataForPaths(databaseURL: databaseURL, paths: paths)
+            return LoadedPlaylistData(tracks: result.tracks, metadata: result.metadata, widthHints: result.widthHints)
         }.value
     }
 
@@ -292,20 +307,6 @@ enum PlaylistQueueLoader {
                 tracks: importedTracks,
                 metadata: importedMetadata
             )
-        )
-    }
-
-    private static func loadedPlaylistData(
-        from tuple: (
-            tracks: [TrackItem],
-            metadata: [String: TrackMetadata],
-            widthHints: PlaylistColumnWidthHints
-        )
-    ) -> LoadedPlaylistData {
-        LoadedPlaylistData(
-            tracks: tuple.tracks,
-            metadata: tuple.metadata,
-            widthHints: tuple.widthHints
         )
     }
 

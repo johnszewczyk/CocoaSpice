@@ -32,6 +32,5 @@
 ## Files
 
 - [MainView.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
-- [gui-toolbar-spectrum-analyzer.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/gui-toolbar-spectrum-analyzer.md)
 - [CocoaSpiceApp.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/CocoaSpiceApp.swift)
 - [PlayerViewModel.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)

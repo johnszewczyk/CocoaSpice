@@ -28,6 +28,7 @@ final class DatabaseSidebarLoader {
     func invalidateAndLoad(
         databaseURL: URL?,
         mode: SidebarBrowserMode,
+        preferFoldersOverMetadata: Bool = true,
         didLoadGames: @escaping @MainActor () -> Void,
         didLoadFiles: @escaping @MainActor () -> Void,
         didFail: @escaping @MainActor (String) -> Void = { _ in }
@@ -49,6 +50,7 @@ final class DatabaseSidebarLoader {
         loadIfNeeded(
             databaseURL: databaseURL,
             mode: mode,
+            preferFoldersOverMetadata: preferFoldersOverMetadata,
             didLoadGames: didLoadGames,
             didLoadFiles: didLoadFiles,
             didFail: didFail
@@ -58,6 +60,7 @@ final class DatabaseSidebarLoader {
     func loadIfNeeded(
         databaseURL: URL?,
         mode: SidebarBrowserMode,
+        preferFoldersOverMetadata: Bool = true,
         didLoadGames: @escaping @MainActor () -> Void,
         didLoadFiles: @escaping @MainActor () -> Void,
         didFail: @escaping @MainActor (String) -> Void = { _ in }
@@ -65,7 +68,12 @@ final class DatabaseSidebarLoader {
         guard let databaseURL else { return }
         switch mode {
         case .games:
-            loadGamesIfNeeded(databaseURL: databaseURL, didLoad: didLoadGames, didFail: didFail)
+            loadGamesIfNeeded(
+                databaseURL: databaseURL,
+                preferFoldersOverMetadata: preferFoldersOverMetadata,
+                didLoad: didLoadGames,
+                didFail: didFail
+            )
         case .files:
             loadFilesIfNeeded(databaseURL: databaseURL, didLoad: didLoadFiles, didFail: didFail)
         }
@@ -88,6 +96,7 @@ final class DatabaseSidebarLoader {
 
     private func loadGamesIfNeeded(
         databaseURL: URL,
+        preferFoldersOverMetadata: Bool,
         didLoad: @escaping @MainActor () -> Void,
         didFail: @escaping @MainActor (String) -> Void
     ) {
@@ -98,7 +107,12 @@ final class DatabaseSidebarLoader {
         gameLoadError = nil
         let task = Task { [weak self] in
             let result = await Task.detached(priority: .utility) { () -> Result<[DatabaseGameItem], Error> in
-                Result { try LibraryDatabase.loadGameSidebarItems(databaseURL: databaseURL) }
+                Result {
+                    try CatalogBrowser.gameItems(
+                        databaseURL: databaseURL,
+                        preferFoldersOverMetadata: preferFoldersOverMetadata
+                    )
+                }
             }.value
             guard !Task.isCancelled,
                   let self,
@@ -132,7 +146,7 @@ final class DatabaseSidebarLoader {
         fileLoadError = nil
         let task = Task { [weak self] in
             let result = await Task.detached(priority: .utility) { () -> Result<[DatabaseFileItem], Error> in
-                Result { try LibraryDatabase.loadFileSidebarItems(databaseURL: databaseURL) }
+                Result { try CatalogBrowser.fileItems(databaseURL: databaseURL) }
             }.value
             guard !Task.isCancelled,
                   let self,

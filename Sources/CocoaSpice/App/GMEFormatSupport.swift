@@ -1,5 +1,5 @@
 import Foundation
-import MediaScannerKit
+import VGMBoyKit
 
 enum PlaybackDecoderBackend: Hashable, Sendable {
     case gme
@@ -59,12 +59,6 @@ struct PlaybackDecoderModule: Sendable {
         self.supportsLongPlay = supportsLongPlay
     }
 
-    var scanDescriptor: ScanPluginDescriptor {
-        guard let descriptor = BuiltInScannerPlugins.registry.descriptors.first(where: { $0.pluginID == pluginID }) else {
-            preconditionFailure("Missing shared scanner plugin descriptor for \(pluginID)")
-        }
-        return descriptor
-    }
 }
 
 /// The one registry for extension-based admission, decoder routing, archive
@@ -89,12 +83,7 @@ enum PlaybackFormatRegistry {
         max(1, ProcessInfo.processInfo.activeProcessorCount / 2)
     )
 
-    static let libVGMSupportedExtensions: Set<String> = [
-        "gym",
-        "s98",
-        "vgm",
-        "vgz"
-    ]
+    static let libVGMSupportedExtensions = FormatRegistry.libvgmExtensions
 
     static let openMPTSupportedExtensions: Set<String> = ["xm"]
 
@@ -229,8 +218,16 @@ enum PlaybackFormatRegistry {
         )
     ]
 
-    static let supportedExtensions: Set<String> = Set(modules.flatMap(\.supportedExtensions))
-    static let scanPluginDescriptors = BuiltInScannerPlugins.registry.descriptors
+    /// CocoaSpice admits only formats implemented by its bundled VGMBoyKit.
+    /// Old CocoaSpice-only backends must not enter a queue and fail later.
+    static let supportedExtensions: Set<String> =
+        FormatRegistry.libgmeExtensions
+        .union(FormatRegistry.libvgmExtensions)
+        .union(FormatRegistry.highlyCompleteExtensions)
+        .union(FormatRegistry.twoSFExtensions)
+        .union(FormatRegistry.vgmstreamExtensions)
+        .union(FormatRegistry.lazyusfExtensions)
+        .union(FormatRegistry.playpsfExtensions)
 
     static func admits(pathExtension: String) -> Bool {
         supportedExtensions.contains(normalize(pathExtension))

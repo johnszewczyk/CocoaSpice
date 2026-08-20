@@ -22,6 +22,8 @@
 
 - Browse persists only an absolute standardized path accepted by
   `MediaScannerKit.CanonicalCatalog`; a changed location applies after restart.
+  Reloading the active location invalidates cached read-only sidebar snapshots
+  and loads the current published catalog without changing playback.
 - CocoaSpice never creates, migrates, scans into, resets, cleans, rewrites, or
   hydrates metadata into the selected catalog.
 - Track identity is root, source path, archive member, and subtrack index.
@@ -38,8 +40,10 @@
 
 ## Performance
 
-- Normal Games reads use `game_sidebar_buckets`; Files reads use
-  `file_sidebar_buckets`; search uses stored FTS/projection data.
+- Folder-first Games reads use `game_sidebar_buckets`; metadata-first Games
+  reads use the selected read-only console expression over `tracks` and
+  `track_metadata`. Files reads use `file_sidebar_buckets`; search uses stored
+  FTS/projection data.
 - Files loads only when opened and begins with roots collapsed.
 - Sidebar requests retain the last successful result while a retryable failure
   is displayed.

@@ -9,18 +9,20 @@
 
 - MediaScanner owns root mutation, Scan, Rebuild, cancellation, resume,
   diagnostics, link maintenance, and every catalog write.
-- CocoaSpice owns only catalog path selection and read-only presentation of the
-  roots and scan status already stored in that catalog.
-- `OptionsView` directs users to MediaScanner for catalog maintenance.
+- CocoaSpice owns only catalog path selection, explicit read-only reload, and
+  presentation of indexed games and files.
+- `OptionsView` directs users to MediaScanner for every catalog-maintenance action.
 
 ## Invariants
 
 - CocoaSpice never initializes a scan controller in its production app model.
-- Library-root and maintenance controls are disabled in CocoaSpice.
+- CocoaSpice exposes no library-root or maintenance controls.
 - The selected catalog is validated as schema 23 before its path is persisted.
 - A catalog switch requires restart and never replaces a live SQLite handle.
-- MediaScanner publishes a self-contained rollback-journal database so the
-  player can use a true read-only handle without sidecar-file writes.
+  Reloading the active catalog is safe: it invalidates read-only sidebar
+  snapshots and opens fresh reader connections without touching playback.
+- MediaScanner preserves the catalog's durable SQLite journal mode (including
+  WAL) so active CocoaSpice and SPCBoy readers can continue while it writes.
 - Playback archive materialization and cache remain CocoaSpice-owned transient
   playback concerns; they never become scan writes.
 

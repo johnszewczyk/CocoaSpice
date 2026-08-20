@@ -3,7 +3,7 @@
 ## Formats
 
 - Supported formats: [supported-formats.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-human/supported-formats.md) lists every supported extension, archive container, and notable compatibility rule.
-- Standard audio: AIFF, FLAC, M4A/AAC, MP3, and WAV use macOS audio support. Monkey's Audio APE uses the bundled FFmpeg decoder.
+- Playback is provided by the bundled VGMBoy audio core.
 
 ## Playback Controls
 
@@ -12,10 +12,10 @@
 - Controls: Play and Pause are explicit desired states. Repeated Play after an output-device reconnect cannot toggle a resumed track back to Paused.
 - Repeat: the toolbar cycles Off, Repeat Playlist, and Repeat Song.
 - Controls: rapid previous or next commands use the newest requested track.
-- Playback: starts through a streamed audio path.
+- Playback: starts through VGMBoy's shared audio session.
 - Track changes: starting or skipping to another track clears prior decoded audio before the new track begins.
 - Archives: supported game-music files can play from ZIP, 7z, RSN, and TAR+Zstandard (`.tar.zst`/`.tzst`) containers; the selected member is materialized into the cache.
-- Database playlists: choosing an item in the sidebar publishes its stored source, archive-member, subtrack, and cached metadata rows immediately. Playback uses those rows without writing to the catalog. Optional in-memory display inspection may occur for missing values, and playback preempts queued inspection work.
+- Database playlists: choosing an item in the sidebar immediately publishes its stored source, archive-member, subtrack, and cached metadata rows. CocoaSpice does not rescan, inspect, extract, or write the catalog while hydrating that playlist.
 - USF archives: USF and miniUSF playback materializes the complete archive set so miniUSF dependency files remain available.
 - 2SF archives: 2SF and mini2SF playback materializes the complete archive set so mini2SF library dependencies remain available.
 - PSF family: PSF, miniPSF, PSF2, and miniPSF2 use the vendored Play! PSF core. Archive playback materializes the complete set so `_lib` and PSFLIB dependencies resolve relative to the selected file; PSF tags provide scanner metadata and declared length.
@@ -26,7 +26,7 @@
 - Audio output: resumes at the current position after an output-device change when playback was active.
 - Changing Long Play or its target while a supported track is active reapplies the native loop policy at the current playback position instead of restarting the track.
 - Transitions: track changes, seek, pause/resume, stop, and Long Play changes briefly mute before the audio stream changes, then restore the chosen App Volume. Pause keeps the configured audio route alive at silence and preserves the exact buffered playback frame for resume. This reduces transport pops without changing system volume.
-- Faded Skip: when enabled in Playback Options, the first Next or Previous keeps the live source playing through a six-second output fade, then advances. A second command advances immediately through the short transport mute.
+- Faded Skip: when enabled in Playback Options, the first Next or Previous keeps the live source playing through a six-second output fade, then advances. When disabled, Next and Previous advance immediately. A second command during a faded skip also advances immediately through the short transport mute.
 - Random playback has three toolbar states: off, random selection from the indexed library, and random selection from the current playlist. All three toolbar glyphs are native SF Symbols.
 - Random Library queues the requested playback action while a small track-count-weighted library pool loads, so Next and end-of-track advance cannot race an empty asynchronous pool or require hydrating the entire indexed library.
 
@@ -38,5 +38,5 @@
 
 ## Files
 
-- [PlaybackEngine.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackEngine.swift)
+- [VGMBoyPlaybackEngine.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/VGMBoyPlaybackEngine.swift)
 - [PlayerViewModel.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)

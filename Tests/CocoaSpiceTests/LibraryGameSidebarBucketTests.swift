@@ -3,7 +3,7 @@ import SQLite3
 import Testing
 @testable import CocoaSpice
 
-@Test func consoleSourcePreferenceRewritesExistingSidebarBucketsWithoutRescanning() throws {
+@Test func consoleSourcePreferenceIsAReadOnlySidebarProjection() throws {
     let directory = FileManager.default.temporaryDirectory
         .appendingPathComponent("cocoaspice-console-source-\(UUID().uuidString)", isDirectory: true)
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -37,7 +37,7 @@ import Testing
             metadata: TrackMetadata(
                 game: "Castlevania",
                 song: "Theme",
-                system: "Playstation",
+                system: "Nintendo DS",
                 author: "",
                 comment: "",
                 introLengthMs: 0,
@@ -49,11 +49,8 @@ import Testing
     ))])
     try database.markScanCompleted(rootID: root.id)
 
-    #expect(try database.loadGameItems().map(\.systemName) == ["Sony PlayStation"])
-    try database.rewriteSidebarIdentity(preferEmbeddedMetadata: true)
-    #expect(try database.loadGameItems().map(\.systemName) == ["Sony PlayStation"])
-    try database.rewriteSidebarIdentity(preferEmbeddedMetadata: false)
-    #expect(try database.loadGameItems().map(\.systemName) == ["Sony PlayStation"])
+    #expect(try database.loadGameItems(preferFoldersOverMetadata: true).map(\.systemName) == ["Sony PlayStation"])
+    #expect(try database.loadGameItems(preferFoldersOverMetadata: false).map(\.systemName) == ["Nintendo DS"])
 }
 
 @Test func schemaTwentyOneMigrationRewritesAndRepublishesLibraryIdentity() throws {

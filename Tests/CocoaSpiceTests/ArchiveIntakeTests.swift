@@ -1,6 +1,7 @@
 import AppKit
 import C2SF
 import Foundation
+import MediaScannerKit
 import Testing
 @testable import CocoaSpice
 
@@ -177,7 +178,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     for extensionName in GMEFormatSupport.supportedExtensions {
         let fileURL = URL(fileURLWithPath: "/tmp/cocoaspice-admission.\(extensionName)")
         #expect(PlaylistQueueLoader.canImportDroppedURL(fileURL))
-        #expect(ScanCoreHandlers.registry.route(for: extensionName) != nil)
+        #expect(BuiltInScannerPlugins.registry.route(for: extensionName) != nil)
     }
 }
 

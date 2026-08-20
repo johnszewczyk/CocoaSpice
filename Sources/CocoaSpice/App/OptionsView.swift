@@ -4,16 +4,13 @@ import SwiftUI
 struct OptionsView: View {
     @Bindable var model: PlayerViewModel
     @State private var longPlayTimeText = ""
-    @State private var selection: OptionsSection = .library
+    @State private var selection: OptionsSection = .data
     @State private var hasInitializedPresentation = false
-    @State private var confirmsResetPaths = false
-    @State private var confirmsResetDatabase = false
 
     private enum OptionsSection: String, CaseIterable, Identifiable {
         case audio = "Audio"
-        case data = "Data"
+        case data = "Database"
         case interface = "Interface"
-        case library = "Library"
         case playback = "Playback"
         case plugins = "Plugins"
 
@@ -24,7 +21,6 @@ struct OptionsView: View {
             case .audio: "speaker.wave.2"
             case .data: "cylinder.split.1x2"
             case .interface: "paintbrush"
-            case .library: "externaldrive"
             case .playback: "waveform"
             case .plugins: "puzzlepiece.extension"
             }
@@ -65,7 +61,6 @@ struct OptionsView: View {
                         case .audio: audioPage
                         case .data: dataPage
                         case .interface: interfacePage
-                        case .library: libraryPage
                         case .playback: playbackPage
                         case .plugins: pluginsPage
                         }
@@ -84,7 +79,7 @@ struct OptionsView: View {
             }
             guard !hasInitializedPresentation else { return }
             hasInitializedPresentation = true
-            selection = .library
+            selection = .data
         }
         .onDisappear {
             model.savePreferencesNow()
@@ -94,22 +89,6 @@ struct OptionsView: View {
             if longPlayTimeText != formatted {
                 longPlayTimeText = formatted
             }
-        }
-        .alert("Reset All Library Paths?", isPresented: $confirmsResetPaths) {
-            Button("Cancel", role: .cancel) {}
-            Button("Reset Paths", role: .destructive) {
-                model.resetLibraryPaths()
-            }
-        } message: {
-            Text("This removes every configured scan path from the active library. Indexed data stays in the database and can be reused if a path is added again.")
-        }
-        .alert("Reset Database?", isPresented: $confirmsResetDatabase) {
-            Button("Cancel", role: .cancel) {}
-            Button("Reset Database", role: .destructive) {
-                model.purgeLibraryDatabase()
-            }
-        } message: {
-            Text("This permanently removes all indexed tracks, metadata, scan inventory, and scan logs. Your configured library paths remain and can be scanned again.")
         }
     }
 
@@ -294,48 +273,6 @@ struct OptionsView: View {
 
     private var interfacePage: some View {
         VStack(alignment: .leading, spacing: 16) {
-            sectionCard(title: "Spectrum") {
-                VStack(alignment: .leading, spacing: 12) {
-                    Toggle(isOn: $model.spectrumEnabled) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("Enable Spectrum")
-                            Text("Uses a 4,096-point FFT at 10 analyses per second, plus a 60 FPS direct bar/peak display. 10/20/40 means 1/2/4 bands per octave from 20 Hz–20.48 kHz. Spectrum is off by default.")
-                                .font(.system(size: 11))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                        .toggleStyle(.checkbox)
-
-                    HStack {
-                        Text("Bands")
-                        Spacer()
-                        Picker("Bands", selection: Binding(
-                            get: { model.spectrumBandCount },
-                            set: { model.setSpectrumBandCount($0) }
-                        )) {
-                            ForEach(SpectrumBandCount.supported, id: \.self) { bandCount in
-                                Text("\(bandCount)").tag(bandCount)
-                            }
-                        }
-                        .labelsHidden()
-                        .pickerStyle(.menu)
-                        .foregroundStyle(.white)
-                    }
-
-                    spectrumColorRow("Spectrum Base", selection: colorBinding(for: \.spectrumGradientStartColor))
-                    spectrumColorRow("Spectrum Peak", selection: colorBinding(for: \.spectrumGradientEndColor))
-                    spectrumColorRow("Spectrum Cap", selection: colorBinding(for: \.spectrumPeakColor))
-
-                    HStack {
-                        Spacer()
-                        Button("Reset") {
-                            model.resetSpectrumColors()
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .trailing)
-                }
-            }
-
             interfaceAppearanceCard
 
             sectionCard(title: "Sidebar Options") {
@@ -354,18 +291,18 @@ struct OptionsView: View {
                 .disabled(model.isLibraryScanInProgress)
 
                 Toggle(isOn: Binding(
-                    get: { model.preferEmbeddedConsoleTags },
-                    set: { model.setPreferEmbeddedConsoleTags($0) }
+                    get: { model.preferFoldersOverMetadata },
+                    set: { model.setPreferFoldersOverMetadata($0) }
                 )) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Prefer Embedded Console Tags")
-                        Text("Use decoded console metadata before the collection's console folder when grouping games.")
+                        Text("Prefer Folders over Metadatas")
+                        Text("Use the scanned archive or file's parent console folder before embedded console metadata when grouping games.")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                     }
                 }
                 .toggleStyle(.checkbox)
-                .disabled(model.libraryDatabaseIsReadOnly || model.isLibraryScanInProgress)
+                .disabled(model.isLibraryScanInProgress)
 
                 Toggle(isOn: Binding(
                     get: { model.databaseSidebarHidesFileExtensions },
@@ -497,107 +434,12 @@ struct OptionsView: View {
         }
     }
 
-    private var libraryPage: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            if model.libraryDatabaseIsReadOnly {
-                Text("MediaScanner owns library paths, scanning, and catalog maintenance. CocoaSpice uses the selected database read-only.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            sectionCard(title: "Library Paths") {
-                if model.libraryScanRoots.isEmpty {
-                    Text("No scan roots configured.")
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
-                        .background(Color.white.opacity(0.06))
-                        .clipShape(RoundedRectangle(cornerRadius: 10))
-                } else {
-                    VStack(alignment: .leading, spacing: 10) {
-                        ForEach(model.libraryScanRoots) { root in
-                            scanRootRow(root)
-                        }
-                    }
-                }
-
-                HStack(spacing: 8) {
-                    Button {
-                        model.toggleAllLibraryScanRootsEnabled()
-                    } label: {
-                        Image(systemName: "checkmark.circle")
-                    }
-                    .help("Enable All / Disable All")
-                    .accessibilityLabel("Enable All / Disable All Paths")
-                    .disabled(model.libraryDatabaseIsReadOnly || model.libraryScanInProgress || model.libraryScanRoots.isEmpty)
-                    libraryActionButton("Add Path") {
-                        model.chooseLibraryScanRoots()
-                    }
-                    .disabled(model.libraryDatabaseIsReadOnly || model.libraryScanInProgress)
-                    libraryActionButton("Reset Paths") {
-                        confirmsResetPaths = true
-                    }
-                    .disabled(model.libraryDatabaseIsReadOnly || model.libraryScanInProgress || model.libraryScanRoots.isEmpty)
-                    libraryActionButton("Scan All") {
-                        model.rescanEnabledLibraryRoots()
-                    }
-                    .disabled(model.libraryDatabaseIsReadOnly || model.libraryScanRoots.allSatisfy { !$0.isEnabled })
-                    libraryActionButton("Test Links") {
-                        model.trimMissingLibrary()
-                    }
-                    .disabled(model.libraryDatabaseIsReadOnly || model.libraryScanInProgress)
-                }
-            }
-
-            sectionCard(title: "Scanner Options") {
-                Toggle(isOn: $model.forceLibraryScan) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Deep Scan")
-                        Text("Unzip, read metadata for all files.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                    .toggleStyle(.checkbox)
-                    .disabled(model.libraryDatabaseIsReadOnly || model.libraryScanInProgress)
-            }
-
-            if let progress = model.libraryOperationProgress {
-                sectionCard(title: "Scan Status") {
-                    libraryOperationStatusField(
-                        title: "Current Activity",
-                        value: model.libraryScanStatus ?? "Preparing library operation…"
-                    )
-                    libraryOperationStatusField(
-                        title: "File Path",
-                        value: model.libraryScanCurrentPath ?? "Preparing library path…"
-                    )
-                    libraryOperationStatusField(
-                        title: "File Name",
-                        value: model.libraryScanCurrentFile ?? model.libraryScanStatus ?? "Preparing…"
-                    )
-                    libraryOperationProgressBar(progress)
-                    Button(model.libraryScanIsCancelling ? "Cancelling…" : (model.libraryOperationIsLinkTest ? "Cancel Test Links" : (model.queuedLibraryScanCount > 0 ? "Stop Scan + Clear Queue" : "Cancel Scan"))) {
-                        model.stopLibraryScan()
-                    }
-                    .frame(maxWidth: .infinity)
-                    .keyboardShortcut(.cancelAction)
-                    .disabled(model.libraryScanIsCancelling)
-                }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-
-        }
-        .animation(.easeInOut(duration: 0.2), value: model.libraryOperationProgress != nil)
-    }
-
     private var dataPage: some View {
         VStack(alignment: .leading, spacing: 16) {
             sectionCard(title: "Database") {
                 HStack(alignment: .center, spacing: 12) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Library Database")
+                        Text("MediaScanner Catalog")
                         Text(model.configuredLibraryDatabasePath)
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(.secondary)
@@ -606,6 +448,9 @@ struct OptionsView: View {
                             .textSelection(.enabled)
                     }
                     Spacer()
+                    Button("Reload Library") {
+                        model.reloadLibrary()
+                    }
                     Button("Use Default") {
                         model.useDefaultLibraryDatabase()
                     }
@@ -619,42 +464,10 @@ struct OptionsView: View {
                         .font(.system(size: 11))
                         .foregroundStyle(status.hasPrefix("Database not selected") ? .red : .secondary)
                 } else {
-                    Text("Only a validated MediaScanner catalog can be selected. CocoaSpice opens it read-only; use MediaScanner for scans and maintenance. A restart applies a changed location.")
+                    Text("CocoaSpice reads this schema-23 catalog. MediaScanner owns scan paths, scanning, link checks, and cleanup.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
-
-                HStack(alignment: .center, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Entries")
-                        Text("\(model.databaseEntryCount) indexed tracks • \(model.unlinkedDatabaseEntryCount) unlinked tracks")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button("Reset Database") {
-                        confirmsResetDatabase = true
-                    }
-                    .disabled(model.libraryDatabaseIsReadOnly || model.libraryScanInProgress || model.databaseEntryCount == 0)
-                }
-
-                HStack(alignment: .center, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Unlinked Sources")
-                        Text(model.deadLinkSummaryText)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button("Clean Unlinked") {
-                        model.deleteDeadLinks()
-                    }
-                    .disabled(model.libraryDatabaseIsReadOnly || model.isDeletingDeadLinks || model.libraryScanInProgress || model.deadLinkCount == 0)
-                }
-
-                Text("The database retains file data even when files move on disk to speed up scans. One unlinked source can retain many tracks, so source and track counts need not match.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
             }
 
             sectionCard(title: "Cache") {
@@ -705,7 +518,6 @@ struct OptionsView: View {
         }
         .onAppear {
             model.refreshArchiveCacheSummary()
-            model.refreshDeadLinkSummary()
         }
     }
 
@@ -825,36 +637,6 @@ struct OptionsView: View {
     }
 
     @ViewBuilder
-    private func libraryOperationProgressBar(_ progress: LibraryScanProgress) -> some View {
-        if progress.total == 0 {
-            ProgressView()
-                .progressViewStyle(.linear)
-                .frame(maxWidth: .infinity)
-                .accessibilityLabel("Library operation progress")
-        } else {
-            ProgressView(value: progress.fraction)
-                .progressViewStyle(.linear)
-                .frame(maxWidth: .infinity)
-                .accessibilityLabel("Library operation progress")
-        }
-    }
-
-    private func libraryOperationStatusField(title: String, value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.system(size: 12))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    @ViewBuilder
     private func sectionCard<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
         sectionCard(title: title, accessory: { EmptyView() }, content: content)
     }
@@ -878,97 +660,6 @@ struct OptionsView: View {
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 10).fill(panelBackground))
-    }
-
-    @ViewBuilder
-    private func scanRootRow(_ root: LibraryScanRoot) -> some View {
-        HStack(alignment: .center, spacing: 12) {
-                Toggle(
-                    "",
-                    isOn: Binding(
-                        get: { root.isEnabled },
-                        set: { model.setLibraryScanRootEnabled(root.id, isEnabled: $0) }
-                    )
-                )
-                .labelsHidden()
-                .toggleStyle(.checkbox)
-                .disabled(model.libraryDatabaseIsReadOnly || model.libraryScanInProgress)
-
-                scanRootStatusIcon(root)
-
-                Text(abbreviatedPath(for: root))
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
-                    .lineLimit(1)
-                    .help(root.path)
-
-                Spacer()
-
-            HStack(spacing: 4) {
-                Button { model.scanLibraryRoot(root.id) } label: {
-                    Image(systemName: "magnifyingglass")
-                }
-                .help(root.isEnabled ? "Scan Path" : "Scan Path Without Enabling It")
-                .disabled(model.libraryDatabaseIsReadOnly || model.libraryScanInProgress)
-                Button { model.openLibraryScanLog(root.id) } label: {
-                    Image(systemName: "doc.text")
-                }
-                .help("Open Scan Log")
-                .disabled(!model.hasLibraryScanLog(root.id))
-                Button(role: .destructive) { model.removeLibraryScanRoot(root.id) } label: {
-                    Image(systemName: "trash")
-                }
-                .help("Remove Path")
-                .disabled(model.libraryDatabaseIsReadOnly || model.libraryScanInProgress)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Color.white.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-    }
-
-    private func libraryActionButton(_ title: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(title)
-                .frame(maxWidth: .infinity)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    @ViewBuilder
-    private func scanRootStatusIcon(_ root: LibraryScanRoot) -> some View {
-        if model.libraryScanRootIsEmpty(root) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.red)
-                .accessibilityLabel("Scan completed with no playable files")
-        } else if model.libraryScanRootNeedsRescan(root) || model.libraryScanRootHasIssues(root) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.yellow)
-                .accessibilityLabel("Scan completed with issues; see Log for details")
-        } else if model.libraryScanRootIsClean(root) {
-            Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(.green)
-                .accessibilityLabel("Scan completed without issues")
-        } else {
-            Image(systemName: "checkmark.circle")
-                .foregroundStyle(.secondary)
-                .accessibilityLabel("Not yet scanned")
-        }
-    }
-
-    private func abbreviatedPath(for root: LibraryScanRoot) -> String {
-        let paths = model.libraryScanRoots.map { URL(fileURLWithPath: $0.path).pathComponents }
-        guard let first = paths.first else { return root.path }
-        let sharedCount = paths.dropFirst().reduce(first.count) { count, path in
-            zip(first.prefix(count), path.prefix(count)).prefix { $0 == $1 }.count
-        }
-        let components = URL(fileURLWithPath: root.path).pathComponents
-        let suffix = Array(components.dropFirst(min(sharedCount, components.count)))
-        // A single root has no useful shared prefix. Keep two meaningful
-        // folders rather than reducing it to one opaque basename.
-        let visible = suffix.isEmpty ? Array(components.suffix(2)) : suffix
-        return visible.joined(separator: "/")
     }
 
     private func applyLongPlayTimeText() {

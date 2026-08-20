@@ -25,9 +25,8 @@
 - M3U drops decode relative paths from the playlist directory and append playable entries to the current queue.
 - Menu and Finder opening of an M3U replaces the current queue through the same explicit open path.
 - Queue edits include cut, paste, delete, move, and drag-reorder.
-- Background playlist inspection publishes completed metadata incrementally so visible rows update before a large queue has fully hydrated.
-- Background hydration groups unresolved archive members by container and materializes each group once. It feeds prepared files through two bounded workers instead of creating one task and extractor process per playlist row.
-- Hydrated loose-file and archive-member metadata is in-memory playlist state only. CocoaSpice never writes it to the MediaScanner catalog. Metadata completeness is explicit; a valid zero or unknown duration is not itself evidence that inspection is missing.
+- Direct Finder imports may inspect media to complete their display metadata.
+- Database-backed queues use only their published metadata snapshot. They do not inspect media or materialize archives during hydration; VGMBoy inspects the selected playable item when playback begins.
 - Database-backed queue loads distinguish a successful empty result from a SQLite failure. A query failure is logged and shown in status without replacing or partially updating the current queue; combined file/folder selections are applied atomically only after every query succeeds.
 - A coalesced metadata batch reloads only the affected metadata cells. Hydration does not reload the whole table, measure every column, animate column widths, or persist width changes.
 - A playback request cancels queued background hydration before opening its decoder. Hydration restarts for unresolved rows after that request settles, preventing a large playlist from sitting ahead of interactive playback on the inspection queue.
@@ -39,6 +38,7 @@
 - Archive import is read-only: it materializes members for inspection/queue identity without mutating the source archive.
 - Keep the playing glyph attached to the actual playing track, not the most recently selected row.
 - Coalesce metadata-table refreshes; do not wait for the entire inspection task before displaying completed durations.
+- Do not perform source-file I/O from table cells or automatic column sizing; database queue publication is in-memory after its query completes.
 - Treat decoder-driven subtrack enumeration as an explicit format capability rather than a playlist extension special case.
 
 ## Files

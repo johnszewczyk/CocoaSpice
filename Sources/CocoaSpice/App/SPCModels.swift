@@ -1,5 +1,4 @@
 import Foundation
-import MediaScannerKit
 
 enum TrackSource: Hashable, Sendable {
     case file(URL)
@@ -360,7 +359,6 @@ struct InspectedTrack: Sendable {
     let metadata: TrackMetadata
 }
 
-typealias TrackMetadata = ScannerMetadata
 
 struct PlaylistColumnWidthHints: Equatable, Sendable {
     let indexText: String

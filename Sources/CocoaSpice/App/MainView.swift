@@ -9,12 +9,6 @@ struct MainView: View {
     var body: some View {
         liveMainView
         .frame(minWidth: 320, minHeight: 240)
-        .background(
-            WindowToolbarSpectrumAccessory(
-                model: model.toolbarSpectrum,
-                isVisible: model.spectrumEnabled
-            )
-        )
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Button {

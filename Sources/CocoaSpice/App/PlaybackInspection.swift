@@ -1,128 +1,41 @@
 import Foundation
-import Dispatch
-
-struct PlaylistMetadataArchiveBatch: Equatable, Sendable {
-    let archiveURL: URL
-    let entryPaths: [String]
-}
-
-struct PlaylistMetadataInspectionJob: Sendable {
-    let track: TrackItem
-    let fileURL: URL
-}
+import VGMBoyKit
 
 enum PlaybackInspection {
     static let metadataWorkerLimit = 2
 
     static func inspectMetadata(track: TrackItem) async throws -> TrackMetadata {
-        try Task.checkCancellation()
-        let fileURL = try ZipArchiveSupport.materializePlayableFile(for: track)
-        return try await inspectMetadata(track: track, fileURL: fileURL)
+        try inspectMetadata(track: track, fileURL: ZipArchiveSupport.materializePlayableFile(for: track))
     }
 
-    static func inspectMetadata(
-        track: TrackItem,
-        fileURL: URL
-    ) async throws -> TrackMetadata {
-        try Task.checkCancellation()
-        return try await PlaybackInspectionGate.withLock {
-            try Task.checkCancellation()
-            let inspector = try PlaybackDecoderFactory.makeInspector(fileURL: fileURL)
-            return try inspector.metadata(trackIndex: track.trackIndex)
+    static func inspectMetadata(track: TrackItem, fileURL: URL) throws -> TrackMetadata {
+        let inspection = try AudioInspector.inspect(path: fileURL.path)
+        guard inspection.tracks.indices.contains(track.trackIndex) else {
+            throw PlaybackControlError.invalidPayload("Track index is not available for this file.")
         }
-    }
-
-    static func archiveBatches(for tracks: [TrackItem]) -> [PlaylistMetadataArchiveBatch] {
-        var archiveOrder: [URL] = []
-        var entryPathsByArchive: [URL: [String]] = [:]
-        var seenEntriesByArchive: [URL: Set<String>] = [:]
-
-        for track in tracks {
-            guard case .zipEntry(let archiveURL, let entryPath) = track.source else { continue }
-            if entryPathsByArchive[archiveURL] == nil {
-                archiveOrder.append(archiveURL)
-                entryPathsByArchive[archiveURL] = []
-                seenEntriesByArchive[archiveURL] = []
-            }
-            if seenEntriesByArchive[archiveURL, default: []].insert(entryPath).inserted {
-                entryPathsByArchive[archiveURL, default: []].append(entryPath)
-            }
-        }
-
-        return archiveOrder.map {
-            PlaylistMetadataArchiveBatch(
-                archiveURL: $0,
-                entryPaths: entryPathsByArchive[$0] ?? []
-            )
-        }
-    }
-
-    static func prepareMetadataInspectionJobs(
-        tracks: [TrackItem]
-    ) -> [PlaylistMetadataInspectionJob] {
-        var preparedURLByContainerID: [String: URL] = [:]
-        for track in tracks {
-            if case .file(let fileURL) = track.source {
-                preparedURLByContainerID[track.containerID] = fileURL
-            }
-        }
-
-        for batch in archiveBatches(for: tracks) {
-            if Task.isCancelled { return [] }
-            guard let root = try? ZipArchiveSupport.materializeInspectionSet(
-                archiveURL: batch.archiveURL,
-                entryPaths: batch.entryPaths
-            ) else {
-                continue
-            }
-            for entryPath in batch.entryPaths {
-                let track = TrackItem(archiveURL: batch.archiveURL, entryPath: entryPath)
-                preparedURLByContainerID[track.containerID] = ZipArchiveSupport.archiveMemberURL(
-                    in: root,
-                    entryPath: entryPath
-                )
-            }
-        }
-
-        return tracks.compactMap { track in
-            preparedURLByContainerID[track.containerID].map {
-                PlaylistMetadataInspectionJob(track: track, fileURL: $0)
-            }
-        }
+        return metadata(inspection.tracks[track.trackIndex])
     }
 
     static func inspectPlayableTracks(fileURL: URL) async throws -> [InspectedTrack] {
-        try Task.checkCancellation()
-        return try await PlaybackInspectionGate.withLock {
-            try Task.checkCancellation()
-            let inspector = try PlaybackDecoderFactory.makeInspector(fileURL: fileURL)
-            let trackCount = max(1, inspector.trackCount)
-            return try TrackItem.expanded(url: fileURL, trackCount: trackCount).map { track in
-                try Task.checkCancellation()
-                let metadata = try inspector.metadata(trackIndex: track.trackIndex)
-                return InspectedTrack(track: track, metadata: metadata)
-            }
+        let inspection = try AudioInspector.inspect(path: fileURL.path)
+        return inspection.tracks.map { value in
+            InspectedTrack(track: TrackItem(url: fileURL, trackIndex: value.index, trackCount: inspection.trackCount), metadata: metadata(value))
         }
+    }
+
+    static func prepareMetadataInspectionJobs(tracks: [TrackItem]) -> [PlaylistMetadataInspectionJob] {
+        tracks.compactMap { track in
+            guard let url = try? ZipArchiveSupport.materializePlayableFile(for: track) else { return nil }
+            return PlaylistMetadataInspectionJob(track: track, fileURL: url)
+        }
+    }
+
+    private static func metadata(_ value: VGMBoyKit.TrackMetadata) -> TrackMetadata {
+        TrackMetadata(game: value.game, song: value.song, system: value.system, author: value.author, comment: "", introLengthMs: value.introMs, loopLengthMs: value.loopMs, playLengthMs: value.playMs, fadeLengthMs: value.fadeMs)
     }
 }
 
-private enum PlaybackInspectionGate {
-    private static let queue = DispatchQueue(
-        label: "com.cocoaspice.playback-inspection",
-        qos: .utility
-    )
-
-    static func withLock<T: Sendable>(
-        _ operation: @escaping @Sendable () throws -> T
-    ) async throws -> T {
-        try await withCheckedThrowingContinuation { continuation in
-            queue.async {
-                do {
-                    continuation.resume(returning: try operation())
-                } catch {
-                    continuation.resume(throwing: error)
-                }
-            }
-        }
-    }
+struct PlaylistMetadataInspectionJob: Sendable {
+    let track: TrackItem
+    let fileURL: URL
 }

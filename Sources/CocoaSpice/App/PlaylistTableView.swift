@@ -1096,10 +1096,12 @@ struct PlaylistTableView: NSViewRepresentable {
         }
 
         private func fileSizeText(for track: TrackItem) -> String {
-            guard !track.isArchiveEntry else { return "—" }
-            let bytes = (try? track.url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? nil
-            guard let bytes, bytes > 0 else { return "—" }
-            return ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+            // Queue publication is a catalogue snapshot. Never synchronously
+            // stat source files from AppKit cell rendering or column sizing:
+            // one large selection otherwise turns a database read into
+            // hundreds of blocking filesystem operations on the main actor.
+            _ = track
+            return "—"
         }
 
         private func textWidth(_ text: String, font: NSFont) -> CGFloat {

@@ -1,4 +1,5 @@
 import Foundation
+import MediaScannerKit
 import OSLog
 import SQLite3
 
@@ -1059,7 +1060,7 @@ final class LibraryDatabase: @unchecked Sendable {
                     throw databaseError()
                 }
 
-                let route = ScanCoreHandlers.registry.route(
+                let route = BuiltInScannerPlugins.registry.route(
                     for: update.track.playablePathExtension,
                     archiveMember: update.track.isArchiveEntry
                 )
@@ -1141,15 +1142,12 @@ final class LibraryDatabase: @unchecked Sendable {
     func persistScanResults(
         _ results: [ScanPipelineResult]
     ) throws {
-        guard !results.isEmpty else { return }
-        try withSavepoint {
-            for result in results {
-                try persistScanResult(result)
-            }
-            try persistScanTrackResultsInCurrentTransaction(
-                results
-            )
-        }
+        _ = results
+        throw NSError(
+            domain: "CocoaSpice.LibraryDatabase",
+            code: 5,
+            userInfo: [NSLocalizedDescriptionKey: "CocoaSpice is a read-only MediaScanner catalog client."]
+        )
     }
 
     private func persistScanTrackResultsInCurrentTransaction(

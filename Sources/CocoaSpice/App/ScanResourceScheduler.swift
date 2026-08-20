@@ -1,3 +1,0 @@
-import MediaScannerKit
-
-typealias ScanResourceScheduler = MediaScannerKit.ScanResourceScheduler

@@ -92,12 +92,12 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     )
     #expect(GMEFormatSupport.module(forPathExtension: "spc")?.scanInspectionConcurrency == expectedGMEConcurrency)
     #expect(GMEFormatSupport.module(forPathExtension: "minipsf2")?.scanInspectionConcurrency == 1)
-    #expect(GMEFormatSupport.scanPluginDescriptors.count == GMEFormatSupport.modules.count)
-    #expect(ScanCoreHandlers.registry.route(for: "PSF", archiveMember: true)?.pluginID == "play-psf1")
-    #expect(ScanCoreHandlers.registry.route(for: "PSF2", archiveMember: true)?.pluginID == "play-psf2")
-    #expect(ScanCoreHandlers.registry.route(for: "MINISSF", archiveMember: true)?.pluginID == "highly-theoretical")
-    #expect(ScanCoreHandlers.registry.route(for: "XA", archiveMember: true)?.pluginID == "vgmstream")
-    #expect(ScanCoreHandlers.registry.route(for: "GENH", archiveMember: true)?.pluginID == "vgmstream")
+    #expect(GMEFormatSupport.modules.count == 15)
+    #expect(GMEFormatSupport.module(forPathExtension: "PSF")?.pluginID == "play-psf1")
+    #expect(GMEFormatSupport.module(forPathExtension: "PSF2")?.pluginID == "play-psf2")
+    #expect(GMEFormatSupport.module(forPathExtension: "MINISSF")?.pluginID == "highly-theoretical")
+    #expect(GMEFormatSupport.module(forPathExtension: "XA")?.pluginID == "vgmstream")
+    #expect(GMEFormatSupport.module(forPathExtension: "GENH")?.pluginID == "vgmstream")
 
     let registeredExtensionCount = GMEFormatSupport.modules.reduce(0) {
         $0 + $1.supportedExtensions.count

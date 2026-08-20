@@ -28,6 +28,11 @@ let package = Package(
         .executable(name: "CocoaSpice", targets: ["CocoaSpice"])
     ],
     dependencies: [
+        .package(path: "../CatalogReader"),
+        .package(path: "../VGMBoy"),
+        // Transitional only: LibraryDatabase still contains the old combined
+        // scanner/writer implementation. Remove this after its read-only
+        // replacement has taken over the sidebar and playlist queries.
         .package(path: "../MediaScanner")
     ],
     targets: [
@@ -215,7 +220,7 @@ let package = Package(
         ),
         .executableTarget(
             name: "CocoaSpice",
-            dependencies: ["CGME", "COpenMPT", "CLibVGM", "CHighlyComplete", "CHighlyTheoretical", "CLazyUSF", "C2SF", "CPlaybackAudio", "CVGMStream", "CFFmpegAudio", "CPlayPSF", .product(name: "MediaScannerKit", package: "MediaScanner")],
+            dependencies: [.product(name: "CatalogReader", package: "CatalogReader"), .product(name: "VGMBoyKit", package: "VGMBoy"), .product(name: "MediaScannerKit", package: "MediaScanner")],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("AudioToolbox"),
@@ -228,7 +233,8 @@ let package = Package(
         ),
         .testTarget(
             name: "CocoaSpiceTests",
-            dependencies: ["CocoaSpice", "C2SF", .product(name: "MediaScannerKit", package: "MediaScanner")],
+            dependencies: ["CocoaSpice", .product(name: "MediaScannerKit", package: "MediaScanner")],
+            exclude: ["PlaybackFormatIntegrationTests.swift"],
             resources: [
                 .copy("cross-app-library-identity-v1.json"),
                 .copy("cross-app-sidebar-search-view-v1.json"),

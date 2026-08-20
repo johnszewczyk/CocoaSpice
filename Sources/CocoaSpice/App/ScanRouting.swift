@@ -10,4 +10,3 @@ typealias ScanItemState = MediaScannerKit.ScanItemState
 typealias ScanItemIdentity = MediaScannerKit.ScanItemIdentity
 typealias ScanFingerprint = MediaScannerKit.ScanFingerprint
 typealias ScanInventoryItem = MediaScannerKit.ScanInventoryItem
-typealias ScanSelection = MediaScannerKit.ScanSelection

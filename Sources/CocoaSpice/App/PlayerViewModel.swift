@@ -1,6 +1,6 @@
 import AppKit
+import CatalogReader
 import Foundation
-import MediaScannerKit
 import OSLog
 import Observation
 import UniformTypeIdentifiers
@@ -449,6 +449,23 @@ final class PlayerViewModel {
         loadDatabaseSidebarIfNeeded()
     }
 
+    /// Reloads the externally published catalog snapshot. Playback keeps its
+    /// loaded queue; only the Database browser is refreshed.
+    func reloadLibrary() {
+        guard libraryDatabase != nil else {
+            libraryDatabaseLocationStatus = "Library database is unavailable."
+            return
+        }
+        reloadLibraryScanRoots()
+        databaseSidebar.clearSelection()
+        databaseFileSidebar.clearSelection()
+        selectedDatabaseGameIDs.removeAll()
+        selectedDatabaseFileIDs.removeAll()
+        selectedDatabaseFileFolders.removeAll()
+        reloadDatabaseSidebar()
+        libraryDatabaseLocationStatus = "Reloading the current MediaScanner catalog…"
+    }
+
     var enabledLibraryRootURLs: [URL] {
         libraryScanRoots
             .filter(\.isEnabled)
@@ -481,11 +498,11 @@ final class PlayerViewModel {
         }
         guard panel.runModal() == .OK, let selectedURL = panel.url else { return }
         do {
-            let summary = try CanonicalCatalog.inspect(databaseURL: selectedURL)
+            let summary = try ReadOnlyCatalog(databaseURL: selectedURL).summary()
             UserDefaults.standard.set(summary.path, forKey: AppDefaultsKey.libraryDatabasePath)
             libraryDatabaseLocationStatus = selectedURL.standardizedFileURL == libraryDatabaseURL?.standardizedFileURL
-                ? "This database is already active."
-                : "Validated \(summary.trackCount) tracks. Restart CocoaSpice to use this database."
+                ? "This database is already active. Use Reload Library after it has been republished."
+                : "Validated \(summary.trackCount) tracks. Restart CocoaSpice to load a different catalog."
         } catch {
             libraryDatabaseLocationStatus = "Database not selected: \(error.localizedDescription)"
         }
@@ -509,7 +526,6 @@ final class PlayerViewModel {
     private var playbackTimer: Timer?
     private let playlistMetadataTaskOwner = LatestTaskOwner()
     private let playbackRequestState = PlaybackRequestState()
-    @ObservationIgnored private var libraryScanController: LibraryScanController?
     private let folderSelectionTaskOwner = LatestTaskOwner()
     private let queueBuildTaskOwner = LatestTaskOwner()
     private let randomLibraryLoadTaskOwner = LatestTaskOwner()
@@ -610,24 +626,6 @@ final class PlayerViewModel {
         } catch {
             libraryDatabase = nil
             libraryScanStatus = "Library database unavailable: \(error.localizedDescription)"
-        }
-        if let libraryDatabase, !libraryDatabase.isReadOnly {
-            libraryScanController = LibraryScanController(
-                database: libraryDatabase,
-                operations: libraryOperations,
-                roots: { [weak self] in self?.libraryScanRoots ?? [] },
-                didCompleteRoot: { [weak self] root, _ in
-                    guard let self else { return }
-                    self.trimmedLibraryScanRootIDs.remove(root.id)
-                    self.persistTrimmedLibraryRootIDs()
-                    self.reloadLibraryScanRoots()
-                    self.reloadDatabaseSidebar()
-                    self.refreshDeadLinkSummary()
-                },
-                didFailRoot: { [weak self] _ in
-                    self?.reloadLibraryScanRoots()
-                }
-            )
         }
         trimmedLibraryScanRootIDs = Set(
             UserDefaults.standard.array(forKey: "trimmedLibraryScanRootIDs")?.compactMap { ($0 as? NSNumber)?.int64Value } ?? []
@@ -770,7 +768,6 @@ final class PlayerViewModel {
             libraryScanStatus = "Could not remove path: \(error.localizedDescription)"
             return
         }
-        libraryScanController?.closeLiveLog(rootID: id)
         reloadLibraryScanRoots()
         reloadDatabaseSidebar()
         syncActiveRootToLibraryScanRoots()
@@ -778,11 +775,11 @@ final class PlayerViewModel {
     }
 
     func hasLibraryScanLog(_ id: Int64) -> Bool {
-        libraryScanController?.hasLog(rootID: id) ?? false
+        false
     }
 
     func openLibraryScanLog(_ id: Int64) {
-        libraryScanController?.showLog(rootID: id)
+        libraryScanStatus = "Scan logs are managed by MediaScanner."
     }
 
     func canMoveLibraryScanRootUp(_ id: Int64) -> Bool {
@@ -952,7 +949,6 @@ final class PlayerViewModel {
         guard !libraryScanInProgress,
               !libraryScanRoots.isEmpty,
               let databaseURL = libraryDatabase?.databaseURL else { return }
-        let rootIDs = libraryScanRoots.map(\.id)
         let generation = libraryOperations.beginTask()
         libraryScanInProgress = true
         libraryScanStatus = "Removing library paths…"
@@ -979,9 +975,6 @@ final class PlayerViewModel {
                 self.libraryScanStatus = "Could not reset library paths: \(errorDescription)"
                 return
             }
-            for rootID in rootIDs {
-                self.libraryScanController?.closeLiveLog(rootID: rootID)
-            }
             self.reloadLibraryScanRoots()
             self.clearLibraryState()
             self.libraryScanStatus = "Library paths reset"
@@ -998,14 +991,14 @@ final class PlayerViewModel {
             libraryScanStatus = "Test Links stopped"
             return
         }
-        libraryScanController?.stop()
+        libraryScanStatus = "Scanning is managed by MediaScanner."
     }
 
     private var requestedLibraryScanMode: ScanMode {
         forceLibraryScan ? .newScan : .incremental
     }
 
-    var queuedLibraryScanCount: Int { libraryScanController?.queuedRequestCount ?? 0 }
+    var queuedLibraryScanCount: Int { 0 }
 
     var libraryOperationProgress: LibraryScanProgress? {
         libraryOperations.operationProgress
@@ -1024,11 +1017,7 @@ final class PlayerViewModel {
             libraryScanStatus = "No library paths selected for scanning."
             return
         }
-        guard let libraryScanController else {
-            libraryScanStatus = "Library database unavailable."
-            return
-        }
-        libraryScanController.scan(roots: roots, mode: mode)
+        libraryScanStatus = "Scanning is managed by MediaScanner."
     }
     private func loadRoot(url: URL) {
         folderSelectionTaskOwner.cancel()
@@ -1295,7 +1284,8 @@ final class PlayerViewModel {
             do {
                 loaded = try await PlaylistQueueLoader.loadLibraryTracks(
                     databaseURL: databaseURL,
-                    request: request
+                    request: request,
+                    preferFoldersOverMetadata: self.preferFoldersOverMetadata
                 )
             } catch {
                 guard !Task.isCancelled, self.queueBuildTaskOwner.isCurrent(generation) else { return }
@@ -1327,8 +1317,8 @@ final class PlayerViewModel {
                 "sidebar queue applied: \(loaded.tracks.count) tracks in \(String(describing: applyElapsed), privacy: .public)"
             )
             self.statusText = replace
-                ? "Queued \(loaded.tracks.count) tracks from \(label)"
-                : "Enqueued \(loaded.tracks.count) tracks from \(label)"
+                ? "Queued \(loaded.tracks.count) tracks from \(label) • read \(Self.milliseconds(databaseElapsed)) ms • publish \(Self.milliseconds(applyElapsed)) ms"
+                : "Enqueued \(loaded.tracks.count) tracks from \(label) • read \(Self.milliseconds(databaseElapsed)) ms • publish \(Self.milliseconds(applyElapsed)) ms"
             self.queueBuildTaskOwner.finish(generation: generation)
         }
         queueBuildTaskOwner.install(task, generation: generation)
@@ -1746,54 +1736,16 @@ final class PlayerViewModel {
         savePreferencesNow()
     }
 
-    func setPreferEmbeddedConsoleTags(_ enabled: Bool) {
-        guard !libraryDatabaseIsReadOnly else {
-            libraryScanStatus = "Console-tag indexing is managed by MediaScanner."
-            return
-        }
+    var preferFoldersOverMetadata: Bool {
+        !preferEmbeddedConsoleTags
+    }
+
+    func setPreferFoldersOverMetadata(_ enabled: Bool) {
         guard !libraryScanInProgress,
-              preferEmbeddedConsoleTags != enabled,
-              let databaseURL = libraryDatabase?.databaseURL else { return }
-        let previous = preferEmbeddedConsoleTags
-        let generation = libraryOperations.beginTask()
-        libraryScanInProgress = true
-        preferEmbeddedConsoleTags = enabled
-        libraryDatabase?.preferEmbeddedConsoleTags = enabled
+              preferFoldersOverMetadata != enabled else { return }
+        preferEmbeddedConsoleTags = !enabled
         savePreferencesNow()
-        Task { [weak self] in
-            guard let self else { return }
-            defer {
-                if self.libraryOperations.isCurrentTask(generation) {
-                    self.libraryScanInProgress = false
-                    self.libraryOperations.finishTask(generation: generation)
-                }
-            }
-            let errorDescription = await Task.detached(priority: .utility) {
-                do {
-                    let database = try LibraryDatabase(
-                        databaseURL: databaseURL,
-                        accessMode: .readOnly,
-                        preferEmbeddedConsoleTags: enabled
-                    )
-                    try database.rewriteSidebarIdentity(preferEmbeddedMetadata: enabled)
-                    return nil as String?
-                } catch {
-                    return error.localizedDescription
-                }
-            }.value
-            guard self.libraryOperations.isCurrentTask(generation), !Task.isCancelled else { return }
-            if let errorDescription {
-                self.preferEmbeddedConsoleTags = previous
-                self.libraryDatabase?.preferEmbeddedConsoleTags = previous
-                self.savePreferencesNow()
-                self.libraryScanStatus = "Could not update console grouping: \(errorDescription)"
-                return
-            }
-            self.libraryScanStatus = enabled
-                ? "Database console grouping now prefers embedded tags."
-                : "Database console grouping now prefers collection tags and folders."
-            self.reloadDatabaseSidebar()
-        }
+        reloadDatabaseSidebar()
     }
 
     func setSidebarBrowserMode(_ mode: SidebarBrowserMode) {
@@ -2308,12 +2260,14 @@ final class PlayerViewModel {
             return
         }
         let generation = randomLibraryLoadTaskOwner.begin()
+        let preferFoldersOverMetadata = self.preferFoldersOverMetadata
         let task = Task { [weak self] in
             let loaded: LoadedPlaylistData
             do {
                 loaded = try await PlaylistQueueLoader.loadLibraryTracksForGames(
                     databaseURL: databaseURL,
-                    gameItems: [item]
+                    gameItems: [item],
+                    preferFoldersOverMetadata: preferFoldersOverMetadata
                 )
             } catch {
                 guard let self,
@@ -2958,6 +2912,22 @@ final class PlayerViewModel {
             return
         }
 
+        // A published MediaScanner snapshot is already the playlist's
+        // metadata contract. Do not reopen decoders or materialize archives
+        // while hydrating a database selection; playback owns any inspection
+        // it requires for the selected track.
+        if playlistMetadataInspectionPolicy == .databaseSnapshot {
+            if playlistColumnWidthHints == nil {
+                playlistColumnWidthHints = Self.buildPlaylistColumnWidthHints(
+                    tracks: tracks,
+                    metadata: cachedMetadata
+                )
+            }
+            playlistMetadataLoadToken += 1
+            playlistMetadataTaskOwner.finish(generation: generation)
+            return
+        }
+
         let unresolvedTracks = tracks.filter { track in
             guard let metadata = cachedMetadata[track.id] else { return true }
 
@@ -3096,7 +3066,6 @@ final class PlayerViewModel {
     private func updatePlaylistMetadata(_ updates: [TrackItem.ID: TrackMetadata]) {
         guard !updates.isEmpty else { return }
         metadataCache.merge(updates) { _, replacement in replacement }
-        persistHydratedPlaylistMetadata(updates)
         for (trackID, metadata) in updates {
             updatePlaylistDuration(for: trackID, metadata: metadata)
         }
@@ -3106,41 +3075,6 @@ final class PlayerViewModel {
         }
         playlistMetadataChangedTrackIDs.formUnion(updates.keys)
         schedulePlaylistMetadataTableRefresh()
-    }
-
-    private func persistHydratedPlaylistMetadata(_ updates: [TrackItem.ID: TrackMetadata]) {
-        guard !libraryDatabaseIsReadOnly else { return }
-        guard let databaseURL = libraryDatabase?.databaseURL else { return }
-        let tracksByID = Dictionary(uniqueKeysWithValues: playlist.map { ($0.id, $0) })
-        let pending = updates.compactMap { trackID, metadata in
-            tracksByID[trackID].map { ($0, metadata) }
-        }
-        guard !pending.isEmpty else { return }
-        let preferEmbeddedConsoleTags = self.preferEmbeddedConsoleTags
-        Task.detached(priority: .utility) {
-            let guardedUpdates = pending.compactMap { track, metadata -> PlaylistMetadataDatabaseUpdate? in
-                guard let values = try? track.source.sourceURL.resourceValues(
-                    forKeys: [.fileSizeKey, .contentModificationDateKey]
-                ), let fileSize = values.fileSize,
-                   let modifiedAt = values.contentModificationDate else {
-                    return nil
-                }
-                return PlaylistMetadataDatabaseUpdate(
-                    track: track,
-                    metadata: metadata,
-                    fingerprint: ScanFingerprint(
-                        fileSize: Int64(fileSize),
-                        modifiedAt: modifiedAt
-                    )
-                )
-            }
-            guard !guardedUpdates.isEmpty else { return }
-            try? LibraryDatabase(
-                databaseURL: databaseURL,
-                accessMode: .readOnly,
-                preferEmbeddedConsoleTags: preferEmbeddedConsoleTags
-            ).persistPlaylistMetadataIfCurrent(guardedUpdates)
-        }
     }
 
     private func updatePlaylistMetadata(for trackID: TrackItem.ID, metadata: TrackMetadata) {
@@ -3167,15 +3101,20 @@ final class PlayerViewModel {
         playlistManualOrder = order
     }
 
+    private static func milliseconds(_ duration: Duration) -> Int {
+        let components = duration.components
+        return Int(components.seconds * 1_000) + Int(components.attoseconds / 1_000_000_000_000_000)
+    }
+
     private static func deduplicatedTracks(_ tracks: [TrackItem]) -> [TrackItem] {
         var seen = Set<TrackItem.ID>()
         return tracks.filter { seen.insert($0.id).inserted }
     }
 
     private func reloadLibraryScanRoots() {
-        guard let libraryDatabase else { return }
+        guard let databaseURL = libraryDatabaseURL else { return }
         do {
-            libraryScanRoots = try libraryDatabase.loadRoots()
+            libraryScanRoots = try CatalogBrowser.roots(databaseURL: databaseURL)
             cleanLibraryScanRootIDs = Set(libraryScanRoots.compactMap { root in
                 root.lastScanCompletedAt != nil && root.lastScanTrackCount > 0 && !LibraryScanLogStore.exists(rootID: root.id) ? root.id : nil
             })
@@ -3190,52 +3129,15 @@ final class PlayerViewModel {
     /// sidebar for every individual root made a simple sequence of checks
     /// feel like a library recalculation and blocked further interaction.
     private func persistLibraryRootEnabledStatesAfterInteraction() {
-        guard !libraryDatabaseIsReadOnly else { return }
-        guard let databaseURL = libraryDatabase?.databaseURL else { return }
-        let enabledStates = Dictionary(
-            uniqueKeysWithValues: libraryScanRoots.map { ($0.id, $0.isEnabled) }
-        )
-        let generation = libraryRootEnableTaskOwner.begin()
-        let task = Task { @MainActor [weak self] in
-            try? await Task.sleep(nanoseconds: 150_000_000)
-            guard !Task.isCancelled,
-                  let self,
-                  self.libraryRootEnableTaskOwner.isCurrent(generation) else {
-                return
-            }
-
-            let errorDescription = await Task.detached(priority: .utility) { () -> String? in
-                do {
-                    try LibraryDatabase(databaseURL: databaseURL, accessMode: .readOnly).setRootEnabledStates(enabledStates)
-                    return nil
-                } catch {
-                    return error.localizedDescription
-                }
-            }.value
-
-            guard !Task.isCancelled,
-                  self.libraryRootEnableTaskOwner.isCurrent(generation) else {
-                return
-            }
-            if let errorDescription {
-                self.libraryScanStatus = "Could not update path state: \(errorDescription)"
-                self.reloadLibraryScanRoots()
-                self.libraryRootEnableTaskOwner.finish(generation: generation)
-                return
-            }
-
-            self.reloadLibraryScanRoots()
-            self.reloadDatabaseSidebar()
-            self.syncActiveRootToLibraryScanRoots()
-            self.libraryRootEnableTaskOwner.finish(generation: generation)
-        }
-        libraryRootEnableTaskOwner.install(task, generation: generation)
+        reloadLibraryScanRoots()
+        libraryScanStatus = "Library paths are managed by MediaScanner."
     }
 
     private func reloadDatabaseSidebar() {
         databaseSidebarLoader.invalidateAndLoad(
             databaseURL: libraryDatabase?.databaseURL,
             mode: effectiveSidebarBrowserMode,
+            preferFoldersOverMetadata: preferFoldersOverMetadata,
             didLoadGames: { [weak self] in self?.databaseGamesDidLoad() },
             didLoadFiles: { [weak self] in self?.databaseFilesDidLoad() }
         )
@@ -3245,12 +3147,14 @@ final class PlayerViewModel {
         databaseSidebarLoader.loadIfNeeded(
             databaseURL: libraryDatabase?.databaseURL,
             mode: effectiveSidebarBrowserMode,
+            preferFoldersOverMetadata: preferFoldersOverMetadata,
             didLoadGames: { [weak self] in self?.databaseGamesDidLoad() },
             didLoadFiles: { [weak self] in self?.databaseFilesDidLoad() }
         )
     }
 
     private func databaseGamesDidLoad() {
+        finishLibraryReloadIfNeeded()
         if sidebarSystemMode,
            !sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             expandedDatabaseSystems = Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
@@ -3263,11 +3167,16 @@ final class PlayerViewModel {
     }
 
     private func databaseFilesDidLoad() {
+        finishLibraryReloadIfNeeded()
         applyDatabaseFileSidebarSearch()
     }
 
+    private func finishLibraryReloadIfNeeded() {
+        guard libraryDatabaseLocationStatus?.hasPrefix("Reloading the current MediaScanner catalog") == true else { return }
+        libraryDatabaseLocationStatus = "Library reloaded from the current MediaScanner catalog."
+    }
+
     private func persistLibraryScanRootOrder() {
-        try? libraryDatabase?.updateRootOrder(idsInOrder: libraryScanRoots.map(\.id))
         reloadLibraryScanRoots()
         syncActiveRootToLibraryScanRoots()
     }

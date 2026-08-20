@@ -1,4 +1,5 @@
 import Foundation
+import MediaScannerKit
 import SQLite3
 
 extension LibraryDatabase {
@@ -40,7 +41,7 @@ extension LibraryDatabase {
                     let rootPath = sqliteString(statement, index: 5)
                     let metadataGame = sqliteString(statement, index: 6)
                     let metadataSystem = sqliteString(statement, index: 7)
-                    let route = ScanCoreHandlers.registry.route(
+                    let route = BuiltInScannerPlugins.registry.route(
                         for: extensionName,
                         archiveMember: archiveEntry != nil
                     )
