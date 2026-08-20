@@ -50,7 +50,7 @@ struct NativeSearchField: NSViewRepresentable {
             }
 
             // SwiftUI may update this representable for playback progress,
-            // spectrum, or other unrelated state while a fast typist's input
+            // playback progress or other unrelated state while a fast typist's input
             // is still inside the debounce window. In that case the binding
             // intentionally contains the previous committed query; never
             // overwrite AppKit's live editor with that stale value.

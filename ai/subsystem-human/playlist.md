@@ -6,8 +6,9 @@
 - Columns: transport, index, file, title, game, author, system, path, and length.
 - Columns: missing metadata falls back to useful file or folder text.
 - Columns: includes a user-configurable Size column for direct files; archive entries show an unavailable marker until archive-entry sizing is modeled separately.
-- Metadata: playlist inspection fills available metadata, including SPC duration, while the playlist remains usable.
-- Columns: visible columns auto-size after queue population and final metadata hydration without changing the current row selection.
+- Metadata: catalog-backed queues display only the fields published in the selected catalog; incomplete fields remain incomplete until MediaScanner republishes them.
+- Directly opened files have no catalog metadata. Their title and game cells use filename and folder display fallbacks; author, system, and duration remain unknown.
+- Columns: visible columns auto-size after queue publication without changing the current row selection.
 - Columns: drag-and-drop resize.
 - Columns: double-click a divider to auto-size to current content.
 - Columns: the header menu can auto-size one column or all visible columns.

@@ -16,19 +16,13 @@
 - Track changes: starting or skipping to another track clears prior decoded audio before the new track begins.
 - Archives: supported game-music files can play from ZIP, 7z, RSN, and TAR+Zstandard (`.tar.zst`/`.tzst`) containers; the selected member is materialized into the cache.
 - Database playlists: choosing an item in the sidebar immediately publishes its stored source, archive-member, subtrack, and cached metadata rows. CocoaSpice does not rescan, inspect, extract, or write the catalog while hydrating that playlist.
-- USF archives: USF and miniUSF playback materializes the complete archive set so miniUSF dependency files remain available.
-- 2SF archives: 2SF and mini2SF playback materializes the complete archive set so mini2SF library dependencies remain available.
-- PSF family: PSF, miniPSF, PSF2, and miniPSF2 use the vendored Play! PSF core. Archive playback materializes the complete set so `_lib` and PSFLIB dependencies resolve relative to the selected file; PSF tags provide scanner metadata and declared length.
-- PlayStation XA: XA streams use vgmstream and expose embedded subsongs as separate playlist tracks when present.
-- PlayStation 3 and PSP: MSF uses vgmstream as PlayStation 3 audio; shared ATRAC3 streams use vgmstream as PlayStation 3 / PSP audio.
-- 3DO streams: AIFC, GENH, and NeuroDancer STREAM files use vgmstream and are identified as 3DO tracks.
+- Format-specific decoding, dependency handling, subtrack behavior, and timing are owned by VGMBoyKit. CocoaSpice passes a materialized playable path and catalog subtrack index; it does not inspect decoder headers or tags.
 - Seeking: supports forward and backward movement.
 - Audio output: resumes at the current position after an output-device change when playback was active.
 - Changing Long Play or its target while a supported track is active reapplies the native loop policy at the current playback position instead of restarting the track.
-- Transitions: track changes, seek, pause/resume, stop, and Long Play changes briefly mute before the audio stream changes, then restore the chosen App Volume. Pause keeps the configured audio route alive at silence and preserves the exact buffered playback frame for resume. This reduces transport pops without changing system volume.
-- Faded Skip: when enabled in Playback Options, the first Next or Previous keeps the live source playing through a six-second output fade, then advances. When disabled, Next and Previous advance immediately. A second command during a faded skip also advances immediately through the short transport mute.
 - Random playback has three toolbar states: off, random selection from the indexed library, and random selection from the current playlist. All three toolbar glyphs are native SF Symbols.
 - Random Library queues the requested playback action while a small track-count-weighted library pool loads, so Next and end-of-track advance cannot race an empty asynchronous pool or require hydrating the entire indexed library.
+- App Volume and Mono are applied by the bundled VGMBoy core. App Volume attenuates only CocoaSpice playback; Mono averages the rendered left and right channels and outputs that signal to both speakers.
 
 ## Timing
 

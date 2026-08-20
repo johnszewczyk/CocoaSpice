@@ -288,7 +288,6 @@ struct OptionsView: View {
                     }
                 }
                 .toggleStyle(.checkbox)
-                .disabled(model.isLibraryScanInProgress)
 
                 Toggle(isOn: Binding(
                     get: { model.preferFoldersOverMetadata },
@@ -302,7 +301,6 @@ struct OptionsView: View {
                     }
                 }
                 .toggleStyle(.checkbox)
-                .disabled(model.isLibraryScanInProgress)
 
                 Toggle(isOn: Binding(
                     get: { model.databaseSidebarHidesFileExtensions },
@@ -506,13 +504,7 @@ struct OptionsView: View {
                     Button("Clear Cache") {
                         model.clearArchiveCache()
                     }
-                    .disabled(model.isClearingArchiveCache || model.libraryScanInProgress)
-                }
-
-                if model.libraryScanInProgress {
-                    Text("Stop the library scan before clearing its archive cache.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
+                    .disabled(model.isClearingArchiveCache)
                 }
             }
         }
@@ -539,7 +531,7 @@ struct OptionsView: View {
 
             Toggle(isOn: Binding(
                 get: { model.sidebarDoubleClickAction == .enqueue },
-                set: { model.sidebarDoubleClickAction = $0 ? .enqueue : .playNow }
+                set: { model.setSidebarDoubleClickAction($0 ? .enqueue : .playNow) }
             )) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Double-Click Enqueues")
@@ -555,7 +547,10 @@ struct OptionsView: View {
 
     private var equalizerCard: some View {
         sectionCard(title: "Equalizer") {
-            Toggle(isOn: $model.equalizerEnabled) {
+            Toggle(isOn: Binding(
+                get: { model.equalizerEnabled },
+                set: { model.setEqualizerEnabled($0) }
+            )) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Enable Equalizer")
                         .foregroundStyle(.white)
@@ -624,16 +619,6 @@ struct OptionsView: View {
             get: { Color(nsColor: model[keyPath: keyPath]) },
             set: { model[keyPath: keyPath] = NSColor($0) }
         )
-    }
-
-    private func spectrumColorRow(_ label: String, selection: Binding<Color>) -> some View {
-        HStack {
-            Text(label)
-            Spacer()
-            ColorPicker(label, selection: selection, supportsOpacity: false)
-                .labelsHidden()
-                .accessibilityLabel("\(label) spectrum color")
-        }
     }
 
     @ViewBuilder

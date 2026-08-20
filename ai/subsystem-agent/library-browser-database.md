@@ -20,8 +20,8 @@
 
 ## Invariants
 
-- Browse persists only an absolute standardized path accepted by
-  `MediaScannerKit.CanonicalCatalog`; a changed location applies after restart.
+- Browse persists only an absolute standardized path accepted by CocoaSpice's
+  read-only schema-23 validation; a changed location applies after restart.
   Reloading the active location invalidates cached read-only sidebar snapshots
   and loads the current published catalog without changing playback.
 - CocoaSpice never creates, migrates, scans into, resets, cleans, rewrites, or
@@ -55,4 +55,4 @@
 - [DatabaseSidebarLoader.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarLoader.swift)
 - [DatabaseSidebarPresentation.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarPresentation.swift)
 - [PlaylistQueueLoader.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlaylistQueueLoader.swift)
-- [MediaScannerCatalogIntegrationTests.swift](/Users/john/Downloads/Code/CocoaSpice/Tests/CocoaSpiceTests/MediaScannerCatalogIntegrationTests.swift)
+- [DatabaseFileSidebarSelectionTests.swift](/Users/john/Downloads/Code/CocoaSpice/Tests/CocoaSpiceTests/DatabaseFileSidebarSelectionTests.swift)

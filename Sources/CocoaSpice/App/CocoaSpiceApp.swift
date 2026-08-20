@@ -112,30 +112,11 @@ struct CocoaSpiceApp: App {
 
 @MainActor
 private final class CocoaSpiceAppDelegate: NSObject, NSApplicationDelegate {
-    private static let scanTerminationGrace: TimeInterval = 30
     weak var model: PlayerViewModel?
-    private var terminationTask: Task<Void, Never>?
 
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard let model else { return .terminateNow }
-        model.saveSessionStateNow()
-        guard model.libraryScanInProgress else { return .terminateNow }
-        guard terminationTask == nil else { return .terminateLater }
-
-        model.stopLibraryScan()
-        terminationTask = Task { @MainActor [weak self, weak model] in
-            let deadline = Date().addingTimeInterval(Self.scanTerminationGrace)
-            while model?.libraryScanInProgress == true, Date() < deadline {
-                try? await Task.sleep(nanoseconds: 100_000_000)
-            }
-            self?.terminationTask = nil
-            // Completed source checkpoints are committed independently. If an
-            // in-process decoder ignores cooperative cancellation, process
-            // termination leaves only the hidden job active; startup recovery
-            // marks it paused and disposable scratch is reclaimed.
-            sender.reply(toApplicationShouldTerminate: true)
-        }
-        return .terminateLater
+        model?.saveSessionStateNow()
+        return .terminateNow
     }
 }
 
@@ -193,10 +174,6 @@ private struct CocoaSpiceCommands: Commands {
             .keyboardShortcut(.delete, modifiers: [])
             .disabled(!model.canCutSelectedTracks)
 
-            Button("Export AAC...") {
-                model.exportSelectedTracksToAAC()
-            }
-            .disabled(!model.canExportSelectedTracksToAAC)
         }
 
         CommandGroup(replacing: .appSettings) {

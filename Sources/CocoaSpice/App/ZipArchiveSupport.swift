@@ -10,11 +10,8 @@ enum ZipArchiveSupport {
     private static let archiveListingMaximumBytes = 64 * 1024 * 1024
     private static let archiveListingMaximumEntries = 250_000
     private static let archiveEntryMaximumNameBytes = 32 * 1024
-    private static let scanScratchMaximumBytes: Int64 = 8 * 1024 * 1024 * 1024
-    private static let scanScratchFreeReserveBytes: Int64 = 2 * 1024 * 1024 * 1024
-    /// Archive commands are deliberately one-thread-per-process. The scanner
-    /// fans those processes across the machine instead of allowing every 7zz
-    /// process to spawn its own full-width worker pool.
+    /// Archive commands are deliberately one-thread-per-process so a playlist
+    /// open cannot make every 7zz process spawn its own full-width worker pool.
     // Leave one cooperative runtime thread free while bounded extractor jobs
     // are running. Eight simultaneous archive jobs on this host deadlock;
     // seven complete concurrently.
@@ -79,7 +76,7 @@ enum ZipArchiveSupport {
             case .cacheLimitExceeded(let limitBytes):
                 return "This archive materialization exceeds the \(ByteCountFormatter.string(fromByteCount: limitBytes, countStyle: .file)) cache limit."
             case .listingLimitExceeded(let message):
-                return "Archive listing exceeds the safe scanner limit: \(message)"
+                return "Archive listing exceeds the safe playlist limit: \(message)"
             }
         }
     }
@@ -126,10 +123,9 @@ enum ZipArchiveSupport {
         cacheLifecycle().discardDisposablePlaybackMaterialization()
     }
 
-    /// Launch-time recovery only. Every scan owns and normally discards its
-    /// own root; this removes roots left behind when the previous process was
-    /// interrupted before its cleanup scope ran.
-    static func reclaimAbandonedScanMaterializations() -> ScratchRecovery {
+    /// Launch-time recovery removes interrupted disposable playback work and
+    /// obsolete cache material left by earlier releases.
+    static func reclaimAbandonedMaterializations() -> ScratchRecovery {
         let recovery = cacheLifecycle().reclaimAbandonedMaterialization()
         return ScratchRecovery(rootCount: recovery.rootCount, byteCount: recovery.byteCount)
     }
@@ -145,8 +141,8 @@ enum ZipArchiveSupport {
     }
 
     /// Archive playlists are manifests rather than playable tracks. Keep this
-    /// narrow listing separate from scanner discovery so `.m3u` members never
-    /// become database audio rows on their own.
+    /// narrow listing separate from playable-source discovery so `.m3u`
+    /// members never become playlist tracks on their own.
     static func listPlaylistEntries(in archiveURL: URL) throws -> [ArchiveEntry] {
         let archiveURL = archiveURL.standardizedFileURL
         guard canHandle(archiveURL) else {
@@ -221,17 +217,17 @@ enum ZipArchiveSupport {
             return url
         case .zipEntry(let archiveURL, let entryPath):
             let extensionName = URL(fileURLWithPath: entryPath).pathExtension.lowercased()
-            guard let module = PlaybackFormatRegistry.module(forPathExtension: extensionName) else {
+            guard let policy = PlaybackFormatRegistry.archiveMaterialization(for: [entryPath]) else {
                 throw ArchiveError.invalidEntryPath(entryPath)
             }
-            switch module.archiveMaterialization {
+            switch policy {
             case .selectedEntry:
                 let fileURL = try materializeEntry(archiveURL: archiveURL, entryPath: entryPath)
                 activatePlaybackLease(for: archiveURL)
                 return fileURL
             case .completeSet, .completeSetWithLazyUSFAliases:
                 let setURL = try materializeArchive(at: archiveURL)
-                if case .completeSetWithLazyUSFAliases = module.archiveMaterialization {
+                if case .completeSetWithLazyUSFAliases = policy {
                     try prepareLazyUSFDependencies(in: setURL)
                 }
                 if extensionName == "txtp" {
@@ -310,6 +306,46 @@ enum ZipArchiveSupport {
         try fileManager.moveItem(at: temporaryURL, to: destinationURL)
         scheduleDurableCacheMaintenance(preserving: archiveCacheURL(for: archiveURL))
         return destinationURL
+    }
+
+    /// Reads a small archive-side manifest without creating playback-cache
+    /// state. Queue construction needs this for embedded M3U files before the
+    /// user has chosen anything to play.
+    static func contentsOfEntry(archiveURL: URL, entryPath: String) throws -> Data {
+        let archiveURL = archiveURL.standardizedFileURL
+        let normalizedEntryPath = normalizeEntryPath(entryPath)
+        guard isSafeEntryPath(normalizedEntryPath) else {
+            throw ArchiveError.invalidEntryPath(entryPath)
+        }
+
+        let rootURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("CocoaSpice-archive-entry-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: rootURL) }
+
+        let outputURL = rootURL.appendingPathComponent("entry")
+        switch archiveKind(for: archiveURL) {
+        case .rsn:
+            try runProcessWritingOutput(
+                executable: try executable(named: "unar"),
+                arguments: ["-q", "-f", "-o", "-", archiveURL.path, normalizedEntryPath],
+                outputURL: outputURL
+            )
+        case .zip, .sevenZip:
+            try runProcessWritingOutput(
+                executable: try executable(named: "7zz"),
+                arguments: ["x", "-mmt=1", "-so", archiveURL.path, normalizedEntryPath],
+                outputURL: outputURL
+            )
+        case .tarZstandard:
+            try extractTarZstandardEntries(
+                from: archiveURL,
+                entryPaths: [normalizedEntryPath],
+                into: rootURL
+            )
+            return try Data(contentsOf: archiveMemberURL(in: rootURL, entryPath: normalizedEntryPath))
+        }
+        return try Data(contentsOf: outputURL)
     }
 
     static func materializeArchive(at archiveURL: URL) throws -> URL {
@@ -409,79 +445,6 @@ enum ZipArchiveSupport {
         // decoder startup for a cold archive member.
         scheduleDurableCacheMaintenance(preserving: archiveCacheURL(for: archiveURL))
         return rootURL
-    }
-
-    /// Scan extraction is deliberately non-persistent. The scanner consumes a
-    /// materialized archive once, then removes it before advancing to another
-    /// source. Playback continues to use the durable archive cache above.
-    static func materializeEntriesForScan(at archiveURL: URL, entryPaths: [String]) throws -> URL {
-        let archiveURL = archiveURL.standardizedFileURL
-        let normalizedPaths = try normalizedEntryPaths(entryPaths)
-        let rootURL = try makeScanScratchDirectory()
-        do {
-            try extractEntries(
-                from: archiveURL,
-                entryPaths: normalizedPaths,
-                into: rootURL
-            )
-            try validateScanScratchBudget()
-            return rootURL
-        } catch {
-            discardScanMaterialization(at: rootURL)
-            throw error
-        }
-    }
-
-    static func materializeArchiveForScan(at archiveURL: URL) throws -> URL {
-        let archiveURL = archiveURL.standardizedFileURL
-        let rootURL = try makeScanScratchDirectory()
-        do {
-            switch archiveKind(for: archiveURL) {
-            case .rsn:
-                _ = try runProcess(executable: try executable(named: "unar"), arguments: ["-q", "-f", "-D", "-o", rootURL.path, archiveURL.path])
-            case .zip, .sevenZip:
-                _ = try runProcess(executable: try executable(named: "7zz"), arguments: ["x", "-mmt=1", "-y", "-o\(rootURL.path)", archiveURL.path])
-            case .tarZstandard:
-                try materializeTarZstandardArchive(archiveURL, into: rootURL)
-            }
-            try validateScanScratchBudget()
-            return rootURL
-        } catch {
-            discardScanMaterialization(at: rootURL)
-            throw error
-        }
-    }
-
-    static func discardScanMaterialization(at rootURL: URL) {
-        guard rootURL.standardizedFileURL.path.hasPrefix(scanScratchRootURL().path + "/") else { return }
-        try? FileManager.default.removeItem(at: rootURL)
-    }
-
-    static func materializeInspectionSet(
-        archiveURL: URL,
-        entryPaths: [String]
-    ) throws -> URL {
-        guard let policy = PlaybackFormatRegistry.archiveMaterializationForInspection(
-            entryPaths: entryPaths
-        ) else {
-            throw ArchiveError.invalidEntryPath(entryPaths.first ?? "")
-        }
-
-        switch policy {
-        case .selectedEntry:
-            return try materializeEntries(at: archiveURL, entryPaths: entryPaths)
-        case .completeSet, .completeSetWithLazyUSFAliases:
-            let root = try materializeArchive(at: archiveURL)
-            if policy == .completeSetWithLazyUSFAliases {
-                try prepareLazyUSFDependencies(in: root)
-            }
-            if entryPaths.contains(where: {
-                URL(fileURLWithPath: $0).pathExtension.lowercased() == "txtp"
-            }) {
-                try prepareTXTPDependencies(in: root)
-            }
-            return root
-        }
     }
 
     static func archiveMemberURL(in materializedArchiveURL: URL, entryPath: String) -> URL {
@@ -727,46 +690,6 @@ enum ZipArchiveSupport {
             lock.lock()
             storedPath = nil
             lock.unlock()
-        }
-    }
-
-    private static func directoryByteCount(_ rootURL: URL) -> Int64 {
-        let fileManager = FileManager.default
-        guard let enumerator = fileManager.enumerator(
-            at: rootURL,
-            includingPropertiesForKeys: [.isRegularFileKey, .fileSizeKey],
-            options: [.skipsHiddenFiles]
-        ) else { return 0 }
-        var total: Int64 = 0
-        for case let url as URL in enumerator {
-            let values = try? url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
-            if values?.isRegularFile == true { total += Int64(values?.fileSize ?? 0) }
-        }
-        return total
-    }
-
-    private static func scanScratchRootURL() -> URL {
-        cacheRootURL().appendingPathComponent("ScanScratch", isDirectory: true)
-    }
-
-    private static func makeScanScratchDirectory() throws -> URL {
-        let rootURL = scanScratchRootURL()
-        try FileManager.default.createDirectory(at: rootURL, withIntermediateDirectories: true)
-        try validateScanScratchBudget()
-        let scratchURL = rootURL.appendingPathComponent(UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: scratchURL, withIntermediateDirectories: false)
-        return scratchURL
-    }
-
-    private static func validateScanScratchBudget() throws {
-        let rootURL = scanScratchRootURL()
-        let usedBytes = directoryByteCount(rootURL)
-        guard usedBytes <= scanScratchMaximumBytes else {
-            throw ArchiveError.cacheLimitExceeded(limitBytes: scanScratchMaximumBytes)
-        }
-        if let availableBytes = availableCapacityNear(rootURL),
-           availableBytes < scanScratchFreeReserveBytes {
-            throw ArchiveError.insufficientStorage(requiredBytes: scanScratchFreeReserveBytes)
         }
     }
 
@@ -1037,8 +960,7 @@ enum ZipArchiveSupport {
     }
 
     /// BSD tar's automatic Zstandard helper exits spuriously when many archive
-    /// listings run at once. Keep the same fully concurrent scanner behavior,
-    /// but connect the reliable `zstd` binary to tar explicitly instead.
+    /// listings run at once. Use the reliable `zstd` binary explicitly.
     private static func runTarZstandardListing(_ archiveURL: URL) throws -> Data {
         while processGate.wait(timeout: .now() + .milliseconds(100)) != .success {
             if Task.isCancelled { throw CancellationError() }
@@ -1510,13 +1432,10 @@ enum ZipArchiveSupport {
     }
 
     private static func processOutputURL() throws -> URL {
-        let directoryURL = cacheRootURL()
-            .appendingPathComponent("Process", isDirectory: true)
-        try FileManager.default.createDirectory(
-            at: directoryURL,
-            withIntermediateDirectories: true
-        )
-        return directoryURL.appendingPathComponent(
+        // Process stdout is an immediately removed scratch file, not archive
+        // material. Keep it in the system temporary directory so listing a
+        // source neither creates nor requires the playback cache.
+        FileManager.default.temporaryDirectory.appendingPathComponent(
             "CocoaSpice-process-\(UUID().uuidString)",
             isDirectory: false
         )

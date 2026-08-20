@@ -12,11 +12,6 @@ enum AppDefaultsKey {
     static let manualPreFadeSeconds = "CocoaSpice.manualPreFadeSeconds"
     static let endFadeEnabled = "CocoaSpice.endFadeEnabled"
     static let fadedSkipEnabled = "CocoaSpice.fadedSkipEnabled"
-    static let spectrumGradientStartColor = "CocoaSpice.spectrumGradientStartColor"
-    static let spectrumGradientEndColor = "CocoaSpice.spectrumGradientEndColor"
-    static let spectrumPeakColor = "CocoaSpice.spectrumPeakColor"
-    static let spectrumEnabled = "CocoaSpice.spectrumEnabled"
-    static let spectrumBandCount = "CocoaSpice.spectrumBandCount"
     static let equalizerEnabled = "CocoaSpice.equalizerEnabled"
     static let equalizerBandGains = "CocoaSpice.equalizerBandGains"
     static let appVolume = "CocoaSpice.appVolume"
@@ -25,7 +20,6 @@ enum AppDefaultsKey {
     static let repeatMode = "CocoaSpice.repeatMode"
     static let sidebarDoubleClickAction = "CocoaSpice.sidebarDoubleClickAction"
     static let playlistFollowsCursor = "CocoaSpice.playlistFollowsCursor"
-    static let lastAudioExportDirectoryPath = "CocoaSpice.lastAudioExportDirectoryPath"
     static let playlistSortColumn = "CocoaSpice.playlistSortColumn"
     static let playlistSortDirection = "CocoaSpice.playlistSortDirection"
     static let persistedPlaylistPaths = "CocoaSpice.persistedPlaylistPaths"
@@ -57,11 +51,6 @@ struct RestoredPlaybackPreferences {
     let manualPreFadeSeconds: Int?
     let endFadeEnabled: Bool
     let fadedSkipEnabled: Bool
-    let spectrumGradientStartColor: String?
-    let spectrumGradientEndColor: String?
-    let spectrumPeakColor: String?
-    let spectrumEnabled: Bool
-    let spectrumBandCount: Int
     let equalizerEnabled: Bool
     let equalizerBandGains: [Double]?
     let appVolume: Double
@@ -69,7 +58,6 @@ struct RestoredPlaybackPreferences {
     let randomPlaybackScopeRawValue: String?
     let repeatModeRawValue: String?
     let sidebarDoubleClickActionRawValue: String?
-    let lastAudioExportDirectoryPath: String?
     let playlistSortColumnRawValue: String?
     let playlistSortDirectionRawValue: String?
     let databaseSidebarFontSize: Double?
@@ -131,11 +119,6 @@ enum AppSessionPersistence {
             }(),
             endFadeEnabled: defaults.object(forKey: AppDefaultsKey.endFadeEnabled) as? Bool ?? true,
             fadedSkipEnabled: defaults.object(forKey: AppDefaultsKey.fadedSkipEnabled) as? Bool ?? false,
-            spectrumGradientStartColor: defaults.string(forKey: AppDefaultsKey.spectrumGradientStartColor),
-            spectrumGradientEndColor: defaults.string(forKey: AppDefaultsKey.spectrumGradientEndColor),
-            spectrumPeakColor: defaults.string(forKey: AppDefaultsKey.spectrumPeakColor),
-            spectrumEnabled: defaults.object(forKey: AppDefaultsKey.spectrumEnabled) as? Bool ?? false,
-            spectrumBandCount: SpectrumBandCount.clamped(defaults.integer(forKey: AppDefaultsKey.spectrumBandCount)),
             equalizerEnabled: defaults.object(forKey: AppDefaultsKey.equalizerEnabled) as? Bool ?? false,
             equalizerBandGains: (defaults.array(forKey: AppDefaultsKey.equalizerBandGains) as? [NSNumber])?.map(\.doubleValue),
             appVolume: defaults.object(forKey: AppDefaultsKey.appVolume) as? Double ?? 1,
@@ -143,7 +126,6 @@ enum AppSessionPersistence {
             randomPlaybackScopeRawValue: defaults.string(forKey: AppDefaultsKey.randomPlaybackScope),
             repeatModeRawValue: defaults.string(forKey: AppDefaultsKey.repeatMode),
             sidebarDoubleClickActionRawValue: defaults.string(forKey: AppDefaultsKey.sidebarDoubleClickAction),
-            lastAudioExportDirectoryPath: defaults.string(forKey: AppDefaultsKey.lastAudioExportDirectoryPath),
             playlistSortColumnRawValue: defaults.string(forKey: AppDefaultsKey.playlistSortColumn),
             playlistSortDirectionRawValue: defaults.string(forKey: AppDefaultsKey.playlistSortDirection),
             databaseSidebarFontSize: defaults.object(forKey: AppDefaultsKey.databaseSidebarFontSize) as? Double,
@@ -189,11 +171,6 @@ enum AppSessionPersistence {
         manualPreFadeSeconds: Int,
         endFadeEnabled: Bool,
         fadedSkipEnabled: Bool,
-        spectrumGradientStartColor: NSColor,
-        spectrumGradientEndColor: NSColor,
-        spectrumPeakColor: NSColor,
-        spectrumEnabled: Bool,
-        spectrumBandCount: Int,
         equalizerEnabled: Bool,
         equalizerBandGains: [Float],
         appVolume: Float,
@@ -201,7 +178,6 @@ enum AppSessionPersistence {
         randomPlaybackScopeRawValue: String,
         repeatModeRawValue: String,
         sidebarDoubleClickActionRawValue: String,
-        lastAudioExportDirectoryPath: String?,
         databaseSidebarFontSize: CGFloat,
         databaseSidebarTextColor: String,
         databaseSidebarMonospaceFont: Bool,
@@ -221,11 +197,6 @@ enum AppSessionPersistence {
         defaults.set(manualPreFadeSeconds, forKey: AppDefaultsKey.manualPreFadeSeconds)
         defaults.set(endFadeEnabled, forKey: AppDefaultsKey.endFadeEnabled)
         defaults.set(fadedSkipEnabled, forKey: AppDefaultsKey.fadedSkipEnabled)
-        defaults.set(serializedColor(spectrumGradientStartColor), forKey: AppDefaultsKey.spectrumGradientStartColor)
-        defaults.set(serializedColor(spectrumGradientEndColor), forKey: AppDefaultsKey.spectrumGradientEndColor)
-        defaults.set(serializedColor(spectrumPeakColor), forKey: AppDefaultsKey.spectrumPeakColor)
-        defaults.set(spectrumEnabled, forKey: AppDefaultsKey.spectrumEnabled)
-        defaults.set(SpectrumBandCount.clamped(spectrumBandCount), forKey: AppDefaultsKey.spectrumBandCount)
         defaults.set(equalizerEnabled, forKey: AppDefaultsKey.equalizerEnabled)
         defaults.set(equalizerBandGains.map(Double.init), forKey: AppDefaultsKey.equalizerBandGains)
         defaults.set(Double(AudioOutputVolume.clamped(appVolume)), forKey: AppDefaultsKey.appVolume)
@@ -233,7 +204,6 @@ enum AppSessionPersistence {
         defaults.set(randomPlaybackScopeRawValue, forKey: AppDefaultsKey.randomPlaybackScope)
         defaults.set(repeatModeRawValue, forKey: AppDefaultsKey.repeatMode)
         defaults.set(sidebarDoubleClickActionRawValue, forKey: AppDefaultsKey.sidebarDoubleClickAction)
-        defaults.set(lastAudioExportDirectoryPath, forKey: AppDefaultsKey.lastAudioExportDirectoryPath)
         defaults.set(Double(databaseSidebarFontSize), forKey: AppDefaultsKey.databaseSidebarFontSize)
         defaults.set(databaseSidebarTextColor, forKey: AppDefaultsKey.databaseSidebarTextColor)
         defaults.set(databaseSidebarMonospaceFont, forKey: AppDefaultsKey.databaseSidebarMonospaceFont)
@@ -344,26 +314,4 @@ enum AppSessionPersistence {
         defaults.string(forKey: AppDefaultsKey.sidebarSearchText) ?? ""
     }
 
-    static func serializedColor(_ color: NSColor) -> String? {
-        guard let converted = color.usingColorSpace(.deviceRGB) else { return nil }
-        return [
-            converted.redComponent,
-            converted.greenComponent,
-            converted.blueComponent,
-            converted.alphaComponent
-        ]
-        .map { String(format: "%.6f", $0) }
-        .joined(separator: ",")
-    }
-
-    static func deserializeColor(_ value: String) -> NSColor? {
-        let parts = value.split(separator: ",").compactMap { Double($0) }
-        guard parts.count == 4 else { return nil }
-        return NSColor(
-            red: parts[0],
-            green: parts[1],
-            blue: parts[2],
-            alpha: parts[3]
-        )
-    }
 }

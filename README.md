@@ -5,13 +5,18 @@ It reads a published MediaScanner SQLite catalog, owns the editable queue and fr
 and bundles VGMBoyKit in-process for audio playback. It is not a scanner and it is not a separate
 audio server.
 
+Its current Options panels also have a versioned, typed snapshot/command boundary. That keeps a
+future WebKit skin possible without giving it direct access to SwiftUI, AppKit dialogs, decoder
+state, or the MediaScanner catalog writer. The native main playlist/database shell remains the
+only complete skin today.
+
 ## App-family boundary
 
 | Component | Owns | Does not own |
 | --- | --- | --- |
 | MediaScanner | Catalog discovery, metadata, schema-23 SQLite publication, and sidebar projections | Playback, CocoaSpice playlists, or UI state |
 | CocoaSpice | Read-only catalog browsing, playlist membership, queue transitions, repeat/shuffle, archive materialization, native UI, and macOS transport integration | Catalog writes, scanning, decoder bridges, or an audio device |
-| VGMBoyKit | Format routing, decoder bridges, decoded transport, timing, Long Play, tempo, fades, ten-band EQ, and macOS audio output | Catalogs, playlists, repeat/shuffle, or frontend persistence |
+| VGMBoyKit | Format routing, decoder bridges, decoded transport, timing, Long Play, tempo, fades, ten-band EQ, App Volume, Mono, and macOS audio output | Catalogs, playlists, repeat/shuffle, or frontend persistence |
 
 The components communicate through files and in-process APIs:
 
@@ -35,7 +40,8 @@ SPCBoy continues to use its working playback implementation until its separate V
 - Handles playlist navigation, repeat off/playlist/song, random scope, persistence, and native macOS UI.
 - Materializes selected archive members for playback without modifying the source archive or catalog.
 - Presents VGMBoy controls including play, pause, stop, seek, Long Play, tempo where supported,
-  and the existing CocoaSpice-compatible ten-band EQ UI.
+  the existing CocoaSpice-compatible ten-band EQ UI, App Volume, and Mono. A versioned
+  `PlaybackControlSurface` gates every bundled-core control mapping.
 
 ## Catalog and playlist rules
 
@@ -45,7 +51,7 @@ SPCBoy continues to use its working playback implementation until its separate V
   replace them with a generic all-track reader, fallback scan, decoder inspection, or table-cell I/O.
 - Queue identity is source path, optional archive-member path, and subtrack index. A game identity
   includes its catalog root, game, and system, so matching titles in separate roots remain separate.
-- Playback-time inspection is transient. It never writes back into the MediaScanner catalog.
+- Playback telemetry is transient. It never supplies catalog metadata or writes to the MediaScanner catalog.
 
 ## Playback formats and upstream cores
 

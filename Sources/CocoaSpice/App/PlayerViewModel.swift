@@ -131,12 +131,7 @@ final class PlayerViewModel {
         }
     }
 
-    private let libraryOperations = LibraryOperationsState()
-
-    var libraryScanRoots: [LibraryScanRoot] {
-        get { libraryOperations.scanRoots }
-        set { libraryOperations.scanRoots = newValue }
-    }
+    var catalogRoots: [CatalogRoot] = []
     var sidebarDoubleClickAction: SidebarDoubleClickAction = .playNow
     var rootURL: URL?
     var selectedFolderPath: String?
@@ -251,15 +246,6 @@ final class PlayerViewModel {
     var browsedFolderTracks: [TrackItem] = []
     var selectedTrackID: TrackItem.ID?
     var selectedTrackIDs: Set<TrackItem.ID> = []
-    private enum PlaylistMetadataInspectionPolicy: Equatable {
-        /// The playlist was built from scan-time database rows. Its presentation
-        /// is published immediately, then missing optional fields may hydrate
-        /// lazily without changing playlist identity or structure.
-        case databaseSnapshot
-        /// Direct imports may inspect source files to fill absent metadata.
-        case inspectMissing
-    }
-
     var playlist: [TrackItem] = [] {
         didSet {
             if !isRestoringPersistedPlaylist {
@@ -273,7 +259,6 @@ final class PlayerViewModel {
     private var isRestoringPersistedPlaylist = false
     private var deferredPersistedPlaylistValues: [String] = []
     var metadataCache: [String: TrackMetadata] = [:]
-    private var playlistMetadataInspectionPolicy: PlaylistMetadataInspectionPolicy = .inspectMissing
     private(set) var playlistTotalDurationReadout = "0:00"
     private var playlistDurationSecondsByTrackID: [TrackItem.ID: Int] = [:]
     private var playlistDurationTrackIDs: Set<TrackItem.ID> = []
@@ -283,47 +268,6 @@ final class PlayerViewModel {
     var playlistSortDirection: PlaylistSortDirection = .ascending
     var currentTrack: TrackItem?
     var currentMetadata: TrackMetadata?
-    let toolbarSpectrum = ToolbarSpectrumModel()
-    private static let defaultSpectrumGradientStartColor = NSColor(
-        calibratedRed: 0.000000,
-        green: 0.976805,
-        blue: 0.000000,
-        alpha: 1.000000
-    )
-    private static let defaultSpectrumGradientEndColor = NSColor(
-        calibratedRed: 0.016804,
-        green: 0.198351,
-        blue: 1.000000,
-        alpha: 1.000000
-    )
-    private static let defaultSpectrumPeakColor = NSColor(
-        calibratedRed: 1.000000,
-        green: 0.149131,
-        blue: 0.000000,
-        alpha: 1.000000
-    )
-    var spectrumGradientStartColor = PlayerViewModel.defaultSpectrumGradientStartColor {
-        didSet { toolbarSpectrum.gradientStartColor = spectrumGradientStartColor }
-    }
-    var spectrumGradientEndColor = PlayerViewModel.defaultSpectrumGradientEndColor {
-        didSet { toolbarSpectrum.gradientEndColor = spectrumGradientEndColor }
-    }
-    var spectrumPeakColor = PlayerViewModel.defaultSpectrumPeakColor {
-        didSet { toolbarSpectrum.peakColor = spectrumPeakColor }
-    }
-    var spectrumEnabled = false {
-        didSet {
-            toolbarSpectrum.isVisible = spectrumEnabled
-            playbackStorage?.setSpectrumEnabled(spectrumEnabled)
-            if !spectrumEnabled { toolbarSpectrum.setAnimating(false) }
-        }
-    }
-    var spectrumBandCount = SpectrumBandCount.defaultValue {
-        didSet {
-            toolbarSpectrum.configure(bandCount: spectrumBandCount)
-            playbackStorage?.setSpectrumBandCount(spectrumBandCount)
-        }
-    }
     var equalizerEnabled = false {
         didSet { playbackStorage?.setEqualizer(enabled: equalizerEnabled, bandGains: equalizerBandGains) }
     }
@@ -354,76 +298,15 @@ final class PlayerViewModel {
     var seekPreviewSeconds: Double = 0
     var playlistMetadataLoadToken = 0
     private(set) var playlistMetadataChangedTrackIDs: Set<TrackItem.ID> = []
-    var libraryScanStatus: String? {
-        get { libraryOperations.status }
-        set { libraryOperations.status = newValue }
-    }
     var libraryDatabaseLocationStatus: String?
-    private(set) var cleanLibraryScanRootIDs: Set<Int64> {
-        get { libraryOperations.cleanRootIDs }
-        set { libraryOperations.cleanRootIDs = newValue }
-    }
-    private(set) var trimmedLibraryScanRootIDs: Set<Int64> {
-        get { libraryOperations.trimmedRootIDs }
-        set { libraryOperations.trimmedRootIDs = newValue }
-    }
-    private(set) var libraryScanInProgress: Bool {
-        get { libraryOperations.scanInProgress }
-        set { libraryOperations.scanInProgress = newValue }
-    }
-    var libraryScanIsCancelling: Bool {
-        libraryOperations.scanIsCancelling
-    }
-    var forceLibraryScan: Bool {
-        get { libraryOperations.forceScan }
-        set { libraryOperations.forceScan = newValue }
-    }
-    var libraryScanProgressByRootID: [Int64: LibraryScanProgress] {
-        libraryOperations.scanProgressByRootID
-    }
-    var libraryScanCurrentPath: String? {
-        libraryOperations.scanCurrentPath
-    }
-    var libraryScanCurrentFile: String? {
-        libraryOperations.scanCurrentFile
-    }
-    private(set) var trimMissingProgress: LibraryScanProgress? {
-        get { libraryOperations.linkTestProgress }
-        set { libraryOperations.linkTestProgress = newValue }
-    }
-    private(set) var trimMissingCurrentPath: String? {
-        get { libraryOperations.linkTestCurrentPath }
-        set { libraryOperations.linkTestCurrentPath = newValue }
-    }
-    private(set) var archiveCacheSummaryText: String {
-        get { libraryOperations.archiveCacheSummaryText }
-        set { libraryOperations.archiveCacheSummaryText = newValue }
-    }
-    private(set) var isClearingArchiveCache: Bool {
-        get { libraryOperations.isClearingArchiveCache }
-        set { libraryOperations.isClearingArchiveCache = newValue }
-    }
+    private(set) var archiveCacheSummaryText = "Unavailable"
+    private(set) var isClearingArchiveCache = false
     var archiveCachePolicy = ArchiveCachePolicy.load()
-    private(set) var deadLinkSummaryText: String {
-        get { libraryOperations.deadLinkSummaryText }
-        set { libraryOperations.deadLinkSummaryText = newValue }
-    }
-    private(set) var deadLinkCount: Int {
-        get { libraryOperations.deadLinkCount }
-        set { libraryOperations.deadLinkCount = newValue }
-    }
-    private(set) var databaseEntryCount: Int {
-        get { libraryOperations.databaseEntryCount }
-        set { libraryOperations.databaseEntryCount = newValue }
-    }
-    private(set) var unlinkedDatabaseEntryCount: Int {
-        get { libraryOperations.unlinkedDatabaseEntryCount }
-        set { libraryOperations.unlinkedDatabaseEntryCount = newValue }
-    }
-    private(set) var isDeletingDeadLinks: Bool {
-        get { libraryOperations.isDeletingDeadLinks }
-        set { libraryOperations.isDeletingDeadLinks = newValue }
-    }
+    private(set) var deadLinkSummaryText = "Unavailable"
+    private(set) var deadLinkCount = 0
+    private(set) var databaseEntryCount = 0
+    private(set) var unlinkedDatabaseEntryCount = 0
+    private(set) var isDeletingDeadLinks = false
     var isLoadingDatabaseSidebar: Bool { databaseSidebarLoader.isLoadingGames }
     var isLoadingDatabaseFileSidebar: Bool { databaseSidebarLoader.isLoadingFiles }
     var databaseSidebarLoadingStatus: String {
@@ -456,7 +339,7 @@ final class PlayerViewModel {
             libraryDatabaseLocationStatus = "Library database is unavailable."
             return
         }
-        reloadLibraryScanRoots()
+        reloadCatalogRoots()
         databaseSidebar.clearSelection()
         databaseFileSidebar.clearSelection()
         selectedDatabaseGameIDs.removeAll()
@@ -466,8 +349,8 @@ final class PlayerViewModel {
         libraryDatabaseLocationStatus = "Reloading the current MediaScanner catalog…"
     }
 
-    var enabledLibraryRootURLs: [URL] {
-        libraryScanRoots
+    var enabledCatalogRootURLs: [URL] {
+        catalogRoots
             .filter(\.isEnabled)
             .map(\.standardizedURL)
     }
@@ -497,6 +380,13 @@ final class PlayerViewModel {
             panel.nameFieldStringValue = current.lastPathComponent
         }
         guard panel.runModal() == .OK, let selectedURL = panel.url else { return }
+        selectLibraryDatabase(at: selectedURL)
+    }
+
+    /// Validates a catalog selected by any presentation layer. The native
+    /// Options window supplies this URL through `NSOpenPanel`; another skin
+    /// supplies the same path through its control surface.
+    func selectLibraryDatabase(at selectedURL: URL) {
         do {
             let summary = try ReadOnlyCatalog(databaseURL: selectedURL).summary()
             UserDefaults.standard.set(summary.path, forKey: AppDefaultsKey.libraryDatabasePath)
@@ -518,9 +408,8 @@ final class PlayerViewModel {
 
     @ObservationIgnored private var playbackStorage: PlaybackEngine?
     @ObservationIgnored private var remoteTransportStorage: RemoteTransportController?
-    @ObservationIgnored private var audioExportWindowController: AudioExportProgressWindowController?
-    @ObservationIgnored private var audioExportProgressSnapshot: AudioExportProgressSnapshot?
-    @ObservationIgnored private var lastAudioExportDirectoryURL: URL?
+    @ObservationIgnored private lazy var optionsControlSurfaceStorage = CocoaSpiceOptionsControlSurface(model: self)
+    @ObservationIgnored private lazy var mainPlaybackControlSurfaceStorage = CocoaSpiceMainPlaybackControlSurface(model: self)
     private var remoteTransportConfigured = false
     private let libraryDatabase: LibraryDatabase?
     private var playbackTimer: Timer?
@@ -529,11 +418,8 @@ final class PlayerViewModel {
     private let folderSelectionTaskOwner = LatestTaskOwner()
     private let queueBuildTaskOwner = LatestTaskOwner()
     private let randomLibraryLoadTaskOwner = LatestTaskOwner()
-    private var audioExportTask: Task<Void, Never>?
     private var archiveCacheSummaryTask: Task<Void, Never>?
     private var archiveCacheClearTask: Task<Void, Never>?
-    private let deadLinkSummaryTaskOwner = LatestTaskOwner()
-    private var deadLinkCleanupTask: Task<Void, Never>?
     private let databaseFileSidebarSearchTaskOwner = LatestTaskOwner()
     private let libraryRootEnableTaskOwner = LatestTaskOwner()
     @ObservationIgnored private lazy var databaseSidebarLoader = DatabaseSidebarLoader(
@@ -565,13 +451,6 @@ final class PlayerViewModel {
             return playbackStorage
         }
         let playback = PlaybackEngine()
-        playback.setSpectrumLevelHandler { [weak self] levels in
-            Task { @MainActor [weak self] in
-                self?.toolbarSpectrum.update(with: levels)
-            }
-        }
-        playback.setSpectrumEnabled(spectrumEnabled)
-        playback.setSpectrumBandCount(spectrumBandCount)
         playback.setEqualizer(enabled: equalizerEnabled, bandGains: equalizerBandGains)
         playback.setAppVolume(appVolume)
         playback.setMonoEnabled(monoEnabled)
@@ -583,11 +462,6 @@ final class PlayerViewModel {
                 }
                 self.isPlaying = snapshot.isPlaying
                 self.playbackReachedEnd = snapshot.reachedEnd
-                if !snapshot.isPlaying || !self.spectrumEnabled {
-                    self.toolbarSpectrum.setAnimating(false)
-                } else {
-                    self.toolbarSpectrum.setAnimating(true)
-                }
                 self.updateRemoteTransportState()
                 if snapshot.reachedEnd {
                     self.handlePlaybackCompletionIfNeeded()
@@ -596,6 +470,19 @@ final class PlayerViewModel {
         }
         playbackStorage = playback
         return playback
+    }
+
+    /// Skin-neutral endpoint for the existing Options panels. The SwiftUI
+    /// shell still binds directly to this model while a future WebKit shell
+    /// can query a Codable snapshot and submit typed commands here.
+    var optionsControlSurface: CocoaSpiceOptionsControlSurface {
+        optionsControlSurfaceStorage
+    }
+
+    /// Skin-neutral endpoint for the transport and playback-policy controls
+    /// in the main shell. Playlist/sidebar selection has a separate contract.
+    var mainPlaybackControlSurface: CocoaSpiceMainPlaybackControlSurface {
+        mainPlaybackControlSurfaceStorage
     }
 
     private var remoteTransport: RemoteTransportController {
@@ -625,23 +512,17 @@ final class PlayerViewModel {
             libraryDatabase = try LibraryDatabase()
         } catch {
             libraryDatabase = nil
-            libraryScanStatus = "Library database unavailable: \(error.localizedDescription)"
+            libraryDatabaseLocationStatus = "Library database unavailable: \(error.localizedDescription)"
         }
-        trimmedLibraryScanRootIDs = Set(
-            UserDefaults.standard.array(forKey: "trimmedLibraryScanRootIDs")?.compactMap { ($0 as? NSNumber)?.int64Value } ?? []
-        )
-        toolbarSpectrum.gradientStartColor = spectrumGradientStartColor
-        toolbarSpectrum.gradientEndColor = spectrumGradientEndColor
-        toolbarSpectrum.peakColor = spectrumPeakColor
         restorePlaybackPreferences(restoredState.playbackPreferences)
         Task { [weak self] in
             let recovery = await Task.detached(priority: .utility) {
-                ZipArchiveSupport.reclaimAbandonedScanMaterializations()
+                ZipArchiveSupport.reclaimAbandonedMaterializations()
             }.value
             guard recovery.rootCount > 0 else { return }
             self?.statusText = "Recovered \(recovery.rootCount) abandoned CocoaSpice cache items (\(ByteCountFormatter.string(fromByteCount: recovery.byteCount, countStyle: .file)))."
         }
-        reloadLibraryScanRoots()
+        reloadCatalogRoots()
         reloadDatabaseSidebar()
         restorePersistedPlaylist(restoredState.sessionState)
         restorePlaylistColumnState(restoredState.playlistColumnState)
@@ -654,371 +535,6 @@ final class PlayerViewModel {
         updateRemoteTransportState()
     }
 
-    func chooseLibraryScanRoots() {
-        guard !libraryDatabaseIsReadOnly else {
-            libraryScanStatus = "Library paths are managed by MediaScanner."
-            return
-        }
-        guard !libraryScanInProgress else {
-            libraryScanStatus = "Wait for the current library operation to finish before adding paths."
-            return
-        }
-        let panel = NSOpenPanel()
-        panel.title = "Choose Music Scan Roots"
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = true
-
-        guard panel.runModal() == .OK else { return }
-
-        guard let libraryDatabase else {
-            libraryScanStatus = "Cannot add scan roots: library database unavailable."
-            return
-        }
-
-        let addedURLs = panel.urls.map(\.standardizedFileURL)
-        libraryScanStatus = "Adding library paths…"
-        do {
-            // Root attachment is a bounded single-row mutation. Keeping it on
-            // the already-open database avoids a second connection and, more
-            // importantly, keeps path management out of the scanner's
-            // cancellable task lifecycle.
-            for url in addedURLs {
-                try libraryDatabase.addRoot(path: url.path)
-            }
-        } catch {
-            libraryScanStatus = "Could not save scan root: \(error.localizedDescription)"
-            reloadLibraryScanRoots()
-            return
-        }
-
-        reloadLibraryScanRoots()
-        reloadDatabaseSidebar()
-        syncActiveRootToLibraryScanRoots(preferredRoot: addedURLs.first)
-        let addedPaths = Set(addedURLs.map(\.path))
-        let addedRoots = libraryScanRoots.filter {
-            addedPaths.contains($0.standardizedURL.path) && $0.isEnabled
-        }
-        libraryScanStatus = addedRoots.isEmpty ? "No library paths were added." : "Added \(addedRoots.count) library path\(addedRoots.count == 1 ? "" : "s")"
-        runModernLibraryScan(for: addedRoots, mode: .incremental)
-    }
-
-    func loadLibraryRoot(_ root: LibraryScanRoot) {
-        loadRoot(url: root.standardizedURL)
-    }
-
-    func activeLibraryRootID() -> Int64? {
-        guard let rootURL else { return nil }
-        return libraryScanRoots.first(where: { $0.standardizedURL == rootURL.standardizedFileURL })?.id
-    }
-
-    var librarySourceSummary: String {
-        let enabledRoots = libraryScanRoots.filter(\.isEnabled)
-        guard !enabledRoots.isEmpty else { return "No library paths configured." }
-        if enabledRoots.count == 1 {
-            return enabledRoots[0].path
-        }
-        return "\(enabledRoots.count) library paths configured"
-    }
-
-    var areAllLibraryScanRootsEnabled: Bool {
-        !libraryScanRoots.isEmpty && libraryScanRoots.allSatisfy(\.isEnabled)
-    }
-
-    func setLibraryScanRootEnabled(_ id: Int64, isEnabled: Bool) {
-        guard !libraryDatabaseIsReadOnly else {
-            libraryScanStatus = "Library path state is managed by MediaScanner."
-            return
-        }
-        guard let index = libraryScanRoots.firstIndex(where: { $0.id == id }),
-              libraryScanRoots[index].isEnabled != isEnabled else {
-            return
-        }
-        libraryScanRoots[index].isEnabled = isEnabled
-        syncActiveRootToLibraryScanRoots()
-        persistLibraryRootEnabledStatesAfterInteraction()
-    }
-
-    func toggleAllLibraryScanRootsEnabled() {
-        guard !libraryDatabaseIsReadOnly else {
-            libraryScanStatus = "Library path state is managed by MediaScanner."
-            return
-        }
-        guard !libraryScanRoots.isEmpty else { return }
-        let isEnabled = !areAllLibraryScanRootsEnabled
-        for index in libraryScanRoots.indices {
-            libraryScanRoots[index].isEnabled = isEnabled
-        }
-        syncActiveRootToLibraryScanRoots()
-        persistLibraryRootEnabledStatesAfterInteraction()
-    }
-
-    func removeLibraryScanRoot(_ id: Int64) {
-        guard !libraryDatabaseIsReadOnly else {
-            libraryScanStatus = "Library paths are managed by MediaScanner."
-            return
-        }
-        guard !libraryScanInProgress,
-              let libraryDatabase,
-              let root = libraryScanRoots.first(where: { $0.id == id }) else { return }
-        libraryScanStatus = "Removing \(root.standardizedURL.lastPathComponent)…"
-        do {
-            try libraryDatabase.detachRoot(id: id)
-        } catch {
-            libraryScanStatus = "Could not remove path: \(error.localizedDescription)"
-            return
-        }
-        reloadLibraryScanRoots()
-        reloadDatabaseSidebar()
-        syncActiveRootToLibraryScanRoots()
-        libraryScanStatus = "Removed \(root.standardizedURL.lastPathComponent)"
-    }
-
-    func hasLibraryScanLog(_ id: Int64) -> Bool {
-        false
-    }
-
-    func openLibraryScanLog(_ id: Int64) {
-        libraryScanStatus = "Scan logs are managed by MediaScanner."
-    }
-
-    func canMoveLibraryScanRootUp(_ id: Int64) -> Bool {
-        guard let index = libraryScanRoots.firstIndex(where: { $0.id == id }) else { return false }
-        return index > 0
-    }
-
-    func canMoveLibraryScanRootDown(_ id: Int64) -> Bool {
-        guard let index = libraryScanRoots.firstIndex(where: { $0.id == id }) else { return false }
-        return index < libraryScanRoots.index(before: libraryScanRoots.endIndex)
-    }
-
-    func moveLibraryScanRootUp(_ id: Int64) {
-        guard let index = libraryScanRoots.firstIndex(where: { $0.id == id }), index > 0 else { return }
-        libraryScanRoots.swapAt(index - 1, index)
-        persistLibraryScanRootOrder()
-    }
-
-    func moveLibraryScanRootDown(_ id: Int64) {
-        guard let index = libraryScanRoots.firstIndex(where: { $0.id == id }),
-              index < libraryScanRoots.index(before: libraryScanRoots.endIndex) else { return }
-        libraryScanRoots.swapAt(index, index + 1)
-        persistLibraryScanRootOrder()
-    }
-
-    func rescanLibraryRoot(_ id: Int64) {
-        guard !libraryDatabaseIsReadOnly else {
-            libraryScanStatus = "Scanning is managed by MediaScanner."
-            return
-        }
-        guard let root = libraryScanRoots.first(where: { $0.id == id }) else { return }
-        runModernLibraryScan(for: [root], mode: requestedLibraryScanMode)
-    }
-
-    func scanLibraryRoot(_ id: Int64) {
-        guard !libraryDatabaseIsReadOnly else {
-            libraryScanStatus = "Scanning is managed by MediaScanner."
-            return
-        }
-        guard let root = libraryScanRoots.first(where: { $0.id == id }) else { return }
-        runModernLibraryScan(for: [root], mode: requestedLibraryScanMode)
-    }
-
-    func trimMissingLibrary() {
-        guard !libraryDatabaseIsReadOnly else {
-            libraryScanStatus = "Link maintenance is managed by MediaScanner."
-            return
-        }
-        guard !libraryScanInProgress,
-              let databaseURL = libraryDatabase?.databaseURL else { return }
-        let generation = libraryOperations.beginTask()
-        libraryScanInProgress = true
-        trimMissingProgress = LibraryScanProgress(current: 0, total: 0)
-        trimMissingCurrentPath = nil
-        libraryScanStatus = "Test Links • preparing…"
-
-        let task = Task { @MainActor [weak self] in
-            guard let self else { return }
-            defer {
-                if self.libraryOperations.isCurrentTask(generation) {
-                    self.libraryScanInProgress = false
-                    self.trimMissingProgress = nil
-                    self.trimMissingCurrentPath = nil
-                    self.libraryOperations.finishTask(generation: generation)
-                }
-            }
-            await Task.yield()
-            let sources = await Task.detached(priority: .utility) {
-                try? LibraryDatabase(databaseURL: databaseURL, accessMode: .readOnly).indexedSources()
-            }.value
-            guard let sources else {
-                guard self.libraryOperations.isCurrentTask(generation) else { return }
-                self.libraryScanStatus = "Test Links failed to read the library."
-                return
-            }
-            guard self.libraryOperations.isCurrentTask(generation), !Task.isCancelled else { return }
-            self.trimMissingProgress = LibraryScanProgress(current: 0, total: sources.count)
-            self.libraryScanStatus = "Test Links • checking \(sources.count) sources…"
-            let integrityTask = Task.detached(priority: .utility) {
-                await LibraryIntegrityChecker.check(
-                    sources: sources,
-                    progress: { current, total, path in
-                        Task { @MainActor [weak self] in
-                            guard let self, self.libraryOperations.isCurrentTask(generation) else { return }
-                            self.trimMissingProgress = LibraryScanProgress(current: current, total: total)
-                            self.trimMissingCurrentPath = path
-                            self.libraryScanStatus = "Test Links • \(current) of \(total) sources checked"
-                        }
-                    }
-                )
-            }
-            let result = await withTaskCancellationHandler {
-                await integrityTask.value
-            } onCancel: {
-                integrityTask.cancel()
-            }
-            guard self.libraryOperations.isCurrentTask(generation), !Task.isCancelled else { return }
-            let writeError = await Task.detached(priority: .utility) { () -> String? in
-                do {
-                    let database = try LibraryDatabase(databaseURL: databaseURL, accessMode: .readOnly)
-                    try database.markSourcesDead(result.missingSources)
-                    try database.refreshDirtySidebarBuckets()
-                    return nil
-                } catch {
-                    return error.localizedDescription
-                }
-            }.value
-            guard self.libraryOperations.isCurrentTask(generation), !Task.isCancelled else { return }
-            if let writeError {
-                self.libraryScanStatus = "Integrity check failed: \(writeError)"
-                return
-            }
-            self.trimmedLibraryScanRootIDs.formUnion(result.missingSources.map(\.rootID))
-            self.persistTrimmedLibraryRootIDs()
-            self.reloadLibraryScanRoots()
-            self.reloadDatabaseSidebar()
-            self.refreshDeadLinkSummary()
-            self.libraryScanStatus = "Test Links • \(result.checkedCount) sources checked • \(result.missingSources.count) unlinked sources found"
-        }
-        libraryOperations.installTask(task, generation: generation)
-    }
-
-    func rescanEnabledLibraryRoots() {
-        guard !libraryDatabaseIsReadOnly else {
-            libraryScanStatus = "Scanning is managed by MediaScanner."
-            return
-        }
-        // Refresh attachment/enabled state at the action boundary so a stale
-        // Options snapshot cannot turn Scan All into a silent no-op.
-        reloadLibraryScanRoots()
-        let roots = libraryScanRoots.filter(\.isEnabled)
-        guard !roots.isEmpty else {
-            libraryScanStatus = "No enabled library paths to scan."
-            return
-        }
-        runModernLibraryScan(for: roots, mode: requestedLibraryScanMode)
-    }
-
-    func purgeLibraryDatabase() {
-        guard !libraryDatabaseIsReadOnly else {
-            libraryScanStatus = "Database maintenance is managed by MediaScanner."
-            return
-        }
-        guard !libraryScanInProgress, let libraryDatabase else { return }
-        do {
-            try libraryDatabase.purgeIndexedLibrary()
-            for root in libraryScanRoots {
-                LibraryScanLogStore.remove(rootID: root.id)
-            }
-            trimmedLibraryScanRootIDs.removeAll()
-            persistTrimmedLibraryRootIDs()
-            reloadLibraryScanRoots()
-            reloadDatabaseSidebar()
-            resetSidebarContext(message: "Database reset")
-            refreshDeadLinkSummary()
-            libraryScanStatus = "Database reset"
-        } catch {
-            libraryScanStatus = "Could not reset database: \(error.localizedDescription)"
-        }
-    }
-
-    func resetLibraryPaths() {
-        guard !libraryDatabaseIsReadOnly else {
-            libraryScanStatus = "Library paths are managed by MediaScanner."
-            return
-        }
-        guard !libraryScanInProgress,
-              !libraryScanRoots.isEmpty,
-              let databaseURL = libraryDatabase?.databaseURL else { return }
-        let generation = libraryOperations.beginTask()
-        libraryScanInProgress = true
-        libraryScanStatus = "Removing library paths…"
-
-        let task = Task { @MainActor [weak self] in
-            guard let self else { return }
-            defer {
-                if self.libraryOperations.isCurrentTask(generation) {
-                    self.libraryScanInProgress = false
-                    self.libraryOperations.finishTask(generation: generation)
-                }
-            }
-            await Task.yield()
-            let errorDescription = await Task.detached(priority: .utility) { () -> String? in
-                do {
-                    try LibraryDatabase(databaseURL: databaseURL, accessMode: .readOnly).detachAttachedRoots()
-                    return nil
-                } catch {
-                    return error.localizedDescription
-                }
-            }.value
-            guard self.libraryOperations.isCurrentTask(generation), !Task.isCancelled else { return }
-            if let errorDescription {
-                self.libraryScanStatus = "Could not reset library paths: \(errorDescription)"
-                return
-            }
-            self.reloadLibraryScanRoots()
-            self.clearLibraryState()
-            self.libraryScanStatus = "Library paths reset"
-        }
-        libraryOperations.installTask(task, generation: generation)
-    }
-
-    func stopLibraryScan() {
-        if trimMissingProgress != nil {
-            libraryOperations.cancelActiveTask()
-            libraryScanInProgress = false
-            trimMissingProgress = nil
-            trimMissingCurrentPath = nil
-            libraryScanStatus = "Test Links stopped"
-            return
-        }
-        libraryScanStatus = "Scanning is managed by MediaScanner."
-    }
-
-    private var requestedLibraryScanMode: ScanMode {
-        forceLibraryScan ? .newScan : .incremental
-    }
-
-    var queuedLibraryScanCount: Int { 0 }
-
-    var libraryOperationProgress: LibraryScanProgress? {
-        libraryOperations.operationProgress
-    }
-
-    var libraryOperationIsLinkTest: Bool {
-        trimMissingProgress != nil
-    }
-
-    private func runModernLibraryScan(for roots: [LibraryScanRoot], mode: ScanMode) {
-        guard !libraryDatabaseIsReadOnly else {
-            libraryScanStatus = "Scanning is managed by MediaScanner."
-            return
-        }
-        guard !roots.isEmpty else {
-            libraryScanStatus = "No library paths selected for scanning."
-            return
-        }
-        libraryScanStatus = "Scanning is managed by MediaScanner."
-    }
     private func loadRoot(url: URL) {
         folderSelectionTaskOwner.cancel()
         rootURL = url
@@ -1309,7 +825,6 @@ final class PlayerViewModel {
                 preservePlayback: replace && !autoplay,
                 seedMetadataCache: loaded.metadata,
                 widthHints: loaded.widthHints,
-                metadataInspectionPolicy: .databaseSnapshot,
                 autoplay: autoplay
             )
             let applyElapsed = applyStartedAt.duration(to: .now)
@@ -1386,7 +901,6 @@ final class PlayerViewModel {
         preservePlayback: Bool = false,
         seedMetadataCache: [String: TrackMetadata] = [:],
         widthHints: PlaylistColumnWidthHints? = nil,
-        metadataInspectionPolicy: PlaylistMetadataInspectionPolicy = .inspectMissing,
         autoplay: Bool = false
     ) {
         guard !tracks.isEmpty else {
@@ -1395,7 +909,6 @@ final class PlayerViewModel {
         }
 
         metadataCache = seedMetadataCache
-        playlistMetadataInspectionPolicy = metadataInspectionPolicy
         playlistColumnWidthHints = widthHints
 
         if replace {
@@ -1433,8 +946,7 @@ final class PlayerViewModel {
                 tracks,
                 status: "Queued \(tracks.count) tracks from \(folderURL.lastPathComponent)",
                 seedMetadataCache: seedMetadataCache,
-                widthHints: widthHints,
-                metadataInspectionPolicy: metadataInspectionPolicy
+                widthHints: widthHints
             )
             return
         }
@@ -1451,8 +963,7 @@ final class PlayerViewModel {
         _ tracks: [TrackItem],
         status: String,
         seedMetadataCache: [String: TrackMetadata] = [:],
-        widthHints: PlaylistColumnWidthHints? = nil,
-        metadataInspectionPolicy: PlaylistMetadataInspectionPolicy = .inspectMissing
+        widthHints: PlaylistColumnWidthHints? = nil
     ) {
         var existing = Set(playlist.map(\.id))
         let uniqueTracks = tracks.filter { existing.insert($0.id).inserted }
@@ -1461,9 +972,6 @@ final class PlayerViewModel {
             return
         }
         metadataCache.merge(seedMetadataCache) { current, _ in current }
-        if metadataInspectionPolicy == .databaseSnapshot {
-            playlistMetadataInspectionPolicy = .databaseSnapshot
-        }
         if let widthHints {
             playlistColumnWidthHints = widthHints
         } else if !seedMetadataCache.isEmpty {
@@ -1505,10 +1013,6 @@ final class PlayerViewModel {
 
     var canShowSelectedTracksInFinder: Bool {
         !orderedSelectedPlaylistTracks().isEmpty
-    }
-
-    var canExportSelectedTracksToAAC: Bool {
-        !orderedSelectedPlaylistTracks().isEmpty && audioExportTask == nil
     }
 
     var canDragReorderTracks: Bool {
@@ -1595,10 +1099,6 @@ final class PlayerViewModel {
         statusText = "Showing \(tracks.count) track\(tracks.count == 1 ? "" : "s") in Finder"
     }
 
-    func exportSelectedTracksToAAC() {
-        exportTracksToAAC(orderedSelectedPlaylistTracks())
-    }
-
     func savePreferencesNow() {
         AppSessionPersistence.savePlaybackPreferences(
             longPlayEnabled: longPlayEnabled,
@@ -1606,11 +1106,6 @@ final class PlayerViewModel {
             manualPreFadeSeconds: manualPreFadeSeconds,
             endFadeEnabled: endFadeEnabled,
             fadedSkipEnabled: fadedSkipEnabled,
-            spectrumGradientStartColor: spectrumGradientStartColor,
-            spectrumGradientEndColor: spectrumGradientEndColor,
-            spectrumPeakColor: spectrumPeakColor,
-            spectrumEnabled: spectrumEnabled,
-            spectrumBandCount: spectrumBandCount,
             equalizerEnabled: equalizerEnabled,
             equalizerBandGains: equalizerBandGains,
             appVolume: appVolume,
@@ -1618,7 +1113,6 @@ final class PlayerViewModel {
             randomPlaybackScopeRawValue: randomPlaybackScope.rawValue,
             repeatModeRawValue: repeatMode.rawValue,
             sidebarDoubleClickActionRawValue: sidebarDoubleClickAction.rawValue,
-            lastAudioExportDirectoryPath: lastAudioExportDirectoryURL?.path,
             databaseSidebarFontSize: databaseSidebarFontSize,
             databaseSidebarTextColor: databaseSidebarTextColor.rawValue,
             databaseSidebarMonospaceFont: databaseSidebarMonospaceFont,
@@ -1645,6 +1139,11 @@ final class PlayerViewModel {
         playbackStorage?.setEqualizer(enabled: equalizerEnabled, bandGains: equalizerBandGains)
     }
 
+    func setEqualizerEnabled(_ enabled: Bool) {
+        equalizerEnabled = enabled
+        savePreferencesNow()
+    }
+
     func setAppVolume(_ volume: Float) {
         appVolume = AudioOutputVolume.clamped(volume)
         savePreferencesNow()
@@ -1655,15 +1154,8 @@ final class PlayerViewModel {
         savePreferencesNow()
     }
 
-    func setSpectrumBandCount(_ bandCount: Int) {
-        spectrumBandCount = SpectrumBandCount.clamped(bandCount)
-        savePreferencesNow()
-    }
-
-    func resetSpectrumColors() {
-        spectrumGradientStartColor = Self.defaultSpectrumGradientStartColor
-        spectrumGradientEndColor = Self.defaultSpectrumGradientEndColor
-        spectrumPeakColor = Self.defaultSpectrumPeakColor
+    func setSidebarDoubleClickAction(_ action: SidebarDoubleClickAction) {
+        sidebarDoubleClickAction = action
         savePreferencesNow()
     }
 
@@ -1741,8 +1233,7 @@ final class PlayerViewModel {
     }
 
     func setPreferFoldersOverMetadata(_ enabled: Bool) {
-        guard !libraryScanInProgress,
-              preferFoldersOverMetadata != enabled else { return }
+        guard preferFoldersOverMetadata != enabled else { return }
         preferEmbeddedConsoleTags = !enabled
         savePreferencesNow()
         reloadDatabaseSidebar()
@@ -1788,7 +1279,7 @@ final class PlayerViewModel {
     }
 
     func clearArchiveCache() {
-        guard !isClearingArchiveCache, !libraryScanInProgress else { return }
+        guard !isClearingArchiveCache else { return }
         isClearingArchiveCache = true
         archiveCacheSummaryTask?.cancel()
         playlistMetadataTaskOwner.cancel()
@@ -1812,68 +1303,6 @@ final class PlayerViewModel {
             self?.isClearingArchiveCache = false
             self?.refreshArchiveCacheSummary()
         }
-    }
-
-    func refreshDeadLinkSummary() {
-        guard !isDeletingDeadLinks else { return }
-        let generation = deadLinkSummaryTaskOwner.begin()
-        let databaseURL = libraryDatabase?.databaseURL
-        let task = Task { @MainActor [weak self] in
-            let summary = await Task.detached(priority: .utility) {
-                databaseURL.flatMap { try? LibraryDatabaseMaintenance.summary(databaseURL: $0) }
-            }.value
-            guard let self,
-                  !Task.isCancelled,
-                  self.deadLinkSummaryTaskOwner.isCurrent(generation) else { return }
-            self.applyDeadLinkSummary(summary)
-            self.deadLinkSummaryTaskOwner.finish(generation: generation)
-        }
-        deadLinkSummaryTaskOwner.install(task, generation: generation)
-    }
-
-    func deleteDeadLinks() {
-        guard !libraryDatabaseIsReadOnly else {
-            libraryScanStatus = "Database maintenance is managed by MediaScanner."
-            return
-        }
-        guard !isDeletingDeadLinks,
-              !libraryScanInProgress,
-              let databaseURL = libraryDatabase?.databaseURL else { return }
-        isDeletingDeadLinks = true
-        deadLinkSummaryTaskOwner.cancel()
-        deadLinkCleanupTask = Task { @MainActor [weak self] in
-            let result = await Task.detached(priority: .utility) {
-                Result { try LibraryDatabaseMaintenance.clearDeadLinks(databaseURL: databaseURL) }
-            }.value
-            guard let self, !Task.isCancelled else { return }
-            self.isDeletingDeadLinks = false
-            self.deadLinkCleanupTask = nil
-            switch result {
-            case .success(let clearedCount):
-                self.reloadLibraryScanRoots()
-                self.reloadDatabaseSidebar()
-                self.refreshDeadLinkSummary()
-                self.libraryScanStatus = clearedCount == 1
-                    ? "Database cleanup • 1 unlinked source cleared"
-                    : "Database cleanup • \(clearedCount) unlinked sources cleared"
-            case .failure(let error):
-                self.libraryScanStatus = "Clean Unlinked failed: \(error.localizedDescription)"
-            }
-        }
-    }
-
-    private func applyDeadLinkSummary(_ summary: LibraryDatabaseMaintenanceSummary?) {
-        guard let summary else {
-            deadLinkCount = 0
-            databaseEntryCount = 0
-            unlinkedDatabaseEntryCount = 0
-            deadLinkSummaryText = "Unavailable"
-            return
-        }
-        deadLinkCount = summary.deadLinkCount
-        databaseEntryCount = summary.indexedTrackCount
-        unlinkedDatabaseEntryCount = summary.unlinkedTrackCount
-        deadLinkSummaryText = summary.deadLinkSummaryText
     }
 
     func toggleDatabaseFileFolder(_ folderID: String) {
@@ -1901,125 +1330,6 @@ final class PlayerViewModel {
 
     func sidebarSystemName(for item: DatabaseGameItem) -> String {
         item.systemName.isEmpty ? "Unknown System" : item.systemName
-    }
-
-    func exportTracksToAAC(_ tracks: [TrackItem]) {
-        guard audioExportTask == nil else {
-            audioExportWindowController?.showWindow(nil)
-            return
-        }
-
-        let deduplicatedTracks = Array(NSOrderedSet(array: tracks)) as? [TrackItem] ?? []
-        guard !deduplicatedTracks.isEmpty else { return }
-
-        let defaultDirectory = lastAudioExportDirectoryURL ?? deduplicatedTracks[0].revealURL.deletingLastPathComponent()
-        let panel = AudioExportAACService.makeDestinationFolderPanel(defaultDirectory: defaultDirectory)
-        guard panel.runModal() == .OK, let outputDirectory = panel.urls.first?.standardizedFileURL else { return }
-        lastAudioExportDirectoryURL = outputDirectory
-
-        let metadataSnapshot = metadataCache
-        let longPlaySetting = longPlayEnabled
-        let manualPreFadeSetting = manualPreFadeSeconds
-        let fadeSetting = fadeSeconds
-
-        let windowController = ensureAudioExportWindowController()
-        let preparingSnapshot = AudioExportProgressSnapshot(
-            phase: .preparing,
-            title: "Preparing AAC export",
-            outputDirectoryPath: outputDirectory.path,
-            currentFileName: nil,
-            completedFiles: 0,
-            totalFiles: deduplicatedTracks.count,
-            currentFileProgress: nil,
-            batchProgress: 0
-        )
-        audioExportProgressSnapshot = preparingSnapshot
-        windowController.present(snapshot: preparingSnapshot)
-        statusText = "Preparing AAC export…"
-
-        audioExportTask = Task { [weak self] in
-            guard let self else { return }
-
-            do {
-                let requests = try await AudioExportAACService.buildRequests(
-                    tracks: deduplicatedTracks,
-                    cachedMetadata: metadataSnapshot,
-                    outputDirectory: outputDirectory,
-                    longPlayEnabled: longPlaySetting,
-                    manualPreFadeSeconds: manualPreFadeSetting,
-                    fadeSeconds: fadeSetting
-                )
-
-                let resolvedMetadata = Dictionary(uniqueKeysWithValues: requests.map { ($0.track.id, $0.metadata) })
-                await MainActor.run {
-                    self.metadataCache.merge(resolvedMetadata) { current, _ in current }
-                    self.playlistMetadataLoadToken += 1
-                }
-
-                let result = try await AudioExportAACService.export(requests: requests) { snapshot in
-                    Task { @MainActor [weak self] in
-                        self?.audioExportProgressSnapshot = snapshot
-                        self?.audioExportWindowController?.apply(snapshot: snapshot)
-                    }
-                }
-
-                await MainActor.run {
-                    let snapshot = AudioExportProgressSnapshot(
-                        phase: .completed,
-                        title: "AAC export complete",
-                        outputDirectoryPath: result.outputDirectory.path,
-                        currentFileName: nil,
-                        completedFiles: result.exportedCount,
-                        totalFiles: result.exportedCount,
-                        currentFileProgress: 1,
-                        batchProgress: 1
-                    )
-                    self.audioExportProgressSnapshot = snapshot
-                    self.audioExportWindowController?.apply(snapshot: snapshot)
-                    self.audioExportWindowController?.closeAutomatically()
-                    self.statusText = "Exported \(result.exportedCount) AAC file\(result.exportedCount == 1 ? "" : "s")"
-                    self.audioExportTask = nil
-                }
-            } catch is CancellationError {
-                await MainActor.run {
-                    let previous = self.audioExportProgressSnapshot
-                    let snapshot = AudioExportProgressSnapshot(
-                        phase: .cancelled,
-                        title: "AAC export cancelled",
-                        outputDirectoryPath: outputDirectory.path,
-                        currentFileName: previous?.currentFileName,
-                        completedFiles: previous?.completedFiles ?? 0,
-                        totalFiles: deduplicatedTracks.count,
-                        currentFileProgress: previous?.currentFileProgress,
-                        batchProgress: previous?.batchProgress ?? 0
-                    )
-                    self.audioExportProgressSnapshot = snapshot
-                    self.audioExportWindowController?.apply(snapshot: snapshot)
-                    self.audioExportWindowController?.closeAutomatically()
-                    self.statusText = "AAC export cancelled"
-                    self.audioExportTask = nil
-                }
-            } catch {
-                await MainActor.run {
-                    let previous = self.audioExportProgressSnapshot
-                    let snapshot = AudioExportProgressSnapshot(
-                        phase: .failed,
-                        title: "AAC export failed",
-                        outputDirectoryPath: outputDirectory.path,
-                        currentFileName: previous?.currentFileName,
-                        completedFiles: previous?.completedFiles ?? 0,
-                        totalFiles: deduplicatedTracks.count,
-                        currentFileProgress: previous?.currentFileProgress,
-                        batchProgress: previous?.batchProgress ?? 0
-                    )
-                    self.audioExportProgressSnapshot = snapshot
-                    self.audioExportWindowController?.apply(snapshot: snapshot)
-                    self.audioExportWindowController?.closeAutomatically()
-                    self.statusText = "AAC export failed"
-                    self.audioExportTask = nil
-                }
-            }
-        }
     }
 
     func moveSelectedTracksUp() {
@@ -2421,10 +1731,8 @@ final class PlayerViewModel {
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                let metadata = try await playback.reconfigureCurrentTrack(plan: plan)
+                try await playback.reconfigureCurrentTrack(plan: plan)
                 let snapshot = await playback.statusSnapshot()
-                self.currentMetadata = metadata
-                self.updatePlaylistMetadata(for: currentTrack.id, metadata: metadata)
                 self.playbackElapsedSeconds = snapshot.elapsedSeconds
                 self.seekPreviewSeconds = snapshot.elapsedSeconds
                 self.isPlaying = snapshot.isPlaying
@@ -2501,31 +1809,33 @@ final class PlayerViewModel {
             try Task.checkCancellation()
             let isNewTrack = await playback.currentTrackID() != track.id
             let cachedMetadata = metadataCache[track.id]
-            let seedMetadata = if !isNewTrack, let currentMetadata {
+            let seedMetadata: TrackMetadata? = if !isNewTrack, let currentMetadata {
                 currentMetadata
             } else if let cachedMetadata {
                 cachedMetadata
             } else {
-                try await PlaybackInspection.inspectMetadata(track: track)
+                nil
             }
 
             try Task.checkCancellation()
             guard playbackRequestState.isCurrent(generation) else { return }
 
             let plan = playbackPlan(for: seedMetadata, trackPathExtension: track.playablePathExtension)
-            let loadedMetadata = try await playback.play(track: track, plan: plan, requestID: requestID)
+            try await playback.play(track: track, plan: plan, requestID: requestID)
             guard playbackRequestState.isCurrent(generation) else { return }
             currentTrack = track
             pendingPlaybackTrack = nil
-            currentMetadata = loadedMetadata
-            updatePlaylistMetadata(for: track.id, metadata: loadedMetadata)
+            currentMetadata = seedMetadata
+            if let seedMetadata {
+                updatePlaylistMetadata(for: track.id, metadata: seedMetadata)
+            }
             isPlaying = true
             didAutoAdvanceForCurrentTrack = false
             playbackElapsedSeconds = 0
             seekPreviewSeconds = 0
 
-            let songTitle = loadedMetadata.song.isEmpty ? track.displayName : loadedMetadata.song
-            let gameTitle = loadedMetadata.game.isEmpty ? track.groupDisplayName : loadedMetadata.game
+            let songTitle = seedMetadata?.song.nonEmpty ?? track.displayName
+            let gameTitle = seedMetadata?.game.nonEmpty ?? track.groupDisplayName
             statusText = "\(gameTitle) • \(songTitle)"
             updateRemoteTransportState()
         } catch is CancellationError {
@@ -2649,41 +1959,6 @@ final class PlayerViewModel {
         playlist
     }
 
-    func libraryScanRootStatusText(_ root: LibraryScanRoot) -> String {
-        let order = (libraryScanRoots.firstIndex(where: { $0.id == root.id }) ?? 0) + 1
-        return DatabaseSidebarPresentation.scanRootStatusText(root, order: order)
-    }
-
-    func libraryScanRootDetailText(_ root: LibraryScanRoot) -> String {
-        if libraryScanProgressByRootID[root.id] != nil {
-            return "Scanning"
-        }
-        if let error = root.lastScanError, !error.isEmpty {
-            return error
-        }
-        if root.lastScanCompletedAt != nil,
-           let tally = try? libraryDatabase?.scanResultTally(rootID: root.id) {
-            return "\(tally.successful) / \(tally.total)"
-        }
-        return root.lastScanCompletedAt == nil ? "Ready to scan" : "—"
-    }
-
-    func libraryScanRootIsEmpty(_ root: LibraryScanRoot) -> Bool {
-        root.lastScanCompletedAt != nil && root.lastScanTrackCount == 0
-    }
-
-    func libraryScanRootHasIssues(_ root: LibraryScanRoot) -> Bool {
-        root.lastScanError?.isEmpty == false || LibraryScanLogStore.exists(rootID: root.id)
-    }
-
-    func libraryScanRootIsClean(_ root: LibraryScanRoot) -> Bool {
-        cleanLibraryScanRootIDs.contains(root.id) && !libraryScanRootIsEmpty(root) && root.lastScanError == nil
-    }
-
-    func libraryScanRootNeedsRescan(_ root: LibraryScanRoot) -> Bool {
-        trimmedLibraryScanRootIDs.contains(root.id)
-    }
-
     var preFadeReadout: String {
         PlaylistPresentation.formatTime(effectivePreFadeSeconds)
     }
@@ -2734,9 +2009,6 @@ final class PlayerViewModel {
                 let snapshot = await playback.statusSnapshot()
                 if !self.isSeeking {
                     self.playbackElapsedSeconds = snapshot.elapsedSeconds
-                }
-                if !snapshot.isPlaying {
-                    self.toolbarSpectrum.setAnimating(false)
                 }
                 self.handlePlaybackCompletionIfNeeded()
                 self.updateRemoteTransportState()
@@ -2795,7 +2067,7 @@ final class PlayerViewModel {
 
     private func libraryRootPath(for folderURL: URL) -> String? {
         let normalizedFolderPath = folderURL.standardizedFileURL.path
-        return enabledLibraryRootURLs
+        return enabledCatalogRootURLs
             .map(\.path)
             .first(where: { normalizedFolderPath == $0 || normalizedFolderPath.hasPrefix($0 + "/") })
     }
@@ -2831,8 +2103,7 @@ final class PlayerViewModel {
                 replace: replace,
                 preservePlayback: preservePlayback,
                 seedMetadataCache: loaded.metadata,
-                widthHints: loaded.widthHints,
-                metadataInspectionPolicy: .databaseSnapshot
+                widthHints: loaded.widthHints
             )
             self.queueBuildTaskOwner.finish(generation: generation)
         }
@@ -2876,8 +2147,7 @@ final class PlayerViewModel {
                 replace: replace,
                 preservePlayback: replace,
                 seedMetadataCache: loaded.metadata,
-                widthHints: loaded.widthHints,
-                metadataInspectionPolicy: .databaseSnapshot
+                widthHints: loaded.widthHints
             )
             if replace, let firstTrack = loaded.tracks.first {
                 self.currentTrack = firstTrack
@@ -2900,7 +2170,7 @@ final class PlayerViewModel {
         }
     }
 
-    private func refreshPlaylistMetadata(limit: Int? = nil) {
+    private func refreshPlaylistMetadata(limit _: Int? = nil) {
         let generation = playlistMetadataTaskOwner.begin()
         let tracks = playlist
         let cachedMetadata = metadataCache
@@ -2912,155 +2182,23 @@ final class PlayerViewModel {
             return
         }
 
-        // A published MediaScanner snapshot is already the playlist's
-        // metadata contract. Do not reopen decoders or materialize archives
-        // while hydrating a database selection; playback owns any inspection
-        // it requires for the selected track.
-        if playlistMetadataInspectionPolicy == .databaseSnapshot {
-            if playlistColumnWidthHints == nil {
-                playlistColumnWidthHints = Self.buildPlaylistColumnWidthHints(
-                    tracks: tracks,
-                    metadata: cachedMetadata
-                )
-            }
-            playlistMetadataLoadToken += 1
-            playlistMetadataTaskOwner.finish(generation: generation)
-            return
-        }
-
-        let unresolvedTracks = tracks.filter { track in
-            guard let metadata = cachedMetadata[track.id] else { return true }
-
-            // Older database scans may have cached SPC tags but no duration.
-            // Reinspect those rows so the playlist gets the libgme play length
-            // without requiring selection or playback.
-            if track.playablePathExtension == "spc" && metadata.playLengthMs <= 0 {
-                return true
-            }
-
-            // Repair incomplete legacy archive rows after they enter a playlist.
-            return track.isArchiveEntry
-                && metadata.game.isEmpty
-                && metadata.song.isEmpty
-                && metadata.system.isEmpty
-                && metadata.author.isEmpty
-                && metadata.comment.isEmpty
-                && metadata.introLengthMs == 0
-                && metadata.loopLengthMs == 0
-                && metadata.playLengthMs == 0
-                && metadata.fadeLengthMs == 0
-        }
-        let missingTracks: [TrackItem]
-        let prioritizedUnresolvedTracks: [TrackItem]
-        if let selectedTrackID,
-           let selected = unresolvedTracks.first(where: { $0.id == selectedTrackID }) {
-            prioritizedUnresolvedTracks = [selected] + unresolvedTracks.filter { $0.id != selectedTrackID }
-        } else {
-            prioritizedUnresolvedTracks = unresolvedTracks
-        }
-        if let limit {
-            missingTracks = Array(prioritizedUnresolvedTracks.prefix(limit))
-        } else {
-            missingTracks = prioritizedUnresolvedTracks
-        }
-        if missingTracks.isEmpty {
-            if playlistColumnWidthHints == nil {
-                playlistColumnWidthHints = Self.buildPlaylistColumnWidthHints(
-                    tracks: tracks,
-                    metadata: cachedMetadata
-                )
-            }
-            playlistMetadataLoadToken += 1
-            playlistMetadataTaskOwner.finish(generation: generation)
-            return
-        }
-
-        let task = Task.detached(priority: .utility) { [weak self] in
-            guard let self else { return }
-            var resolvedMetadata = cachedMetadata
-            let jobs = PlaybackInspection.prepareMetadataInspectionJobs(
-                tracks: missingTracks
+        // Catalog rows are the sole metadata contract. CocoaSpice never
+        // opens a decoder to repair or enrich them; incomplete catalog fields
+        // must be corrected by a later MediaScanner publication.
+        playlistColumnWidthHints = Self.buildPlaylistColumnWidthHints(
+            tracks: tracks,
+            metadata: cachedMetadata
+        )
+        if playlistSortDependsOnMetadata(playlistSortColumn),
+           let sortColumn = playlistSortColumn {
+            applyPlaylistSort(
+                column: sortColumn,
+                direction: playlistSortDirection,
+                updateStatus: false
             )
-            await withTaskGroup(of: (String, TrackMetadata?).self) { group in
-                var nextJobIndex = 0
-                var pendingMetadata: [String: TrackMetadata] = [:]
-                let initialJobCount = min(
-                    PlaybackInspection.metadataWorkerLimit,
-                    jobs.count
-                )
-                for _ in 0..<initialJobCount {
-                    let job = jobs[nextJobIndex]
-                    nextJobIndex += 1
-                    group.addTask {
-                        let metadata = try? await PlaybackInspection.inspectMetadata(
-                            track: job.track,
-                            fileURL: job.fileURL
-                        )
-                        return (job.track.id, metadata)
-                    }
-                }
-
-                while let (trackID, metadata) = await group.next() {
-                    if Task.isCancelled {
-                        group.cancelAll()
-                        break
-                    }
-
-                    if let metadata {
-                        resolvedMetadata[trackID] = metadata
-                        pendingMetadata[trackID] = metadata
-                        if pendingMetadata.count >= 64 {
-                            let batch = pendingMetadata
-                            pendingMetadata.removeAll(keepingCapacity: true)
-                            await MainActor.run {
-                                guard self.playlistMetadataTaskOwner.isCurrent(generation) else { return }
-                                self.updatePlaylistMetadata(batch)
-                            }
-                        }
-                    }
-
-                    if nextJobIndex < jobs.count {
-                        let job = jobs[nextJobIndex]
-                        nextJobIndex += 1
-                        group.addTask {
-                            let metadata = try? await PlaybackInspection.inspectMetadata(
-                                track: job.track,
-                                fileURL: job.fileURL
-                            )
-                            return (job.track.id, metadata)
-                        }
-                    }
-                }
-
-                if !pendingMetadata.isEmpty, !Task.isCancelled {
-                    await MainActor.run {
-                        guard self.playlistMetadataTaskOwner.isCurrent(generation) else { return }
-                        self.updatePlaylistMetadata(pendingMetadata)
-                    }
-                }
-            }
-
-            let widthHints = Self.buildPlaylistColumnWidthHints(
-                tracks: tracks,
-                metadata: resolvedMetadata
-            )
-
-            await MainActor.run {
-                guard self.playlistMetadataTaskOwner.isCurrent(generation) else { return }
-                self.playlistColumnWidthHints = widthHints
-                if self.playlistSortDependsOnMetadata(self.playlistSortColumn),
-                   let sortColumn = self.playlistSortColumn {
-                    self.applyPlaylistSort(
-                        column: sortColumn,
-                        direction: self.playlistSortDirection,
-                        updateStatus: false
-                    )
-                }
-                self.playlistMetadataLoadToken += 1
-                self.playlistMetadataTaskOwner.finish(generation: generation)
-            }
         }
-        playlistMetadataTaskOwner.install(task, generation: generation)
+        playlistMetadataLoadToken += 1
+        playlistMetadataTaskOwner.finish(generation: generation)
     }
 
     private func updatePlaylistMetadata(_ updates: [TrackItem.ID: TrackMetadata]) {
@@ -3111,26 +2249,13 @@ final class PlayerViewModel {
         return tracks.filter { seen.insert($0.id).inserted }
     }
 
-    private func reloadLibraryScanRoots() {
+    private func reloadCatalogRoots() {
         guard let databaseURL = libraryDatabaseURL else { return }
         do {
-            libraryScanRoots = try CatalogBrowser.roots(databaseURL: databaseURL)
-            cleanLibraryScanRootIDs = Set(libraryScanRoots.compactMap { root in
-                root.lastScanCompletedAt != nil && root.lastScanTrackCount > 0 && !LibraryScanLogStore.exists(rootID: root.id) ? root.id : nil
-            })
-            trimmedLibraryScanRootIDs.formIntersection(Set(libraryScanRoots.map(\.id)))
-            persistTrimmedLibraryRootIDs()
+            catalogRoots = try CatalogBrowser.roots(databaseURL: databaseURL)
         } catch {
-            libraryScanStatus = "Could not load scan roots: \(error.localizedDescription)"
+            libraryDatabaseLocationStatus = "Could not load catalog roots: \(error.localizedDescription)"
         }
-    }
-
-    /// Checkbox changes stay local until input settles. Rebuilding the Games
-    /// sidebar for every individual root made a simple sequence of checks
-    /// feel like a library recalculation and blocked further interaction.
-    private func persistLibraryRootEnabledStatesAfterInteraction() {
-        reloadLibraryScanRoots()
-        libraryScanStatus = "Library paths are managed by MediaScanner."
     }
 
     private func reloadDatabaseSidebar() {
@@ -3176,17 +2301,8 @@ final class PlayerViewModel {
         libraryDatabaseLocationStatus = "Library reloaded from the current MediaScanner catalog."
     }
 
-    private func persistLibraryScanRootOrder() {
-        reloadLibraryScanRoots()
-        syncActiveRootToLibraryScanRoots()
-    }
-
-    private func persistTrimmedLibraryRootIDs() {
-        UserDefaults.standard.set(trimmedLibraryScanRootIDs.map { NSNumber(value: $0) }, forKey: "trimmedLibraryScanRootIDs")
-    }
-
-    private func syncActiveRootToLibraryScanRoots(preferredRoot: URL? = nil) {
-        let enabledRoots = libraryScanRoots.filter(\.isEnabled)
+    private func syncActiveRootToCatalogRoots(preferredRoot: URL? = nil) {
+        let enabledRoots = catalogRoots.filter(\.isEnabled)
 
         guard !enabledRoots.isEmpty else {
             resetSidebarContext(message: "No library paths configured.")
@@ -3252,17 +2368,6 @@ final class PlayerViewModel {
         }
         endFadeEnabled = preferences.endFadeEnabled
         fadedSkipEnabled = preferences.fadedSkipEnabled
-        if let storedStartColor = preferences.spectrumGradientStartColor.flatMap(AppSessionPersistence.deserializeColor) {
-            spectrumGradientStartColor = storedStartColor
-        }
-        if let storedEndColor = preferences.spectrumGradientEndColor.flatMap(AppSessionPersistence.deserializeColor) {
-            spectrumGradientEndColor = storedEndColor
-        }
-        if let storedPeakColor = preferences.spectrumPeakColor.flatMap(AppSessionPersistence.deserializeColor) {
-            spectrumPeakColor = storedPeakColor
-        }
-        spectrumEnabled = preferences.spectrumEnabled
-        spectrumBandCount = preferences.spectrumBandCount
         equalizerEnabled = preferences.equalizerEnabled
         if let storedGains = preferences.equalizerBandGains,
            storedGains.count == AudioEqualizer.bandFrequencies.count {
@@ -3275,9 +2380,6 @@ final class PlayerViewModel {
         if randomPlaybackScope == .library { loadRandomLibraryTracks() }
         if let storedAction = preferences.sidebarDoubleClickActionRawValue.flatMap(SidebarDoubleClickAction.init(rawValue:)) {
             sidebarDoubleClickAction = storedAction
-        }
-        if let lastAudioExportDirectoryPath = preferences.lastAudioExportDirectoryPath {
-            lastAudioExportDirectoryURL = URL(fileURLWithPath: lastAudioExportDirectoryPath, isDirectory: true).standardizedFileURL
         }
         if let storedInterfaceFontSize = preferences.databaseSidebarFontSize ?? preferences.playlistFontSize {
             interfaceFontSize = min(max(CGFloat(storedInterfaceFontSize).rounded(), 6), 18)
@@ -3456,18 +2558,6 @@ final class PlayerViewModel {
         playlist.filter { selectedTrackIDs.contains($0.id) }
     }
 
-    private func ensureAudioExportWindowController() -> AudioExportProgressWindowController {
-        if let audioExportWindowController {
-            return audioExportWindowController
-        }
-        let controller = AudioExportProgressWindowController { [weak self] in
-            self?.audioExportTask?.cancel()
-            self?.statusText = "Cancelling AAC export…"
-        }
-        audioExportWindowController = controller
-        return controller
-    }
-
     private func removeTracks(withIDs ids: Set<String>, status: String) {
         guard !ids.isEmpty else { return }
         playlist.removeAll { ids.contains($0.id) }
@@ -3487,18 +2577,6 @@ final class PlayerViewModel {
         refreshPlaylistMetadata()
         statusText = status
         updateRemoteTransportState()
-    }
-
-    var isLibraryScanInProgress: Bool {
-        libraryScanInProgress
-    }
-
-    func libraryScanProgressFraction(for rootID: Int64) -> Double? {
-        libraryScanProgressByRootID[rootID]?.fraction
-    }
-
-    func libraryScanIsPreparing(rootID: Int64) -> Bool {
-        libraryScanProgressByRootID[rootID]?.total == 0
     }
 
     func savePlaylistM3U() {
@@ -3549,7 +2627,6 @@ final class PlayerViewModel {
             await playback.stopPlayback()
         }
         isPlaying = false
-        toolbarSpectrum.reset()
         currentTrack = nil
         currentMetadata = nil
         playbackElapsedSeconds = 0
@@ -3572,7 +2649,7 @@ final class PlayerViewModel {
     ) {
         librarySelectedFolderPath = lastLibrarySelectedFolderPath
 
-        let enabledRoots = libraryScanRoots.filter(\.isEnabled)
+        let enabledRoots = catalogRoots.filter(\.isEnabled)
         if let lastRootPath,
            let restoredRoot = enabledRoots.first(where: { $0.standardizedURL.path == lastRootPath }) {
             let restoredSelection = lastLibrarySelectedFolderPath
@@ -3648,7 +2725,7 @@ final class PlayerViewModel {
 
     func pathText(for track: TrackItem) -> String {
         let fullPath = track.fullPathText
-        let roots = libraryScanRoots
+        let roots = catalogRoots
             .map(\.standardizedURL)
             .sorted { $0.path.count > $1.path.count }
         guard let root = roots.first(where: {

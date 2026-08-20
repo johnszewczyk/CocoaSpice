@@ -354,12 +354,6 @@ private struct PersistedTrackItem: Codable {
     let trackCount: Int
 }
 
-struct InspectedTrack: Sendable {
-    let track: TrackItem
-    let metadata: TrackMetadata
-}
-
-
 struct PlaylistColumnWidthHints: Equatable, Sendable {
     let indexText: String
     let fileText: String

@@ -12,19 +12,23 @@ final class PlaybackEngine: @unchecked Sendable {
     private var currentMaterializedPath: String?
     private(set) var currentTrack: TrackItem?
     private(set) var currentPlaybackPlan = PlaybackPlan(preFadeSeconds: 150, fadeSeconds: 6, totalSeconds: 156, usesNativeEnding: false, isLongPlay: false)
+    private let controlSurface: PlaybackControlSurface
 
     init() {
+        controlSurface = controller.controlSurface
         _ = controller.subscribe { [weak self] event in
             guard let self, let status = event.status else { return }
             self.publish(status: status)
         }
     }
 
-    func setSpectrumLevelHandler(_ handler: (@Sendable ([Float]) -> Void)?) { handler?([]) }
-    func setSpectrumEnabled(_ enabled: Bool) {}
-    func setSpectrumBandCount(_ bandCount: Int) {}
-    func setAppVolume(_ volume: Float) {}
-    func setMonoEnabled(_ enabled: Bool) {}
+    func setAppVolume(_ volume: Float) {
+        performOutputControl(.setOutputVolume, payload: .init(outputVolume: AudioOutputVolume.clamped(volume)))
+    }
+
+    func setMonoEnabled(_ enabled: Bool) {
+        performOutputControl(.setMonoEnabled, payload: .init(monoEnabled: enabled))
+    }
 
     func setEqualizer(enabled: Bool, bandGains: [Float]) {
         _ = controller.perform(.init(command: .setEqualizer, payload: .init(equalizer: .init(enabled: enabled, gainsDecibels: bandGains))))
@@ -40,18 +44,18 @@ final class PlaybackEngine: @unchecked Sendable {
         return latestPlaybackRequest
     }
 
-    func play(track: TrackItem, plan: PlaybackPlan, requestID: Int) async throws -> TrackMetadata {
+    func play(track: TrackItem, plan: PlaybackPlan, requestID: Int) async throws {
         try await run {
             guard self.isLatest(requestID) else { throw CancellationError() }
-            return try self.load(track: track, plan: plan, resumeAt: 0, autoplay: true)
+            try self.load(track: track, plan: plan, resumeAt: 0, autoplay: true)
         }
     }
 
-    func reconfigureCurrentTrack(plan: PlaybackPlan) async throws -> TrackMetadata {
+    func reconfigureCurrentTrack(plan: PlaybackPlan) async throws {
         try await run {
             guard let track = self.currentTrack else { throw PlaybackSessionError.notLoaded }
             let status = self.controller.perform(.init(command: .status)).status
-            return try self.load(track: track, plan: plan, resumeAt: status?.elapsedSeconds ?? 0, autoplay: status?.isPlaying ?? false)
+            try self.load(track: track, plan: plan, resumeAt: status?.elapsedSeconds ?? 0, autoplay: status?.isPlaying ?? false)
         }
     }
 
@@ -79,7 +83,17 @@ final class PlaybackEngine: @unchecked Sendable {
         await run { self.snapshot(self.controller.perform(.init(command: .status)).status) }
     }
 
-    func diagnosticsSnapshot() -> PlaybackDiagnosticsSnapshot { .idle }
+    func diagnosticsSnapshot() -> PlaybackDiagnosticsSnapshot {
+        let diagnostics = controller.diagnostics()
+        return PlaybackDiagnosticsSnapshot(
+            bufferedFrames: Int64(diagnostics.bufferedFrames),
+            ringBufferFrames: Int64(diagnostics.capacityFrames),
+            underrunCount: diagnostics.underrunCount,
+            clippedSampleCount: 0,
+            sampleRate: diagnostics.sampleRate,
+            outputHealth: diagnostics.isOutputRunning ? .running : .inactive
+        )
+    }
     func currentTrackID() async -> TrackItem.ID? { await run { self.currentTrack?.id } }
 
     func seek(to seconds: TimeInterval) async throws {
@@ -88,12 +102,8 @@ final class PlaybackEngine: @unchecked Sendable {
         }
     }
 
-    private func load(track: TrackItem, plan: PlaybackPlan, resumeAt: TimeInterval, autoplay: Bool) throws -> TrackMetadata {
+    private func load(track: TrackItem, plan: PlaybackPlan, resumeAt: TimeInterval, autoplay: Bool) throws {
         let url = try ZipArchiveSupport.materializePlayableFile(for: track)
-        let inspection = try AudioInspector.inspect(path: url.path)
-        guard inspection.tracks.indices.contains(track.trackIndex) else {
-            throw PlaybackControlError.invalidPayload("Track index is not available for this file.")
-        }
         let mode: VGMBoyKit.PlaybackMode = plan.isLongPlay ? .longPlay : (plan.usesNativeEnding ? .fileDefault : .timed)
         try requireSuccess(controller.perform(.init(command: .setPlaybackMode, payload: .init(playbackMode: mode, playMilliseconds: plan.preFadeSeconds * 1_000, fadeMilliseconds: plan.fadeSeconds * 1_000))))
         try requireSuccess(controller.perform(.init(command: .load, payload: .init(path: url.path, trackIndex: track.trackIndex))))
@@ -104,15 +114,24 @@ final class PlaybackEngine: @unchecked Sendable {
         currentTrack = track
         currentMaterializedPath = url.path
         currentPlaybackPlan = plan
-        return cocoaMetadata(inspection.tracks[track.trackIndex])
-    }
-
-    private func cocoaMetadata(_ metadata: VGMBoyKit.TrackMetadata) -> TrackMetadata {
-        TrackMetadata(game: metadata.game, song: metadata.song, system: metadata.system, author: metadata.author, comment: "", introLengthMs: metadata.introMs, loopLengthMs: metadata.loopMs, playLengthMs: metadata.playMs, fadeLengthMs: metadata.fadeMs)
     }
 
     private func requireSuccess(_ event: PlaybackControlEvent) throws {
         if event.kind == .error { throw NSError(domain: "VGMBoyKit", code: 1, userInfo: [NSLocalizedDescriptionKey: event.message ?? "VGMBoy playback command failed."]) }
+    }
+
+    /// One mapping point for the CocoaSpice Audio panel. When VGMBoy grows a
+    /// new output feature, its capability and typed request are added here;
+    /// the playlist/frontend never reaches into decoder or audio-engine code.
+    private func performOutputControl(_ command: PlaybackControlCommand, payload: PlaybackControlPayload) {
+        guard controlSurface.supports(command) else {
+            assertionFailure("Bundled VGMBoyKit does not expose \(command.rawValue).")
+            return
+        }
+        let event = controller.perform(.init(command: command, payload: payload))
+        if event.kind == .error {
+            assertionFailure(event.message ?? "VGMBoyKit rejected \(command.rawValue).")
+        }
     }
 
     private func snapshot(_ status: VGMBoyKit.PlaybackStatus?) -> PlaybackStatusSnapshot {

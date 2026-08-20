@@ -9,7 +9,6 @@
 - Sidebar toolbar: switches between scanned Games and Files views beside the standard sidebar control.
 - Sidebar: shows a loading indicator while its current database view loads, keeping the main window interactive at launch. Games load first; the potentially large Files tree loads only after Files is opened.
 - Status bar: elapsed time / current-track total / playlist total duration. A plus suffix means some queued tracks do not yet have a known duration.
-- Spectrum analyzer: titlebar accessory at the far right.
 
 ## Options
 
@@ -19,7 +18,7 @@
 ## About
 
 - About CocoaSpice: opens from the standard App menu.
-- About: lists the external decoder and emulator projects used by the app, their purposes, license terms, and source links.
+- About: identifies CocoaSpice and its bundled VGMBoy playback core. The current upstream component inventory, licenses, and source links live in VGMBoy's README.
 
 ## Files
 

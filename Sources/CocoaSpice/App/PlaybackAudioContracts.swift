@@ -27,7 +27,7 @@ enum NativeAudioOutputState: String, Equatable, Sendable {
     case failed
 }
 
-enum PlaybackOutputHealth: String, Equatable, Sendable {
+enum PlaybackOutputHealth: String, Codable, Equatable, Sendable {
     case inactive
     case running
     case stalled
@@ -52,7 +52,7 @@ struct NativeAudioOutputSnapshot: Equatable, Sendable {
     let engineIsRunning: Bool
 }
 
-struct PlaybackDiagnosticsSnapshot: Equatable, Sendable {
+struct PlaybackDiagnosticsSnapshot: Codable, Equatable, Sendable {
     let bufferedFrames: Int64
     let ringBufferFrames: Int64
     let underrunCount: Int64

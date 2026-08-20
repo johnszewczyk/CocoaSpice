@@ -923,12 +923,6 @@ struct PlaylistTableView: NSViewRepresentable {
             paste.isEnabled = model.canPasteTracks
             menu.addItem(paste)
 
-            let exportAAC = NSMenuItem(title: "Export AAC…", action: #selector(exportAAC(_:)), keyEquivalent: "")
-            exportAAC.target = self
-            exportAAC.representedObject = clickedRow
-            exportAAC.isEnabled = clickedRow >= 0 && clickedRow < model.visiblePlaylist.count
-            menu.addItem(exportAAC)
-
             let showInFinder = NSMenuItem(title: "Show in Finder", action: #selector(showSelectedInFinder(_:)), keyEquivalent: "")
             showInFinder.target = self
             showInFinder.isEnabled = model.canShowSelectedTracksInFinder
@@ -971,22 +965,6 @@ struct PlaylistTableView: NSViewRepresentable {
         private func pasteTracks(_ sender: NSMenuItem) {
             model.pasteTracksFromClipboard()
             reload()
-        }
-
-        @objc
-        private func exportAAC(_ sender: NSMenuItem) {
-            guard let row = sender.representedObject as? Int,
-                  row >= 0, row < model.visiblePlaylist.count else { return }
-
-            let clickedTrack = model.visiblePlaylist[row]
-            let tracksToExport: [TrackItem]
-            if model.selectedTrackIDs.contains(clickedTrack.id) {
-                tracksToExport = model.visiblePlaylist.filter { model.selectedTrackIDs.contains($0.id) }
-            } else {
-                tracksToExport = [clickedTrack]
-            }
-
-            model.exportTracksToAAC(tracksToExport)
         }
 
         @objc

@@ -1,5 +1,4 @@
 import AppKit
-import C2SF
 import Foundation
 import Testing
 @testable import CocoaSpice
@@ -9,9 +8,6 @@ import Testing
     #expect(PlayerViewModel.effectiveSidebarBrowserMode(storedMode: .files, searchText: "Castlevania") == .games)
     #expect(PlayerViewModel.effectiveSidebarBrowserMode(storedMode: .files, searchText: "  ") == .files)
 }
-
-// Retain historic test names while production code uses the neutral registry.
-private typealias GMEFormatSupport = PlaybackFormatRegistry
 
 @Test func databaseSidebarDisambiguatesDuplicateGameTitlesBySystem() {
     let items = DatabaseSidebarPresentation.disambiguateGameItems([
@@ -438,7 +434,7 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     let decoded = PlaylistM3UCodec.decode(
         encoded,
         baseDirectory: temporaryDirectory,
-        supportedExtensions: SPCFileScanner.supportedExtensions
+        supportedExtensions: PlaybackFormatRegistry.supportedExtensions
     )
 
     #expect(decoded == [original])

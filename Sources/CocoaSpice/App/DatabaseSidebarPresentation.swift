@@ -1,13 +1,6 @@
 import Foundation
 
 enum DatabaseSidebarPresentation {
-    private static let scanDateFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter
-    }()
-
     static func selectionStatusText(for item: DatabaseGameItem) -> String {
         "\(item.displayName) • \(item.trackCount) track\(item.trackCount == 1 ? "" : "s")"
     }
@@ -40,18 +33,6 @@ enum DatabaseSidebarPresentation {
         }
     }
 
-    static func scanRootStatusText(_ root: LibraryScanRoot, order: Int) -> String {
-        if let error = root.lastScanError, !error.isEmpty {
-            return error
-        }
-
-        if let lastScanCompletedAt = root.lastScanCompletedAt {
-            let count = root.lastScanTrackCount == 0 ? "0 Files" : "\(root.lastScanTrackCount) Files"
-            return "Last Scan \(scanDateFormatter.string(from: lastScanCompletedAt)) • \(count)"
-        }
-
-        return "Not scanned"
-    }
 }
 
 /// Caches prefix-search candidates for the Games sidebar. The input field is

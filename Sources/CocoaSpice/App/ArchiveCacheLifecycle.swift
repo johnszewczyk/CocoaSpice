@@ -19,10 +19,6 @@ struct ArchiveCacheLifecycle {
         cacheRootURL.appendingPathComponent("DisposablePlayback", isDirectory: true)
     }
 
-    var scanScratchRootURL: URL {
-        cacheRootURL.appendingPathComponent("ScanScratch", isDirectory: true)
-    }
-
     func clearAllPlaybackMaterialization() throws {
         let fileManager = FileManager.default
         for rootURL in [durableRootURL, disposableRootURL] where fileManager.fileExists(atPath: rootURL.path) {
@@ -34,9 +30,9 @@ struct ArchiveCacheLifecycle {
         try? FileManager.default.removeItem(at: disposableRootURL)
     }
 
-    /// Removes only material CocoaSpice can prove is disposable: interrupted
-    /// scans, cache-off playback, obsolete pre-policy entries, and hidden
-    /// durable extraction staging directories.
+    /// Removes only material CocoaSpice can prove is disposable: cache-off
+    /// playback, obsolete pre-policy entries, and hidden durable extraction
+    /// staging directories.
     func reclaimAbandonedMaterialization() -> Recovery {
         let fileManager = FileManager.default
         var count = 0
@@ -50,10 +46,9 @@ struct ArchiveCacheLifecycle {
             count += 1
         }
 
-        discard(scanScratchRootURL)
         discard(disposableRootURL)
 
-        let retainedNames: Set<String> = ["DurablePlayback", "ScanScratch", "DisposablePlayback"]
+        let retainedNames: Set<String> = ["DurablePlayback", "DisposablePlayback"]
         if let children = try? fileManager.contentsOfDirectory(at: cacheRootURL, includingPropertiesForKeys: nil) {
             for child in children where !retainedNames.contains(child.lastPathComponent) {
                 discard(child)

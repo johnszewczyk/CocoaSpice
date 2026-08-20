@@ -130,24 +130,16 @@ struct MainView: View {
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else if model.effectiveSidebarBrowserMode == .games && model.databaseGameItems.isEmpty {
-                        if model.isLibraryScanInProgress {
-                            ContentUnavailableView(
-                                "Scanning Database",
-                                systemImage: "books.vertical",
-                                description: Text("The sidebar will populate after the current scan commits its results.")
-                            )
-                        } else {
-                            ContentUnavailableView(
-                                "No Database Games",
-                                systemImage: "books.vertical",
-                                description: Text("Add scan roots in Options to populate the database.")
-                            )
-                        }
+                        ContentUnavailableView(
+                            "No Database Games",
+                            systemImage: "books.vertical",
+                            description: Text("Open a published MediaScanner catalog with game entries.")
+                        )
                     } else if model.effectiveSidebarBrowserMode == .files && model.databaseFileItems.isEmpty {
                         ContentUnavailableView(
                             "No Database Files",
                             systemImage: "folder",
-                            description: Text("Add scan roots in Options to populate the database.")
+                            description: Text("Open a published MediaScanner catalog with file entries.")
                         )
                     } else if model.effectiveSidebarBrowserMode == .games && model.visibleDatabaseGameItems.isEmpty {
                         ContentUnavailableView(
@@ -229,105 +221,6 @@ struct MainView: View {
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.bar)
-    }
-}
-
-private struct WindowToolbarSpectrumAccessory: NSViewRepresentable {
-    let model: ToolbarSpectrumModel
-    let isVisible: Bool
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(model: model)
-    }
-
-    func makeNSView(context: Context) -> AccessoryProbeView {
-        let view = AccessoryProbeView()
-        view.coordinator = context.coordinator
-        return view
-    }
-
-    func updateNSView(_ nsView: AccessoryProbeView, context: Context) {
-        context.coordinator.model = model
-        context.coordinator.updateAccessoryView(isVisible: isVisible, from: nsView)
-    }
-
-    final class Coordinator: NSObject {
-        @MainActor var model: ToolbarSpectrumModel
-        private weak var window: NSWindow?
-        private var hostingView: ToolbarSpectrumNativeView?
-        private weak var titlebarContainerView: NSView?
-
-        @MainActor
-        init(model: ToolbarSpectrumModel) {
-            self.model = model
-        }
-
-        @MainActor
-        func installIfNeeded(from view: NSView) {
-            guard model.isVisible else { return }
-            guard let window = view.window else { return }
-            if self.window !== window {
-                removeSpectrumView()
-                self.window = window
-            }
-
-            guard hostingView == nil else { return }
-            guard let titlebarContainerView = resolveTitlebarContainerView(for: window) else { return }
-
-            let hostingView = ToolbarSpectrumNativeView(model: model)
-            hostingView.translatesAutoresizingMaskIntoConstraints = false
-            titlebarContainerView.addSubview(hostingView)
-
-            NSLayoutConstraint.activate([
-                hostingView.trailingAnchor.constraint(equalTo: titlebarContainerView.trailingAnchor, constant: -14),
-                hostingView.centerYAnchor.constraint(equalTo: titlebarContainerView.centerYAnchor)
-            ])
-
-            self.hostingView = hostingView
-            self.titlebarContainerView = titlebarContainerView
-        }
-
-        @MainActor
-        func updateAccessoryView(isVisible: Bool, from view: NSView? = nil) {
-            guard isVisible else {
-                removeSpectrumView()
-                return
-            }
-            if let view {
-                installIfNeeded(from: view)
-            }
-            hostingView?.invalidateIntrinsicContentSize()
-        }
-
-        @MainActor
-        private func removeSpectrumView() {
-            hostingView?.removeFromSuperview()
-            hostingView = nil
-            titlebarContainerView = nil
-        }
-
-        @MainActor
-        private func resolveTitlebarContainerView(for window: NSWindow) -> NSView? {
-            if let standardButtonSuperview = window.standardWindowButton(.closeButton)?.superview {
-                return standardButtonSuperview
-            }
-            return window.contentView?.superview
-        }
-    }
-}
-
-private final class AccessoryProbeView: NSView {
-    weak var coordinator: WindowToolbarSpectrumAccessory.Coordinator?
-
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            coordinator?.updateAccessoryView(
-                isVisible: coordinator?.model.isVisible ?? false,
-                from: self
-            )
-        }
     }
 }
 

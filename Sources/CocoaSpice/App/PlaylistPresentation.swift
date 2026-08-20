@@ -14,7 +14,7 @@ enum PlaylistPresentation {
     }
 
     static func systemText(for metadata: TrackMetadata?) -> String {
-        metadata?.system.nonEmpty ?? "SNES"
+        metadata?.system.nonEmpty ?? "—"
     }
 
     static func lengthText(for metadata: TrackMetadata?) -> String {

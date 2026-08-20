@@ -6,7 +6,7 @@
 
 - CocoaSpice reads the selected MediaScanner catalog but never modifies it. Scan paths, scanning, link checks, cleanup, and console-tag maintenance exist only in MediaScanner.
 - Database displays the configured shared `Library.sqlite` path and offers Reload Library, Browse, and Use Default. Reload Library invalidates CocoaSpice's read-only browser snapshots and loads the catalog MediaScanner has just published; it does not affect the current playlist or playback. Browse accepts only an existing MediaScanner canonical schema-23 catalog and reports its track count; changing the location is persisted for the next launch and never swaps a live SQLite connection. The default is CocoaSpice's Application Support database.
-- Cache: defaults to on with a 2 GB limit; choose 2 GB, 4 GB, 8 GB, or 16 GB. The panel reports cached usage, file count, and free space on the cache volume. Cached archive material is pruned least-recently-used after a successful materialization. Cache off uses disposable playback storage, removed when playback stops. At launch, CocoaSpice removes only its own abandoned scan scratch, disposable playback material, incomplete extraction staging, and obsolete cache-layout entries. Every archive materialization reserves 1 GB of free disk space and refuses material that cannot fit its active storage limit. Clear Cache stops playback and removes cached or disposable archive material.
+- Cache: defaults to on with a 2 GB limit; choose 2 GB, 4 GB, 8 GB, or 16 GB. The panel reports cached usage, file count, and free space on the cache volume. Cached archive material is pruned least-recently-used after a successful materialization. Cache off uses disposable playback storage, removed when playback stops. At launch, CocoaSpice removes only its own disposable playback material, incomplete extraction staging, and obsolete cache-layout entries. Every archive materialization reserves 1 GB of free disk space and refuses material that cannot fit its active storage limit. Clear Cache stops playback and removes cached or disposable archive material.
 
 ## Audio
 
@@ -23,13 +23,10 @@
 - End Fade: enable or disable the standard six-second fade. With it off, metadata-timed tracks use their native ending.
 - Faded Skip: optionally uses that same six-second duration for Next and Previous while the live source continues playing; press again to advance immediately.
 - Library Behavior: Playlist Follows Cursor applies to the Games browser; the Files browser queues only on double-click or Return. Double-Click Enqueues remains a playback control for Games.
-- Playback Diagnostics: reports current PCM buffer headroom plus per-track underruns and source over-scale samples. These counters reset for each new track; source clipping cannot detect amplifier or speaker distortion.
+- Playback Diagnostics: reports current PCM buffer headroom and per-track underruns from the bundled VGMBoy output. These counters cannot detect amplifier or speaker distortion.
 
 ## Interface
 
-- Spectrum analyzer: off by default. It analyzes audio 10 times per second and redraws the compact toolbar widget at 60 FPS only while enabled and playing; it stops completely when hidden or stopped. Choose 10, 20, or 40 full-range bands and Spectrum Base, Peak, and Cap colors; Reset restores the default colors.
-- Spectrum analyzer: 10/20/40 means 1/2/4 bands per octave from 20 Hz through 20.48 kHz.
-- Spectrum analyzer: `Enable Spectrum` can disable spectrum analysis and its toolbar display while playback continues.
 - Random playback: the main toolbar cycles between Off, Library random, and current Playlist-view random modes.
 - About: the macOS application menu opens the external-component inventory with source and license links.
 - Sidebar and Playlist appearance cards flow side by side when space permits and stack in a narrow Options window.
@@ -45,7 +42,7 @@
 - The window initially opens at 800pt wide and 600pt tall, can be freely resized down to 320pt by 240pt, and remembers its last size and position.
 - Windows Reset restores the default size and centered position for the main, Options, and About windows.
 - The Options sidebar is alphabetized: Audio, Database, Interface, Playback, and Plugins.
-- Plugins currently lists the external decoder/emulation software and versions used by CocoaSpice. It is an inventory only; runtime plugin loading and configuration are not exposed there yet.
+- Plugins links to the bundled VGMBoy component inventory. Runtime plugin loading and configuration are not exposed in CocoaSpice.
 
 ## Files
 

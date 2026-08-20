@@ -1,11 +1,7 @@
-import AppKit
-import C2SF
 import Foundation
 import Testing
+import VGMBoyKit
 @testable import CocoaSpice
-
-// Retain historic test names while production code uses the neutral registry.
-private typealias GMEFormatSupport = PlaybackFormatRegistry
 
 @Test func droppedZipImportCreatesArchiveTracks() async throws {
     #expect(FileManager.default.isExecutableFile(atPath: "/usr/bin/zip"))
@@ -27,15 +23,17 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
         workingDirectory: temporaryDirectory
     )
 
+    #expect(PlaybackFormatRegistry.supportedExtensions.contains("spc"))
+    #expect(try ZipArchiveSupport.listPlayableEntries(
+        in: archiveURL,
+        supportedExtensions: PlaybackFormatRegistry.supportedExtensions
+    ).count == 1)
     let loaded = await PlaylistQueueLoader.loadDroppedTracks(from: [archiveURL])
     #expect(loaded.tracks.count == 1)
     #expect(loaded.tracks[0].isArchiveEntry)
     #expect(loaded.tracks[0].url == archiveURL.standardizedFileURL)
     #expect(loaded.tracks[0].archiveEntryPath == "test.spc")
 
-    let extractedURL = try ZipArchiveSupport.materializePlayableFile(for: loaded.tracks[0])
-    let extractedData = try Data(contentsOf: extractedURL)
-    #expect(extractedData == Data("not-a-real-spc".utf8))
 }
 
 @Test func droppedSevenZipImportCreatesArchiveTracks() async throws {
@@ -62,8 +60,6 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(loaded.tracks[0].isArchiveEntry)
     #expect(loaded.tracks[0].archiveEntryPath == "test.spc")
 
-    let extractedURL = try ZipArchiveSupport.materializePlayableFile(for: loaded.tracks[0])
-    #expect(try Data(contentsOf: extractedURL) == Data("not-a-real-spc".utf8))
 }
 
 @Test func folderQueueIncludesArchiveMembers() async throws {
@@ -130,10 +126,10 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     try FileManager.default.createDirectory(at: audioDirectory, withIntermediateDirectories: true)
     defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
 
-    try Data("one".utf8).write(to: audioDirectory.appendingPathComponent("first.mp3"))
-    try Data("two".utf8).write(to: audioDirectory.appendingPathComponent("second.mp3"))
-    try Data("skip".utf8).write(to: audioDirectory.appendingPathComponent("not-listed.mp3"))
-    try "#EXTM3U\n../audio/second.mp3\n../audio/first.mp3\nmissing.mp3\n".write(
+    try Data("one".utf8).write(to: audioDirectory.appendingPathComponent("first.wav"))
+    try Data("two".utf8).write(to: audioDirectory.appendingPathComponent("second.wav"))
+    try Data("skip".utf8).write(to: audioDirectory.appendingPathComponent("not-listed.wav"))
+    try "#EXTM3U\n../audio/second.wav\n../audio/first.wav\nmissing.wav\n".write(
         to: playlistDirectory.appendingPathComponent("queue.m3u"),
         atomically: true,
         encoding: .utf8
@@ -148,8 +144,8 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     let loaded = await PlaylistQueueLoader.loadDroppedTracks(from: [archiveURL])
 
     #expect(loaded.tracks == [
-        TrackItem(archiveURL: archiveURL, entryPath: "audio/second.mp3"),
-        TrackItem(archiveURL: archiveURL, entryPath: "audio/first.mp3")
+        TrackItem(archiveURL: archiveURL, entryPath: "audio/second.wav"),
+        TrackItem(archiveURL: archiveURL, entryPath: "audio/first.wav")
     ])
 }
 
@@ -161,6 +157,27 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
 
     model.currentTrack = TrackItem(url: URL(fileURLWithPath: "/tmp/test.flac"))
     #expect(!model.currentTrackSupportsLongPlay)
+}
+
+@Test func optionsControlSurfaceIsVersionedAndCodable() throws {
+    let surface = CocoaSpiceFrontendSurface.v1
+    #expect(surface.version == CocoaSpiceFrontendProtocol.version)
+    #expect(surface.supports(.options))
+    #expect(surface.supports(.mainPlayback))
+
+    let command = CocoaSpiceOptionsCommand.setEqualizerBand(index: 4, gain: 3.5)
+    let decoded = try JSONDecoder().decode(
+        CocoaSpiceOptionsCommand.self,
+        from: JSONEncoder().encode(command)
+    )
+    #expect(decoded == command)
+
+    let playbackCommand = CocoaSpiceMainPlaybackCommand.seek(seconds: 42.5)
+    let decodedPlaybackCommand = try JSONDecoder().decode(
+        CocoaSpiceMainPlaybackCommand.self,
+        from: JSONEncoder().encode(playbackCommand)
+    )
+    #expect(decodedPlaybackCommand == playbackCommand)
 }
 
 @Test func playbackPlanHasOnlyDefaultAndLongPlayModes() {
@@ -250,25 +267,26 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(plan.totalSeconds == 96)
 }
 
-@Test func longPlayPlanAppliesOnlyToLoopCapableDecoderExtensions() {
-    for module in GMEFormatSupport.modules {
-        for extensionName in module.supportedExtensions {
-            let plan = PlaybackTimingPolicy.playbackPlan(
-                metadata: nil,
-                trackPathExtension: extensionName.uppercased(),
-                longPlayEnabled: true,
-                manualPreFadeSeconds: 240,
-                fadeSeconds: 6
-            )
-            #expect(plan.isLongPlay == module.supportsLongPlay, "Unexpected Long Play policy for \(extensionName)")
-            if module.supportsLongPlay {
-                #expect(!plan.usesNativeEnding, "Native ending was not suppressed for \(extensionName)")
-                #expect(plan.preFadeSeconds == 240)
-                #expect(plan.fadeSeconds == 6)
-                #expect(plan.totalSeconds == 246)
-            } else {
-                #expect(plan.usesNativeEnding, "Finite audio must retain its native ending for \(extensionName)")
-            }
+@Test func longPlayPlanAppliesOnlyToLoopCapableDecoderExtensions() throws {
+    for extensionName in PlaybackFormatRegistry.supportedExtensions {
+        let supportsLongPlay = try #require(
+            FormatRegistry.family(for: "track.\(extensionName)")?.supportsLongPlay as Bool?
+        )
+        let plan = PlaybackTimingPolicy.playbackPlan(
+            metadata: nil,
+            trackPathExtension: extensionName.uppercased(),
+            longPlayEnabled: true,
+            manualPreFadeSeconds: 240,
+            fadeSeconds: 6
+        )
+        #expect(plan.isLongPlay == supportsLongPlay, "Unexpected Long Play policy for \(extensionName)")
+        if supportsLongPlay {
+            #expect(!plan.usesNativeEnding, "Native ending was not suppressed for \(extensionName)")
+            #expect(plan.preFadeSeconds == 240)
+            #expect(plan.fadeSeconds == 6)
+            #expect(plan.totalSeconds == 246)
+        } else {
+            #expect(plan.usesNativeEnding, "Finite audio must retain its native ending for \(extensionName)")
         }
     }
 
@@ -298,7 +316,6 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     let legacyOnlyPreferences = AppSessionPersistence.restorePlaybackPreferences(defaults: defaults)
     #expect(!legacyOnlyPreferences.longPlayEnabled)
     #expect(legacyOnlyPreferences.manualPreFadeSeconds == nil)
-    #expect(!legacyOnlyPreferences.spectrumEnabled)
     #expect(!legacyOnlyPreferences.databaseSidebarMonospaceFont)
     #expect(legacyOnlyPreferences.databaseSidebarDisclosureGap == nil)
     #expect(legacyOnlyPreferences.databaseSidebarDisclosureGapPoints == nil)
@@ -309,9 +326,6 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
 
     defaults.set(true, forKey: AppDefaultsKey.longPlayEnabled)
     defaults.set(240, forKey: AppDefaultsKey.manualPreFadeSeconds)
-    defaults.set("0.100000,0.200000,0.300000,1.000000", forKey: AppDefaultsKey.spectrumGradientStartColor)
-    defaults.set("0.900000,0.800000,0.700000,1.000000", forKey: AppDefaultsKey.spectrumGradientEndColor)
-    defaults.set("0.400000,0.500000,0.600000,1.000000", forKey: AppDefaultsKey.spectrumPeakColor)
     defaults.set(true, forKey: AppDefaultsKey.sidebarSystemMode)
     defaults.set(true, forKey: AppDefaultsKey.databaseSidebarMonospaceFont)
     defaults.set(12, forKey: AppDefaultsKey.databaseSidebarDisclosureGapPoints)
@@ -324,9 +338,6 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     let unifiedPreferences = AppSessionPersistence.restorePlaybackPreferences(defaults: defaults)
     #expect(unifiedPreferences.longPlayEnabled)
     #expect(unifiedPreferences.manualPreFadeSeconds == 240)
-    #expect(unifiedPreferences.spectrumGradientStartColor == "0.100000,0.200000,0.300000,1.000000")
-    #expect(unifiedPreferences.spectrumGradientEndColor == "0.900000,0.800000,0.700000,1.000000")
-    #expect(unifiedPreferences.spectrumPeakColor == "0.400000,0.500000,0.600000,1.000000")
     #expect(unifiedPreferences.databaseSidebarMonospaceFont)
     #expect(unifiedPreferences.databaseSidebarDisclosureGapPoints == 12)
     #expect(unifiedPreferences.databaseSidebarHidesFileExtensions)
@@ -344,21 +355,12 @@ private typealias GMEFormatSupport = PlaybackFormatRegistry
     #expect(AudioEqualizer.clampedGain(20) == 12)
 }
 
-@Test func spectrumColorSerializationRoundTrips() {
-    let color = NSColor(
-        red: 0.25,
-        green: 0.5,
-        blue: 0.75,
-        alpha: 1
-    )
-    let serialized = AppSessionPersistence.serializedColor(color)
-    let restored = serialized.flatMap(AppSessionPersistence.deserializeColor)
-
-    #expect(serialized == "0.250000,0.500000,0.750000,1.000000")
-    #expect(restored?.redComponent == color.redComponent)
-    #expect(restored?.greenComponent == color.greenComponent)
-    #expect(restored?.blueComponent == color.blueComponent)
-    #expect(restored?.alphaComponent == color.alphaComponent)
+@Test func directImportsUseOnlyDisplayFallbacks() {
+    let track = TrackItem(url: URL(fileURLWithPath: "/music/Example/Game Theme.spc"))
+    #expect(PlaylistPresentation.titleText(for: track, metadata: nil) == "Game Theme")
+    #expect(PlaylistPresentation.gameText(for: track, metadata: nil) == "Example")
+    #expect(PlaylistPresentation.authorText(for: nil) == "—")
+    #expect(PlaylistPresentation.systemText(for: nil) == "—")
 }
 
 private func runProcess(

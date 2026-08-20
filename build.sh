@@ -17,6 +17,7 @@ MPG123_SOURCE="/opt/homebrew/opt/mpg123/lib/libmpg123.0.dylib"
 OGG_SOURCE="/opt/homebrew/opt/libogg/lib/libogg.0.dylib"
 VORBIS_SOURCE="/opt/homebrew/opt/libvorbis/lib/libvorbis.0.dylib"
 VORBISFILE_SOURCE="/opt/homebrew/opt/libvorbis/lib/libvorbisfile.3.dylib"
+SIDPLAYFP_SOURCE="/opt/homebrew/opt/libsidplayfp/lib/libsidplayfp.7.dylib"
 FFMPEG_SOURCES=(
   "/opt/homebrew/opt/ffmpeg/lib/libavcodec.dylib"
   "/opt/homebrew/opt/ffmpeg/lib/libavformat.dylib"
@@ -29,7 +30,7 @@ if [[ ! -f "$LIBGME_SOURCE" ]]; then
   echo "Install it with: brew install game-music-emu"
   exit 1
 fi
-for runtime_library in "$OPENMPT_SOURCE" "$MPG123_SOURCE" "$OGG_SOURCE" "$VORBIS_SOURCE" "$VORBISFILE_SOURCE"; do
+for runtime_library in "$OPENMPT_SOURCE" "$MPG123_SOURCE" "$OGG_SOURCE" "$VORBIS_SOURCE" "$VORBISFILE_SOURCE" "$SIDPLAYFP_SOURCE"; do
   if [[ ! -f "$runtime_library" ]]; then
     echo "Missing $runtime_library"
     echo "Install it with: brew install libopenmpt"
@@ -128,6 +129,7 @@ ditto --noextattr --noqtn "$MPG123_SOURCE" "$STAGING_FRAMEWORKS_DIR/libmpg123.0.
 cp -X "$OGG_SOURCE" "$STAGING_FRAMEWORKS_DIR/libogg.0.dylib"
 cp -X "$VORBIS_SOURCE" "$STAGING_FRAMEWORKS_DIR/libvorbis.0.dylib"
 cp -X "$VORBISFILE_SOURCE" "$STAGING_FRAMEWORKS_DIR/libvorbisfile.3.dylib"
+cp -X "$SIDPLAYFP_SOURCE" "$STAGING_FRAMEWORKS_DIR/libsidplayfp.7.dylib"
 
 # vgmstream uses FFmpeg for ATRAC3/MSF decoding. Copy the four directly linked
 # FFmpeg dylibs and every Homebrew dylib they depend on, then retarget all
@@ -170,7 +172,7 @@ for runtime_library in "${FFMPEG_SOURCES[@]}"; do
 done
 
 install_name_tool -id "@executable_path/../Frameworks/libgme.0.dylib" "$STAGING_FRAMEWORKS_DIR/libgme.0.dylib"
-for runtime_library in libopenmpt.0.dylib libmpg123.0.dylib libogg.0.dylib libvorbis.0.dylib libvorbisfile.3.dylib; do
+for runtime_library in libopenmpt.0.dylib libmpg123.0.dylib libogg.0.dylib libvorbis.0.dylib libvorbisfile.3.dylib libsidplayfp.7.dylib; do
   install_name_tool -id "@executable_path/../Frameworks/$runtime_library" "$STAGING_FRAMEWORKS_DIR/$runtime_library"
 done
 install_name_tool -change "/opt/homebrew/opt/game-music-emu/lib/libgme.0.dylib" "@executable_path/../Frameworks/libgme.0.dylib" "$STAGING_EXECUTABLE" || true
@@ -179,6 +181,7 @@ install_name_tool -change "/opt/homebrew/opt/libopenmpt/lib/libopenmpt.0.dylib" 
 install_name_tool -change "$OGG_SOURCE" "@executable_path/../Frameworks/libogg.0.dylib" "$STAGING_EXECUTABLE" || true
 install_name_tool -change "$VORBIS_SOURCE" "@executable_path/../Frameworks/libvorbis.0.dylib" "$STAGING_EXECUTABLE" || true
 install_name_tool -change "$VORBISFILE_SOURCE" "@executable_path/../Frameworks/libvorbisfile.3.dylib" "$STAGING_EXECUTABLE" || true
+install_name_tool -change "$SIDPLAYFP_SOURCE" "@executable_path/../Frameworks/libsidplayfp.7.dylib" "$STAGING_EXECUTABLE" || true
 install_name_tool -change "/opt/homebrew/opt/mpg123/lib/libmpg123.0.dylib" "@executable_path/../Frameworks/libmpg123.0.dylib" "$STAGING_FRAMEWORKS_DIR/libopenmpt.0.dylib"
 install_name_tool -change "/opt/homebrew/opt/libogg/lib/libogg.0.dylib" "@executable_path/../Frameworks/libogg.0.dylib" "$STAGING_FRAMEWORKS_DIR/libopenmpt.0.dylib"
 install_name_tool -change "/opt/homebrew/opt/libvorbis/lib/libvorbis.0.dylib" "@executable_path/../Frameworks/libvorbis.0.dylib" "$STAGING_FRAMEWORKS_DIR/libopenmpt.0.dylib"

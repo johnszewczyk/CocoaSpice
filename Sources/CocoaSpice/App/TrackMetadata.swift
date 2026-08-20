@@ -1,7 +1,7 @@
 import Foundation
 
-/// Metadata already published in the catalog, or supplied transiently by the
-/// playback core. CocoaSpice never decodes a source merely to populate it.
+/// Metadata published in the selected catalog. CocoaSpice never decodes a
+/// source or asks VGMBoyKit to populate these fields.
 struct TrackMetadata: Codable, Equatable, Sendable {
     let game: String
     let song: String
