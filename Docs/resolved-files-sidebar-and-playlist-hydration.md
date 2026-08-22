@@ -9,7 +9,6 @@ Canonical current behavior and engineering constraints live in:
 - [Database Browser](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-human/database-browser.md)
 - [Library Browser Database](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/library-browser-database.md)
 - [Database Sidebar Presentation](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/database-sidebar-presentation.md)
-- [Library Scan Roots](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/library-scan-roots.md)
 
 This report retains the measured closeout evidence for the original bug.
 
@@ -48,5 +47,4 @@ Full rescans persist into a disabled staging root while the last committed sideb
 - [DatabaseSidebarLoader.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarLoader.swift)
 - [LibraryDatabase.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase.swift)
 - [LibraryDatabase+ReadQueries.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase+ReadQueries.swift)
-- [LibraryDatabase+FileSidebarBuckets.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase+FileSidebarBuckets.swift)
 - [PlaylistQueueLoader.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlaylistQueueLoader.swift)

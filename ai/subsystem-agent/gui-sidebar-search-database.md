@@ -30,5 +30,4 @@
 - [NativeSearchField.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/NativeSearchField.swift)
 - [PlayerViewModel.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
 - [Cross-app search-view fixture](/Users/john/Downloads/Code/CocoaSpice/Tests/CocoaSpiceTests/cross-app-sidebar-search-view-v1.json)
-- [Sister-app conformance contract](/Users/john/Downloads/Code/DocMan/Docs/cocoaspice-spcboy-conformance.md)
 - [LibraryDatabase.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase.swift)

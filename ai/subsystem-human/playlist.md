@@ -27,6 +27,10 @@
 - Rows: Return starts playback of the primary selected row.
 - Rows: transport button plays or stops the row.
 - Queue: cut, paste, delete, move, and drag-reorder.
+- Context menu: `Export AAC` renders the clicked playlist track through bundled VGMBoy into the
+  configured AAC Export Folder. It uses the active Long Play/end-fade timing and does not interrupt
+  current playback. The filename begins with the catalog track title, or the displayed playlist name
+  when that title is absent.
 - Files: Finder drops add supported files, folders, and ZIP, 7z, or RSN archives.
 - Files: queueing a folder expands supported archive members and multi-track containers into playlist leaves.
 - Playlists: dropping an `.m3u` appends its playable entries to the current queue.

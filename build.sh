@@ -45,29 +45,7 @@ for runtime_library in "${FFMPEG_SOURCES[@]}"; do
   fi
 done
 
-if [[ ! -x "$ROOT_DIR/scripts/build-libvgm.sh" ]]; then
-  chmod +x "$ROOT_DIR/scripts/build-libvgm.sh"
-fi
-if [[ ! -x "$ROOT_DIR/scripts/build-mgba.sh" ]]; then
-  chmod +x "$ROOT_DIR/scripts/build-mgba.sh"
-fi
-if [[ ! -x "$ROOT_DIR/scripts/build-lazyusf.sh" ]]; then
-  chmod +x "$ROOT_DIR/scripts/build-lazyusf.sh"
-fi
-if [[ ! -x "$ROOT_DIR/scripts/build-2sf.sh" ]]; then
-  chmod +x "$ROOT_DIR/scripts/build-2sf.sh"
-fi
-if [[ ! -x "$ROOT_DIR/scripts/build-play-psf.sh" ]]; then
-  chmod +x "$ROOT_DIR/scripts/build-play-psf.sh"
-fi
-if [[ ! -x "$ROOT_DIR/scripts/build-highly-theoretical.sh" ]]; then
-  chmod +x "$ROOT_DIR/scripts/build-highly-theoretical.sh"
-fi
-if [[ ! -x "$ROOT_DIR/scripts/build-vgmstream.sh" ]]; then
-  chmod +x "$ROOT_DIR/scripts/build-vgmstream.sh"
-fi
-
-mkdir -p "$BUILD_DIR" "$DIST_DIR"
+mkdir -p "$BUILD_DIR" "$DIST_DIR" "$BUILD_DIR/clang-module-cache" "$BUILD_DIR/swift-module-cache"
 
 xattr -d com.apple.lastuseddate#PS "$ROOT_DIR/app-icon.png" 2>/dev/null || true
 xattr -d com.apple.metadata:kMDItemDownloadedDate "$ROOT_DIR/app-icon.png" 2>/dev/null || true
@@ -76,31 +54,16 @@ xattr -d com.apple.quarantine "$ROOT_DIR/app-icon.png" 2>/dev/null || true
 
 export CLANG_MODULE_CACHE_PATH="$BUILD_DIR/clang-module-cache"
 export SWIFT_MODULECACHE_PATH="$BUILD_DIR/swift-module-cache"
+export SWIFTPM_MODULECACHE_OVERRIDE="$BUILD_DIR/swift-module-cache"
 
-if [[ ! -f "$BUILD_DIR/libvgm/bin/libvgm-player.a" ]]; then
-  "$ROOT_DIR/scripts/build-libvgm.sh"
-fi
-if [[ ! -f "$BUILD_DIR/mgba/libmgba.a" ]]; then
-  "$ROOT_DIR/scripts/build-mgba.sh"
-fi
-if [[ ! -f "$BUILD_DIR/lazyusf/liblazyusf.a" || ! -f "$BUILD_DIR/lazyusf/libpsflib.a" ]]; then
-  "$ROOT_DIR/scripts/build-lazyusf.sh"
-fi
-if [[ ! -f "$BUILD_DIR/2sf/lib2sf.a" ]]; then
-  "$ROOT_DIR/scripts/build-2sf.sh"
-fi
-if [[ ! -f "$BUILD_DIR/play-psf/libcocoaspice_play_psf.a" ]]; then
-  "$ROOT_DIR/scripts/build-play-psf.sh"
-fi
-if [[ ! -f "$BUILD_DIR/highly-theoretical/libhighly_theoretical.a" ]]; then
-  "$ROOT_DIR/scripts/build-highly-theoretical.sh"
-fi
-"$ROOT_DIR/scripts/build-vgmstream.sh"
+VGMBoy_DIR="$ROOT_DIR/../VGMBoy"
+"$VGMBoy_DIR/scripts/build-dependencies.sh"
 
 swift build \
   --package-path "$ROOT_DIR" \
   --product "$APP_NAME" \
   --configuration "$CONFIGURATION" \
+  --disable-sandbox \
   --scratch-path "$BUILD_DIR"
 
 STAGING_ROOT="$(mktemp -d "/private/tmp/CocoaSpice-bundle.XXXXXX")"

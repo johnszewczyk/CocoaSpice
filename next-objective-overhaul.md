@@ -28,9 +28,6 @@ SPCBoy uses a 10 ms linear envelope. This is intentionally short enough to leave
 
 `AudioEngine` now owns a transport-only gain separate from its app-volume and EQ settings. The Core Audio callback applies the ramp to the exact samples about to reach the device.
 
-- [audio_engine.h](/Users/john/Downloads/Code/SPCBoy/native/audio_engine.h) exposes `audio_engine_set_transport_gain` and `audio_engine_ramp_transport_gain`.
-- [audio_engine_macos.c](/Users/john/Downloads/Code/SPCBoy/native/audio_engine_macos.c) stores atomic current/target/ramp-frame state and applies it after PCM has left the ring buffer. No decoder call or renderer/UI work happens in that callback.
-- [libgme_tool.c](/Users/john/Downloads/Code/SPCBoy/native/libgme_tool.c) defines `TRANSPORT_DECLICK_MS = 10`; `player-play` starts at zero and ramps to unity. Its `player-ramp-gain` command drives a live fade without replacing the decoder.
 
 The helper bridge stays narrow:
 
@@ -49,7 +46,7 @@ Normal native track replacement no longer closes the helper/output runtime betwe
 
 This is specifically different from “leave stale PCM in a ring.” The old decoder and ring data are still invalidated; only the output runtime is retained. The result is no device-level close/reopen discontinuity and no stale-audio leak.
 
-Relevant implementation: [SPCBoy native transport](/Users/john/Downloads/Code/SPCBoy/native/libgme_tool.c), [SPCBoy renderer transition coordinator](/Users/john/Downloads/Code/SPCBoy/web/app-playback.js).
+Relevant implementation: [SPCBoy renderer transition coordinator](/Users/john/Downloads/Code/SPCBoy/web/app-playback.js).
 
 ### Renderer-PCM equivalent
 
@@ -85,7 +82,7 @@ Direct implementation: [Faded Skip coordinator](/Users/john/Downloads/Code/SPCBo
 
 ### CocoaSpice implications
 
-CocoaSpice already has one final-mixer transition policy described in [audio-playback-streaming.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-playback-streaming.md). If Faded Skip is added or repaired there, it should be a state in that same session-owned transition policy:
+CocoaSpice already has one final-mixer transition policy in its playback backend. If Faded Skip is added or repaired there, it should be a state in that same session-owned transition policy:
 
 - Store a pending adjacent-track request with the session generation.
 - Schedule the ordinary user-selected fade on the final mixer while preserving the current decoder/session.

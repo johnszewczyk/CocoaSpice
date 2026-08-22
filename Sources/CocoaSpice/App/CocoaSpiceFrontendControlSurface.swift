@@ -55,6 +55,7 @@ struct CocoaSpiceOptionsSnapshot: Codable, Equatable, Sendable {
     let cacheLimitBytes: Int64
     let cacheSummary: String
     let isClearingCache: Bool
+    let aacExportDirectory: String
     let diagnostics: PlaybackDiagnosticsSnapshot
 }
 
@@ -88,6 +89,7 @@ enum CocoaSpiceOptionsCommand: Codable, Equatable, Sendable {
     case setCacheEnabled(Bool)
     case setCacheLimitBytes(Int64)
     case clearCache
+    case selectAACExportDirectory(path: String)
 }
 
 /// Adapter from a future skin to the established CocoaSpice model. It keeps
@@ -129,6 +131,7 @@ final class CocoaSpiceOptionsControlSurface {
             cacheLimitBytes: model.archiveCachePolicy.maximumBytes,
             cacheSummary: model.archiveCacheSummaryText,
             isClearingCache: model.isClearingArchiveCache,
+            aacExportDirectory: model.aacExportDirectoryPath,
             diagnostics: model.playbackDiagnostics
         )
     }
@@ -189,6 +192,8 @@ final class CocoaSpiceOptionsControlSurface {
             model.setArchiveCacheLimitBytes(bytes)
         case .clearCache:
             model.clearArchiveCache()
+        case .selectAACExportDirectory(let path):
+            model.setAACExportDirectory(URL(fileURLWithPath: path, isDirectory: true))
         }
     }
 }

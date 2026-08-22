@@ -202,6 +202,26 @@ struct OptionsView: View {
             appVolumeCard
             monoCard
             equalizerCard
+            sectionCard(title: "AAC Export") {
+                HStack(alignment: .center, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Export Folder")
+                        Text(model.aacExportDirectoryPath)
+                            .font(.system(size: 11, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .textSelection(.enabled)
+                        Text("Playlist Export AAC writes a finite VGMBoy render here. New installs default to Downloads.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button("Browse…") {
+                        model.chooseAACExportDirectory()
+                    }
+                }
+            }
         }
     }
 

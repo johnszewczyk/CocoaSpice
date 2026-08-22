@@ -25,6 +25,12 @@
 - Library Behavior: Playlist Follows Cursor applies to the Games browser; the Files browser queues only on double-click or Return. Double-Click Enqueues remains a playback control for Games.
 - Playback Diagnostics: reports current PCM buffer headroom and per-track underruns from the bundled VGMBoy output. These counters cannot detect amplifier or speaker distortion.
 
+## Audio
+
+- AAC Export Folder: chooses where `Export AAC` writes its output. The default is the user’s
+  Downloads folder. CocoaSpice remembers only this folder preference; VGMBoy creates the sanitized,
+  non-overwriting `.aac` filename and renders the audio offline.
+
 ## Interface
 
 - Random playback: the main toolbar cycles between Off, Library random, and current Playlist-view random modes.

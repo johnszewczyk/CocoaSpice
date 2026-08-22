@@ -302,6 +302,8 @@ final class PlayerViewModel {
     private(set) var archiveCacheSummaryText = "Unavailable"
     private(set) var isClearingArchiveCache = false
     var archiveCachePolicy = ArchiveCachePolicy.load()
+    var isExportingAAC = false
+    private var selectedAACExportDirectory: URL?
     private(set) var deadLinkSummaryText = "Unavailable"
     private(set) var deadLinkCount = 0
     private(set) var databaseEntryCount = 0
@@ -365,6 +367,67 @@ final class PlayerViewModel {
 
     var configuredLibraryDatabasePath: String {
         (try? LibraryDatabase.configuredDatabaseURL().path) ?? "Library database unavailable"
+    }
+
+    /// The frontend persists only its output-folder preference. VGMBoy is
+    /// passed that folder and owns validation, safe naming, collisions, and
+    /// AAC generation; no catalog metadata crosses the boundary.
+    var aacExportDirectory: URL {
+        if let selectedAACExportDirectory { return selectedAACExportDirectory }
+        if let stored = UserDefaults.standard.string(forKey: AppDefaultsKey.aacExportDirectory), !stored.isEmpty {
+            return URL(fileURLWithPath: stored, isDirectory: true)
+        }
+        return FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+            ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Downloads", isDirectory: true)
+    }
+
+    var aacExportDirectoryPath: String { aacExportDirectory.path }
+
+    func chooseAACExportDirectory() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose AAC Export Folder"
+        panel.prompt = "Choose Folder"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.canCreateDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.directoryURL = aacExportDirectory
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        setAACExportDirectory(url)
+    }
+
+    func setAACExportDirectory(_ url: URL) {
+        let directory = url.standardizedFileURL
+        selectedAACExportDirectory = directory
+        UserDefaults.standard.set(directory.path, forKey: AppDefaultsKey.aacExportDirectory)
+    }
+
+    func exportTrackAsAAC(_ track: TrackItem) {
+        guard !isExportingAAC else {
+            statusText = "AAC export already in progress"
+            return
+        }
+        isExportingAAC = true
+        let catalogMetadata = metadataCache[track.id]
+        let plan = playbackPlan(for: catalogMetadata, trackPathExtension: track.playablePathExtension)
+        let destination = aacExportDirectory
+        statusText = "Exporting \(track.displayName) to AAC…"
+        let playback = self.playback
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.isExportingAAC = false }
+            do {
+                let output = try await playback.exportAAC(
+                    track: track,
+                    plan: plan,
+                    outputDirectory: destination,
+                    filenameStem: catalogMetadata?.song.nonEmpty ?? track.displayName
+                )
+                self.statusText = "Exported AAC: \(output.lastPathComponent)"
+            } catch {
+                self.statusText = error.localizedDescription
+            }
+        }
     }
 
     func chooseLibraryDatabase() {

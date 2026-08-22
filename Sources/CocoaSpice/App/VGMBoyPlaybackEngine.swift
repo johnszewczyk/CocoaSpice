@@ -6,6 +6,7 @@ import VGMBoyKit
 final class PlaybackEngine: @unchecked Sendable {
     private let controller = PlaybackController()
     private let queue = DispatchQueue(label: "CocoaSpice.vgmboy-playback", qos: .userInitiated)
+    private let exportQueue = DispatchQueue(label: "CocoaSpice.vgmboy-export", qos: .utility)
     private let requestLock = NSLock()
     private var latestPlaybackRequest = 0
     private var playbackStateHandler: (@Sendable (PlaybackStatusSnapshot) -> Void)?
@@ -99,6 +100,29 @@ final class PlaybackEngine: @unchecked Sendable {
     func seek(to seconds: TimeInterval) async throws {
         try await run {
             try self.requireSuccess(self.controller.perform(.init(command: .seek, payload: .init(positionMilliseconds: Int(max(0, seconds) * 1_000)))))
+        }
+    }
+
+    /// Archive materialization remains a CocoaSpice concern. Once a naked
+    /// playable path is ready, VGMBoy owns the offline decode and AAC write.
+    func exportAAC(track: TrackItem, plan: PlaybackPlan, outputDirectory: URL, filenameStem: String) async throws -> URL {
+        try await withCheckedThrowingContinuation { continuation in
+            exportQueue.async {
+                do {
+                    let sourceURL = try ZipArchiveSupport.materializePlayableFile(for: track)
+                    let result = try self.controller.exportAAC(AACExportRequest(
+                        sourcePath: sourceURL.path,
+                        trackIndex: track.trackIndex,
+                        outputDirectory: outputDirectory,
+                        filenameStem: filenameStem,
+                        playMilliseconds: plan.preFadeSeconds * 1_000,
+                        fadeMilliseconds: plan.fadeSeconds * 1_000
+                    ))
+                    continuation.resume(returning: result.outputURL)
+                } catch {
+                    continuation.resume(throwing: error)
+                }
+            }
         }
     }
 

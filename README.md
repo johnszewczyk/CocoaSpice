@@ -85,5 +85,5 @@ frontend.
 ## License and notices
 
 CocoaSpice bundles VGMBoyKit and therefore redistributes upstream components under their own
-terms. Preserve the relevant notices in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md) and
-the vendored source trees when distributing a build.
+terms. Preserve the relevant notices in [THIRD_PARTY_LICENSES.md](THIRD_PARTY_LICENSES.md). The
+decoder source garden and its build ownership live in the sibling VGMBoy repository.

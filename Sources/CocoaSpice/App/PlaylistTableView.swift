@@ -898,6 +898,11 @@ struct PlaylistTableView: NSViewRepresentable {
                 playNow.target = self
                 playNow.representedObject = clickedRow
                 menu.addItem(playNow)
+                let exportAAC = NSMenuItem(title: "Export AAC", action: #selector(exportAACFromMenu(_:)), keyEquivalent: "")
+                exportAAC.target = self
+                exportAAC.representedObject = clickedRow
+                exportAAC.isEnabled = !model.isExportingAAC
+                menu.addItem(exportAAC)
                 menu.addItem(.separator())
             }
 
@@ -941,6 +946,13 @@ struct PlaylistTableView: NSViewRepresentable {
             guard let row = sender.representedObject as? Int,
                   row >= 0, row < model.visiblePlaylist.count else { return }
             activateRow(row)
+        }
+
+        @objc
+        private func exportAACFromMenu(_ sender: NSMenuItem) {
+            guard let row = sender.representedObject as? Int,
+                  row >= 0, row < model.visiblePlaylist.count else { return }
+            model.exportTrackAsAAC(model.visiblePlaylist[row])
         }
 
         @objc

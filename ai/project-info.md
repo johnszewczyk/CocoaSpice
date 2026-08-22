@@ -28,8 +28,6 @@ Human-facing behavior:
 
 Agent engineering notes:
 
-- Sister-app behavioral conformance with SPCBoy: [cocoaspice-spcboy-conformance.md](/Users/john/Downloads/Code/DocMan/Docs/cocoaspice-spcboy-conformance.md)
-- Sister-app scanner architecture, policy, and remaining validation: [cocoaspice-spcboy-scanner-investigation.md](/Users/john/Downloads/Code/DocMan/Docs/cocoaspice-spcboy-scanner-investigation.md)
 - VGMBoy playback integration: [audio-playback-backend-routing.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-playback-backend-routing.md)
 - Skin-neutral Options control boundary: [frontend-control-surface.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/frontend-control-surface.md)
 - Database ownership: [library-browser-database.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/library-browser-database.md), [shared-catalog-boundary.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/shared-catalog-boundary.md), [database-sidebar-presentation.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/database-sidebar-presentation.md)
@@ -43,7 +41,7 @@ Agent engineering notes:
 - Agent subsystem notes describe only current engineering constraints and ownership facts.
 - CocoaSpice never writes, scans, migrates, or enriches the selected MediaScanner catalog.
 - Keep database browsing and queue construction separate from VGMBoy playback control.
-- Format routing, decoder integration, timing, and audio output belong to VGMBoyKit; CocoaSpice must not add decoder or audio-engine implementations.
+- Format routing, decoder integration, timing, audio output, and scanner-plugin build ownership belong to VGMBoyKit/VGMBoy; CocoaSpice must not add decoder, audio-engine, or ScanSong plugin implementations.
 - Keep the UI native and simple before inventing custom chrome.
 
 ## Human Docs

@@ -1,8 +1,10 @@
-# App Family Shared Modules — Remaining Work
+# App Family Shared Modules — Current Architecture and Remaining Work
 
 ## Current Production Boundary
 
-CocoaSpice is the parent/core application for the current app family.
+CocoaSpice is the native SwiftUI frontend/reference application for the current
+app family. VGMBoy owns the shared playback/decoder core and compiled
+dependency staging used by the family.
 MediaScanner is the only schema-23 catalog writer. CocoaSpice and SPCBoy select
 and validate a catalog, open it through OS-level read-only SQLite handles, load
 stored rows into playlists, and play those rows without database writeback.
@@ -16,10 +18,12 @@ boundaries remain explicit. The eventual app-family repository may contain
 multiple frontends while continuing to build the scanner and catalog reader as
 separate modules:
 
-- CocoaSpice: native SwiftUI parent/reference frontend.
+- CocoaSpice: native SwiftUI frontend/reference application.
 - SPCBoy: Electron frontend with the current web UI.
 - SWIFTBoy: planned Swift core plus WKWebView frontend using the SPCBoy skin.
 - MediaScanner: native GUI/CLI and sole catalog writer.
+- VGMBoy: playback/decoder core, dependency staging, and scanner-facing
+  inspection plugin builds.
 
 ## Completed Verification
 
@@ -47,29 +51,36 @@ separate modules:
   rows. Both readers already hide those inactive rows. Clear Dead Links is the
   confirmed destructive purge.
 
-## Remaining Scanner Adapter Tranche
+## Scanner and decoder ownership
 
-These are correctness gaps, not fallback requests. A source requiring one of
-these adapters currently fails explicitly and retains the last known-good
-catalog rows instead of publishing an invented single track.
+ScanSong consumes inspection executables built through VGMBoy's explicit
+boundary. It does not reach into CocoaSpice's application target or launch
+player helpers. VGMBoy currently builds the vgmstream scanner CLI and the
+Highly Complete inspection product; the shared upstream source checkout remains
+in CocoaSpice's vendor directory during this safe migration.
 
-1. Add a shared vgmstream adapter for required dependency resolution and
+Correctness gaps remain feature work, not ownership migration. A source
+requiring one of these adapters currently fails explicitly and retains the last
+known-good catalog rows instead of publishing an invented single track.
+
+1. Add/extend vgmstream required-dependency resolution and
    subsong enumeration, including TXTP and bank/container families.
-2. Move Highly Complete GSF/miniGSF dependency inspection into MediaScanner.
-3. Add bounded gzip-aware VGZ GD3/timing inspection equivalent to plain VGM.
-4. Audit PSF/PSF2, USF, 2SF, and SSF dependency families against representative
+2. Add bounded gzip-aware VGZ GD3/timing inspection equivalent to plain VGM.
+3. Audit PSF/PSF2, USF, 2SF, and SSF dependency families against representative
    loose and archived sets; direct tags alone must not hide structural needs.
-5. Add malformed/truncated fixtures and child-process termination tests for
+4. Add malformed/truncated fixtures and child-process termination tests for
    every external archive/decoder adapter.
-6. Add unique, collision-safe relocation recognition for inactive sources so a
+5. Add unique, collision-safe relocation recognition for inactive sources so a
    moved file can reuse retained metadata by strong fingerprint. Same-path
    restoration works now; path-independent matching is not yet claimed.
 
 ## CocoaSpice Cleanup Tranche
 
-CocoaSpice still compiles its former scanner implementation because several
-native decoder and archive adapters originated there. Production does not open
-the writer or scan controller. After the adapters above live in MediaScanner:
+CocoaSpice is no longer the owner of scanner-plugin or playback-core build
+outputs. Its build delegates shared dependency staging to VGMBoy, while the
+shared upstream source checkout remains here until a separate source-relocation
+pass can validate every consumer. Production does not open the writer or scan
+controller. Remaining cleanup is therefore limited to:
 
 1. Remove legacy schema migration and catalog-write sources from the CocoaSpice
    application target.

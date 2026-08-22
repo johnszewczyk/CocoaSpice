@@ -13,7 +13,9 @@
 - Repeat: the toolbar cycles Off, Repeat Playlist, and Repeat Song.
 - Controls: rapid previous or next commands use the newest requested track.
 - Playback: starts through VGMBoy's shared audio session.
-- Track changes: starting or skipping to another track clears prior decoded audio before the new track begins.
+- Track changes: starting or skipping to another track makes a short clean output transition before
+  the new track begins. The bundled audio endpoint stays ready between tracks, so CocoaSpice does
+  not reopen the macOS device for each selection or pause.
 - Archives: supported game-music files can play from ZIP, 7z, RSN, and TAR+Zstandard (`.tar.zst`/`.tzst`) containers; the selected member is materialized into the cache.
 - Database playlists: choosing an item in the sidebar immediately publishes its stored source, archive-member, subtrack, and cached metadata rows. CocoaSpice does not rescan, inspect, extract, or write the catalog while hydrating that playlist.
 - Format-specific decoding, dependency handling, subtrack behavior, and timing are owned by VGMBoyKit. CocoaSpice passes a materialized playable path and catalog subtrack index; it does not inspect decoder headers or tags.

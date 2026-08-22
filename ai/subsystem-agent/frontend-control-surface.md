@@ -27,6 +27,10 @@ knowledge.
 - `CocoaSpiceOptionsCommand` changes those options and performs each
   non-window-specific Options action. It does not accept catalog rows,
   decoder metadata, playback paths, or scanner work.
+- The snapshot/command contract includes the AAC export folder. Native CocoaSpice presents its
+  folder chooser with `NSOpenPanel`; a future skin supplies the chosen folder path through the
+  same `selectAACExportDirectory` command. Export itself remains a playlist action routed to
+  VGMBoy, not an Options-side encoder.
 - `CocoaSpiceMainPlaybackSnapshot` and `CocoaSpiceMainPlaybackCommand` cover
   the visible transport, seek, Long Play, repeat, and random controls.
 - A caller queries a fresh snapshot after a command. There is no WebKit

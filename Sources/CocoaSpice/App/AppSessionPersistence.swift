@@ -43,6 +43,7 @@ enum AppDefaultsKey {
     static let sidebarBrowserMode = "CocoaSpice.sidebarBrowserMode"
     static let archiveCacheMode = "CocoaSpice.archiveCacheMode"
     static let archiveCacheLimitBytes = "CocoaSpice.archiveCacheLimitBytes"
+    static let aacExportDirectory = "CocoaSpice.aacExportDirectory"
 }
 
 struct RestoredPlaybackPreferences {
