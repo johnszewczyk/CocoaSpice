@@ -1,4 +1,5 @@
 import Foundation
+import LocalFileBrowserCore
 import OSLog
 
 struct LoadedPlaylistData: Sendable {
@@ -302,18 +303,17 @@ enum PlaylistQueueLoader {
     }
 
     private static func directoryPlayableFileURLs(in folderURL: URL) -> [URL] {
-        let urls = (try? FileManager.default.contentsOfDirectory(
-            at: folderURL,
-            includingPropertiesForKeys: [.isRegularFileKey],
-            options: [.skipsHiddenFiles]
-        )) ?? []
-
-        return urls
-            .filter {
-                ZipArchiveSupport.canHandle($0)
-                    || PlaybackFormatRegistry.admits(fileURL: $0)
+        guard let session = try? LocalFileBrowserSession(
+            rootURL: folderURL,
+            isPlayableFile: { url in
+                ZipArchiveSupport.canHandle(url) || PlaybackFormatRegistry.admits(fileURL: url)
             }
-            .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
+        ) else {
+            return []
+        }
+        return (try? session.children(of: folderURL))?.filter { $0.kind == .file }
+            .map { URL(fileURLWithPath: $0.path) }
+            ?? []
     }
 
     private static func appendFile(

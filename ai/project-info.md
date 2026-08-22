@@ -11,6 +11,7 @@
 - Main shell and toolbar.
 - Playlist and queue operations.
 - Read-only database browsing and queue projections.
+- Local-folder queue enumeration through shared `LocalFileBrowserCore`.
 - VGMBoy playback controls, transport, timing, and equalizer presentation.
 - Persistence and async task ownership.
 - Build and runtime packaging.

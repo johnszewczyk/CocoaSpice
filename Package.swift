@@ -12,6 +12,7 @@ let package = Package(
     ],
     dependencies: [
         .package(path: "../CatalogReader"),
+        .package(path: "../FrontendCore"),
         .package(path: "../VGMBoy")
     ],
     targets: [
@@ -19,6 +20,7 @@ let package = Package(
             name: "CocoaSpice",
             dependencies: [
                 .product(name: "CatalogReader", package: "CatalogReader"),
+                .product(name: "LocalFileBrowserCore", package: "FrontendCore"),
                 .product(name: "VGMBoyKit", package: "VGMBoy")
             ],
             linkerSettings: [
