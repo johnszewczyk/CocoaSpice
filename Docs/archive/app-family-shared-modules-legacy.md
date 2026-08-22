@@ -56,8 +56,8 @@ separate modules:
 ScanSong consumes inspection executables built through VGMBoy's explicit
 boundary. It does not reach into CocoaSpice's application target or launch
 player helpers. VGMBoy currently builds the vgmstream scanner CLI and the
-Highly Complete inspection product; the shared upstream source checkout remains
-in CocoaSpice's vendor directory during this safe migration.
+Highly Complete inspection product; the shared upstream source checkout is in
+VGMBoy's shared source garden. CocoaSpice has no local decoder source or plugin build path.
 
 Correctness gaps remain feature work, not ownership migration. A source
 requiring one of these adapters currently fails explicitly and retains the last

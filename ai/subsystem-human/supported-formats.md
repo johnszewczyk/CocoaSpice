@@ -2,7 +2,7 @@
 
 CocoaSpice admits the formats registered by its bundled VGMBoyKit playback core.
 The authoritative extension list, decoder routes, upstream versions, and licenses
-are maintained in [VGMBoy's README](../../../../VGMBoy/README.md).
+are maintained in [VGMBoy's README](../../../VGMBoy/README.md).
 
 ## Catalogs and Direct Imports
 
