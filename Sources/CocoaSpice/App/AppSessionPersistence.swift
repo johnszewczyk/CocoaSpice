@@ -1,5 +1,6 @@
 import AppKit
 import Foundation
+import VGMBoyKit
 
 enum AppDefaultsKey {
     static let libraryDatabasePath = "CocoaSpice.libraryDatabasePath"
@@ -44,6 +45,12 @@ enum AppDefaultsKey {
     static let archiveCacheMode = "CocoaSpice.archiveCacheMode"
     static let archiveCacheLimitBytes = "CocoaSpice.archiveCacheLimitBytes"
     static let aacExportDirectory = "CocoaSpice.aacExportDirectory"
+    static let libgmeTempoNumerator = "CocoaSpice.libgmeTempoNumerator"
+    static let libgmeTempoDenominator = "CocoaSpice.libgmeTempoDenominator"
+    static let libgmeTempoEnabled = "CocoaSpice.libgmeTempoEnabled"
+    static let libvgmTempoNumerator = "CocoaSpice.libvgmTempoNumerator"
+    static let libvgmTempoDenominator = "CocoaSpice.libvgmTempoDenominator"
+    static let libvgmTempoEnabled = "CocoaSpice.libvgmTempoEnabled"
 }
 
 struct RestoredPlaybackPreferences {
@@ -74,6 +81,10 @@ struct RestoredPlaybackPreferences {
     let sidebarSystemMode: Bool
     let preferEmbeddedConsoleTags: Bool
     let sidebarBrowserModeRawValue: String?
+    let libgmeTempo: PlaybackTempo
+    let libgmeTempoEnabled: Bool
+    let libvgmTempo: PlaybackTempo
+    let libvgmTempoEnabled: Bool
 }
 
 struct RestoredSessionState {
@@ -111,6 +122,12 @@ enum AppSessionPersistence {
     static let maximumRestoredPlaylistTracks = 1_024
 
     static func restorePlaybackPreferences(defaults: UserDefaults = .standard) -> RestoredPlaybackPreferences {
+        func tempo(numeratorKey: String, denominatorKey: String) -> PlaybackTempo {
+            PlaybackTempo(
+                numerator: defaults.object(forKey: numeratorKey) as? Int ?? 1,
+                denominator: defaults.object(forKey: denominatorKey) as? Int ?? 1
+            )
+        }
         return RestoredPlaybackPreferences(
             longPlayEnabled: defaults.bool(forKey: AppDefaultsKey.longPlayEnabled),
             playlistFollowsCursor: defaults.object(forKey: AppDefaultsKey.playlistFollowsCursor) as? Bool ?? false,
@@ -141,7 +158,11 @@ enum AppSessionPersistence {
             playlistMonospaceFont: defaults.object(forKey: AppDefaultsKey.playlistMonospaceFont) as? Bool ?? false,
             sidebarSystemMode: defaults.object(forKey: AppDefaultsKey.sidebarSystemMode) as? Bool ?? false,
             preferEmbeddedConsoleTags: defaults.object(forKey: AppDefaultsKey.preferEmbeddedConsoleTags) as? Bool ?? false,
-            sidebarBrowserModeRawValue: defaults.string(forKey: AppDefaultsKey.sidebarBrowserMode)
+            sidebarBrowserModeRawValue: defaults.string(forKey: AppDefaultsKey.sidebarBrowserMode),
+            libgmeTempo: tempo(numeratorKey: AppDefaultsKey.libgmeTempoNumerator, denominatorKey: AppDefaultsKey.libgmeTempoDenominator),
+            libgmeTempoEnabled: defaults.object(forKey: AppDefaultsKey.libgmeTempoEnabled) as? Bool ?? false,
+            libvgmTempo: tempo(numeratorKey: AppDefaultsKey.libvgmTempoNumerator, denominatorKey: AppDefaultsKey.libvgmTempoDenominator),
+            libvgmTempoEnabled: defaults.object(forKey: AppDefaultsKey.libvgmTempoEnabled) as? Bool ?? false
         )
     }
 
@@ -191,6 +212,10 @@ enum AppSessionPersistence {
         sidebarSystemMode: Bool,
         preferEmbeddedConsoleTags: Bool,
         sidebarBrowserModeRawValue: String,
+        libgmeTempo: PlaybackTempo,
+        libgmeTempoEnabled: Bool,
+        libvgmTempo: PlaybackTempo,
+        libvgmTempoEnabled: Bool,
         defaults: UserDefaults = .standard
     ) {
         defaults.set(longPlayEnabled, forKey: AppDefaultsKey.longPlayEnabled)
@@ -217,6 +242,12 @@ enum AppSessionPersistence {
         defaults.set(sidebarSystemMode, forKey: AppDefaultsKey.sidebarSystemMode)
         defaults.set(preferEmbeddedConsoleTags, forKey: AppDefaultsKey.preferEmbeddedConsoleTags)
         defaults.set(sidebarBrowserModeRawValue, forKey: AppDefaultsKey.sidebarBrowserMode)
+        defaults.set(libgmeTempo.numerator, forKey: AppDefaultsKey.libgmeTempoNumerator)
+        defaults.set(libgmeTempo.denominator, forKey: AppDefaultsKey.libgmeTempoDenominator)
+        defaults.set(libgmeTempoEnabled, forKey: AppDefaultsKey.libgmeTempoEnabled)
+        defaults.set(libvgmTempo.numerator, forKey: AppDefaultsKey.libvgmTempoNumerator)
+        defaults.set(libvgmTempo.denominator, forKey: AppDefaultsKey.libvgmTempoDenominator)
+        defaults.set(libvgmTempoEnabled, forKey: AppDefaultsKey.libvgmTempoEnabled)
     }
 
     static func savePlaylistSortState(

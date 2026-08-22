@@ -45,18 +45,31 @@ final class PlaybackEngine: @unchecked Sendable {
         return latestPlaybackRequest
     }
 
-    func play(track: TrackItem, plan: PlaybackPlan, requestID: Int) async throws {
+    func play(track: TrackItem, plan: PlaybackPlan, tempo: PlaybackTempo, requestID: Int) async throws {
         try await run {
             guard self.isLatest(requestID) else { throw CancellationError() }
-            try self.load(track: track, plan: plan, resumeAt: 0, autoplay: true)
+            try self.load(track: track, plan: plan, tempo: tempo, resumeAt: 0, autoplay: true)
         }
     }
 
-    func reconfigureCurrentTrack(plan: PlaybackPlan) async throws {
+    func reconfigureCurrentTrack(plan: PlaybackPlan, tempo: PlaybackTempo) async throws {
         try await run {
             guard let track = self.currentTrack else { throw PlaybackSessionError.notLoaded }
             let status = self.controller.perform(.init(command: .status)).status
-            try self.load(track: track, plan: plan, resumeAt: status?.elapsedSeconds ?? 0, autoplay: status?.isPlaying ?? false)
+            try self.load(track: track, plan: plan, tempo: tempo, resumeAt: status?.elapsedSeconds ?? 0, autoplay: status?.isPlaying ?? false)
+        }
+    }
+
+    func setTempo(_ tempo: PlaybackTempo) async throws {
+        try await run {
+            guard let track = self.currentTrack,
+                  FormatRegistry.family(for: track.playablePathExtension)?.supportsTempo == true else {
+                return
+            }
+            try self.requireSuccess(self.controller.perform(.init(
+                command: .setTempo,
+                payload: .init(tempo: tempo.multiplier)
+            )))
         }
     }
 
@@ -126,7 +139,7 @@ final class PlaybackEngine: @unchecked Sendable {
         }
     }
 
-    private func load(track: TrackItem, plan: PlaybackPlan, resumeAt: TimeInterval, autoplay: Bool) throws {
+    private func load(track: TrackItem, plan: PlaybackPlan, tempo: PlaybackTempo, resumeAt: TimeInterval, autoplay: Bool) throws {
         let url = try ZipArchiveSupport.materializePlayableFile(for: track)
         let mode: VGMBoyKit.PlaybackMode = plan.isLongPlay ? .longPlay : (plan.usesNativeEnding ? .fileDefault : .timed)
         // A mode command normally reconfigures the currently loaded track.
@@ -136,6 +149,7 @@ final class PlaybackEngine: @unchecked Sendable {
         try requireSuccess(controller.perform(.init(command: .load, payload: .init(
             path: url.path,
             trackIndex: track.trackIndex,
+            tempo: tempo.multiplier,
             playbackMode: mode,
             playMilliseconds: plan.preFadeSeconds * 1_000,
             fadeMilliseconds: plan.fadeSeconds * 1_000

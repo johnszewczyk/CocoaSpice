@@ -4,6 +4,7 @@ import Foundation
 import OSLog
 import Observation
 import UniformTypeIdentifiers
+import VGMBoyKit
 
 enum SidebarBrowserMode: String, CaseIterable, Identifiable {
     case games
@@ -286,6 +287,10 @@ final class PlayerViewModel {
     var manualPreFadeSeconds: Int = 180
     var endFadeEnabled = true
     var fadedSkipEnabled = false
+    var libgmeTempo = PlaybackTempo.defaultValue
+    var libgmeTempoEnabled = false
+    var libvgmTempo = PlaybackTempo.defaultValue
+    var libvgmTempoEnabled = false
     var fadeSeconds: Int { endFadeEnabled ? 6 : 0 }
     private var fadedSkipTask: Task<Void, Never>?
     private var fadedSkipToken: UUID?
@@ -1187,7 +1192,11 @@ final class PlayerViewModel {
             playlistMonospaceFont: playlistMonospaceFont,
             sidebarSystemMode: sidebarSystemMode,
             preferEmbeddedConsoleTags: preferEmbeddedConsoleTags,
-            sidebarBrowserModeRawValue: sidebarBrowserMode.rawValue
+            sidebarBrowserModeRawValue: sidebarBrowserMode.rawValue,
+            libgmeTempo: libgmeTempo,
+            libgmeTempoEnabled: libgmeTempoEnabled,
+            libvgmTempo: libvgmTempo,
+            libvgmTempoEnabled: libvgmTempoEnabled
         )
     }
 
@@ -1238,6 +1247,30 @@ final class PlayerViewModel {
         if currentTrack != nil {
             applyPlaybackTiming()
         }
+    }
+
+    func setLibGmeTempo(_ tempo: PlaybackTempo) {
+        libgmeTempo = tempo
+        savePreferencesNow()
+        applyPlaybackTempoIfNeeded(for: "libgme")
+    }
+
+    func setLibGmeTempoEnabled(_ enabled: Bool) {
+        libgmeTempoEnabled = enabled
+        savePreferencesNow()
+        applyPlaybackTempoIfNeeded(for: "libgme")
+    }
+
+    func setLibVgmTempo(_ tempo: PlaybackTempo) {
+        libvgmTempo = tempo
+        savePreferencesNow()
+        applyPlaybackTempoIfNeeded(for: "libvgm")
+    }
+
+    func setLibVgmTempoEnabled(_ enabled: Bool) {
+        libvgmTempoEnabled = enabled
+        savePreferencesNow()
+        applyPlaybackTempoIfNeeded(for: "libvgm")
     }
 
     func setFadedSkipEnabled(_ enabled: Bool) {
@@ -1794,12 +1827,38 @@ final class PlayerViewModel {
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                try await playback.reconfigureCurrentTrack(plan: plan)
+                try await playback.reconfigureCurrentTrack(plan: plan, tempo: self.playbackTempo(for: currentTrack))
                 let snapshot = await playback.statusSnapshot()
                 self.playbackElapsedSeconds = snapshot.elapsedSeconds
                 self.seekPreviewSeconds = snapshot.elapsedSeconds
                 self.isPlaying = snapshot.isPlaying
                 self.statusText = "Long Play updated"
+            } catch {
+                self.statusText = error.localizedDescription
+            }
+            self.isLoading = false
+            self.updateRemoteTransportState()
+        }
+    }
+
+    private func applyPlaybackTempoIfNeeded(for backendID: String) {
+        guard let currentTrack,
+              FormatRegistry.family(for: currentTrack.playablePathExtension)?.id == backendID,
+              !isLoading else { return }
+        let plan = playbackPlan(for: currentMetadata, trackPathExtension: currentTrack.playablePathExtension)
+        let tempo = playbackTempo(for: currentTrack)
+        isLoading = true
+        statusText = "Updating tempo…"
+        let playback = self.playback
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await playback.reconfigureCurrentTrack(plan: plan, tempo: tempo)
+                let snapshot = await playback.statusSnapshot()
+                self.playbackElapsedSeconds = snapshot.elapsedSeconds
+                self.seekPreviewSeconds = snapshot.elapsedSeconds
+                self.isPlaying = snapshot.isPlaying
+                self.statusText = "Tempo updated"
             } catch {
                 self.statusText = error.localizedDescription
             }
@@ -1884,7 +1943,7 @@ final class PlayerViewModel {
             guard playbackRequestState.isCurrent(generation) else { return }
 
             let plan = playbackPlan(for: seedMetadata, trackPathExtension: track.playablePathExtension)
-            try await playback.play(track: track, plan: plan, requestID: requestID)
+            try await playback.play(track: track, plan: plan, tempo: playbackTempo(for: track), requestID: requestID)
             guard playbackRequestState.isCurrent(generation) else { return }
             currentTrack = track
             pendingPlaybackTrack = nil
@@ -1959,6 +2018,23 @@ final class PlayerViewModel {
         return PlaybackFormatRegistry.supportsLongPlay(pathExtension: extensionName)
     }
 
+    private func playbackTempo(for track: TrackItem) -> PlaybackTempo {
+        playbackTempo(forPathExtension: track.playablePathExtension)
+    }
+
+    private func playbackTempo(forPathExtension pathExtension: String?) -> PlaybackTempo {
+        guard let pathExtension,
+              let family = FormatRegistry.family(for: "source.\(pathExtension)"),
+              family.supportsTempo else {
+            return .defaultValue
+        }
+        switch family.id {
+        case "libgme": return libgmeTempoEnabled ? libgmeTempo : .defaultValue
+        case "libvgm": return libvgmTempoEnabled ? libvgmTempo : .defaultValue
+        default: return .defaultValue
+        }
+    }
+
     var effectivePreFadeSeconds: Int {
         playbackPlan(for: currentMetadata, trackPathExtension: currentTrack?.playablePathExtension).preFadeSeconds
     }
@@ -1985,7 +2061,8 @@ final class PlayerViewModel {
         for track in playlist {
             guard let milliseconds = metadataCache[track.id]?.playLengthMs,
                   milliseconds > 0 else { continue }
-            let seconds = milliseconds / 1_000
+            let tempo = playbackTempo(for: track)
+            let seconds = max(1, Int((Double(milliseconds) / 1_000 / tempo.multiplier).rounded(.down)))
             playlistDurationSecondsByTrackID[track.id] = seconds
             playlistDurationTotalSeconds += seconds
         }
@@ -1995,7 +2072,8 @@ final class PlayerViewModel {
     private func updatePlaylistDuration(for trackID: TrackItem.ID, metadata: TrackMetadata) {
         guard playlistDurationTrackIDs.contains(trackID) else { return }
         let previous = playlistDurationSecondsByTrackID[trackID] ?? 0
-        let updated = max(metadata.playLengthMs, 0) / 1_000
+        let tempo = playlist.first(where: { $0.id == trackID }).map(playbackTempo(for:)) ?? .defaultValue
+        let updated = max(0, Int((Double(max(metadata.playLengthMs, 0)) / 1_000 / tempo.multiplier).rounded(.down)))
         if updated > 0 {
             playlistDurationSecondsByTrackID[trackID] = updated
         } else {
@@ -2051,12 +2129,22 @@ final class PlayerViewModel {
     }
 
     private func playbackPlan(for metadata: TrackMetadata?, trackPathExtension: String? = nil) -> PlaybackPlan {
-        PlaybackTimingPolicy.playbackPlan(
+        let plan = PlaybackTimingPolicy.playbackPlan(
             metadata: metadata ?? currentMetadata,
             trackPathExtension: trackPathExtension ?? currentTrack?.playablePathExtension,
             longPlayEnabled: longPlayEnabled,
             manualPreFadeSeconds: manualPreFadeSeconds,
             fadeSeconds: fadeSeconds
+        )
+        let tempo = playbackTempo(forPathExtension: trackPathExtension ?? currentTrack?.playablePathExtension)
+        guard tempo != .defaultValue else { return plan }
+        let scaledPreFade = max(1, Int((Double(plan.preFadeSeconds) / tempo.multiplier).rounded(.down)))
+        return PlaybackPlan(
+            preFadeSeconds: scaledPreFade,
+            fadeSeconds: plan.fadeSeconds,
+            totalSeconds: scaledPreFade + plan.fadeSeconds,
+            usesNativeEnding: plan.usesNativeEnding,
+            isLongPlay: plan.isLongPlay
         )
     }
 
@@ -2438,6 +2526,10 @@ final class PlayerViewModel {
         }
         appVolume = AudioOutputVolume.clamped(Float(preferences.appVolume))
         monoEnabled = preferences.monoEnabled
+        libgmeTempo = preferences.libgmeTempo
+        libgmeTempoEnabled = preferences.libgmeTempoEnabled
+        libvgmTempo = preferences.libvgmTempo
+        libvgmTempoEnabled = preferences.libvgmTempoEnabled
         randomPlaybackScope = RandomPlaybackScope(rawValue: preferences.randomPlaybackScopeRawValue ?? "off") ?? .off
         repeatMode = RepeatMode(rawValue: preferences.repeatModeRawValue ?? "off") ?? .off
         if randomPlaybackScope == .library { loadRandomLibraryTracks() }

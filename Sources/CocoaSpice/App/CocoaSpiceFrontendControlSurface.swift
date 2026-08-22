@@ -1,4 +1,5 @@
 import Foundation
+import VGMBoyKit
 
 /// Versioned, skin-neutral capability declaration for CocoaSpice itself.
 /// It is an in-process Swift boundary today; a future WebKit bridge can expose
@@ -57,6 +58,10 @@ struct CocoaSpiceOptionsSnapshot: Codable, Equatable, Sendable {
     let isClearingCache: Bool
     let aacExportDirectory: String
     let diagnostics: PlaybackDiagnosticsSnapshot
+    let libgmeTempo: PlaybackTempo
+    let libgmeTempoEnabled: Bool
+    let libvgmTempo: PlaybackTempo
+    let libvgmTempoEnabled: Bool
 }
 
 /// Typed mutations accepted by the Options contract. A skin supplies a file
@@ -82,6 +87,10 @@ enum CocoaSpiceOptionsCommand: Codable, Equatable, Sendable {
     case setSidebarHidesFileExtensions(Bool)
     case setSidebarDisclosureGapPoints(Double)
     case setSidebarChildIndentPoints(Double)
+    case setLibGmeTempo(PlaybackTempo)
+    case setLibGmeTempoEnabled(Bool)
+    case setLibVgmTempo(PlaybackTempo)
+    case setLibVgmTempoEnabled(Bool)
     case reloadCatalog
     case useDefaultCatalog
     case selectCatalog(path: String)
@@ -132,7 +141,11 @@ final class CocoaSpiceOptionsControlSurface {
             cacheSummary: model.archiveCacheSummaryText,
             isClearingCache: model.isClearingArchiveCache,
             aacExportDirectory: model.aacExportDirectoryPath,
-            diagnostics: model.playbackDiagnostics
+            diagnostics: model.playbackDiagnostics,
+            libgmeTempo: model.libgmeTempo,
+            libgmeTempoEnabled: model.libgmeTempoEnabled,
+            libvgmTempo: model.libvgmTempo,
+            libvgmTempoEnabled: model.libvgmTempoEnabled
         )
     }
 
@@ -178,6 +191,14 @@ final class CocoaSpiceOptionsControlSurface {
             model.setDatabaseSidebarDisclosureGapPoints(CGFloat(points))
         case .setSidebarChildIndentPoints(let points):
             model.setDatabaseSidebarChildIndentPoints(CGFloat(points))
+        case .setLibGmeTempo(let tempo):
+            model.setLibGmeTempo(tempo)
+        case .setLibGmeTempoEnabled(let enabled):
+            model.setLibGmeTempoEnabled(enabled)
+        case .setLibVgmTempo(let tempo):
+            model.setLibVgmTempo(tempo)
+        case .setLibVgmTempoEnabled(let enabled):
+            model.setLibVgmTempoEnabled(enabled)
         case .reloadCatalog:
             model.reloadLibrary()
         case .useDefaultCatalog:

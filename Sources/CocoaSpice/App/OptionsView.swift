@@ -1,9 +1,12 @@
 import AppKit
 import SwiftUI
+import VGMBoyKit
 
 struct OptionsView: View {
     @Bindable var model: PlayerViewModel
     @State private var longPlayTimeText = ""
+    @State private var libGmeTempoText = PlaybackTempo.defaultValue.displayString
+    @State private var libVgmTempoText = PlaybackTempo.defaultValue.displayString
     @State private var selection: OptionsSection = .data
     @State private var hasInitializedPresentation = false
 
@@ -74,6 +77,8 @@ struct OptionsView: View {
         .background(OptionsWindowConfigurator())
         .onAppear {
             longPlayTimeText = Self.formatTime(model.manualPreFadeSeconds)
+            libGmeTempoText = model.libgmeTempo.displayString
+            libVgmTempoText = model.libvgmTempo.displayString
             DispatchQueue.main.async {
                 NSApp.windows.first(where: { $0.title == "Options" })?.makeFirstResponder(nil)
             }
@@ -163,6 +168,8 @@ struct OptionsView: View {
 
             }
 
+            tempoCard
+
             sectionCard(title: "Faded Skip") {
                 Toggle(isOn: Binding(
                     get: { model.fadedSkipEnabled },
@@ -194,6 +201,81 @@ struct OptionsView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
+        }
+    }
+
+    private var tempoCard: some View {
+        sectionCard(title: "Play Speed") {
+            tempoRow(
+                title: "libgme",
+                detail: "SPC, NSF/NSFE, GBS, HES, KSS, AY, and SAP. Exact decimals and fractions are accepted.",
+                enabled: Binding(
+                    get: { model.libgmeTempoEnabled },
+                    set: { model.setLibGmeTempoEnabled($0) }
+                ),
+                text: $libGmeTempoText,
+                commit: { commitTempo(libGmeTempoText, backend: .libgme) }
+            )
+            tempoRow(
+                title: "libvgm",
+                detail: "GYM, S98, VGM, VGZ, and DRO. Changes emulated playback rate; exact decimals and fractions are accepted.",
+                enabled: Binding(
+                    get: { model.libvgmTempoEnabled },
+                    set: { model.setLibVgmTempoEnabled($0) }
+                ),
+                text: $libVgmTempoText,
+                commit: { commitTempo(libVgmTempoText, backend: .libvgm) }
+            )
+        }
+    }
+
+    private enum TempoBackend {
+        case libgme
+        case libvgm
+    }
+
+    private func tempoRow(
+        title: String,
+        detail: String,
+        enabled: Binding<Bool>,
+        text: Binding<String>,
+        commit: @escaping () -> Void
+    ) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Toggle(isOn: enabled) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                        .foregroundStyle(.white)
+                    Text(detail)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+            }
+            .toggleStyle(.checkbox)
+
+            TextField("1", text: text)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 72)
+                .multilineTextAlignment(.trailing)
+                .onSubmit(commit)
+        }
+    }
+
+    private func commitTempo(_ rawValue: String, backend: TempoBackend) {
+        guard let tempo = PlaybackTempo.parse(rawValue) else {
+            switch backend {
+            case .libgme: libGmeTempoText = model.libgmeTempo.displayString
+            case .libvgm: libVgmTempoText = model.libvgmTempo.displayString
+            }
+            return
+        }
+        switch backend {
+        case .libgme:
+            libGmeTempoText = tempo.displayString
+            model.setLibGmeTempo(tempo)
+        case .libvgm:
+            libVgmTempoText = tempo.displayString
+            model.setLibVgmTempo(tempo)
         }
     }
 

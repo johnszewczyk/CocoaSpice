@@ -19,6 +19,7 @@
 ## Playback
 
 - Long Play: enable shared extended playback.
+- Play Speed: independently enable and set exact decimal or fractional tempo for libgme (SPC, NSF/NSFE, GBS, HES, KSS, AY, SAP) and libvgm (GYM, S98, VGM, VGZ, DRO). Values are persisted and apply through the shared VGMBoy tempo control.
 - Duration: set a manual playback target.
 - End Fade: enable or disable the standard six-second fade. With it off, metadata-timed tracks use their native ending.
 - Faded Skip: optionally uses that same six-second duration for Next and Previous while the live source continues playing; press again to advance immediately.
