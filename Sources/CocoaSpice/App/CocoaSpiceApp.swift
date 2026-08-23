@@ -144,6 +144,11 @@ private struct CocoaSpiceCommands: Commands {
         }
 
         CommandGroup(after: .pasteboard) {
+            Button("Toggle Favorite") {
+                model.toggleFavorites()
+            }
+            .keyboardShortcut("d", modifiers: .command)
+
             Button("Cut Tracks") {
                 model.cutSelectedTracks()
             }

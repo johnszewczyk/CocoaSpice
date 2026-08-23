@@ -3,6 +3,7 @@
 ## Display
 
 - Database: scanned game-music library in the left pane.
+- Favorites: the star sidebar view lists individual favorited tracks in the order they were added. Command-D toggles the selected track or selected game/group; the playlist in this view is the same historical favorite list.
 - Rows: dense list of scanned games by default.
 - Files: the standalone icon immediately left of the transport controls switches to a folder tree built only from scanned database records. It uses the same dense native row style as Games, with `▾`/`▸` disclosure glyphs and nested text indentation. Its own toolbar grouping distinguishes browser navigation from playback. It loads only when opened and starts with library roots collapsed, so a very large collection does not delay launch. It shows enabled library roots, scanned subfolders, and source files without live filesystem browsing.
 - Files: selecting a source file queues its stored tracks; archive files remain one source-file leaf and queue their indexed members.

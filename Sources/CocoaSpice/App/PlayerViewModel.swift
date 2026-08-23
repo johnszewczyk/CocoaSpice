@@ -1,6 +1,7 @@
 import AppKit
 import CatalogReader
 import Foundation
+import FavoriteTrackCore
 import OSLog
 import Observation
 import UniformTypeIdentifiers
@@ -9,6 +10,7 @@ import VGMBoyKit
 enum SidebarBrowserMode: String, CaseIterable, Identifiable {
     case games
     case files
+    case favorites
 
     var id: String { rawValue }
 
@@ -16,6 +18,7 @@ enum SidebarBrowserMode: String, CaseIterable, Identifiable {
         switch self {
         case .games: "Games"
         case .files: "Files"
+        case .favorites: "Favorites"
         }
     }
 
@@ -23,6 +26,7 @@ enum SidebarBrowserMode: String, CaseIterable, Identifiable {
         switch self {
         case .games: "square.grid.2x2"
         case .files: "folder"
+        case .favorites: "star"
         }
     }
 }
@@ -30,6 +34,7 @@ enum SidebarBrowserMode: String, CaseIterable, Identifiable {
 enum SidebarPresentationView: String, Sendable {
     case folders
     case database
+    case favorites
     case search
 }
 
@@ -40,6 +45,12 @@ struct SidebarViewResolution: Equatable, Sendable {
     let contentMode: SidebarPresentationView
     let resultSource: String
     let isTemporary: Bool
+}
+
+struct FavoriteTrackRecord: Codable, Equatable, Sendable {
+    let identity: FavoriteTrackIdentity
+    let persistedTrack: String
+    let metadata: TrackMetadata?
 }
 
 @MainActor
@@ -206,16 +217,22 @@ final class PlayerViewModel {
         searchText: String
     ) -> SidebarViewResolution {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let storedPresentation: SidebarPresentationView = storedMode == .files ? .folders : .database
+        let storedPresentation: SidebarPresentationView = switch storedMode {
+        case .files: .folders
+        case .favorites: .favorites
+        case .games: .database
+        }
         let isSearching = !query.isEmpty
-        let view: SidebarPresentationView = isSearching ? .search : storedPresentation
-        let contentMode: SidebarPresentationView = view == .folders ? .folders : .database
+        let view: SidebarPresentationView = isSearching && storedPresentation != .favorites ? .search : storedPresentation
+        let contentMode: SidebarPresentationView = view == .search ? .database : view
         return SidebarViewResolution(
             storedMode: storedPresentation,
             query: query,
             view: view,
             contentMode: contentMode,
-            resultSource: contentMode == .folders ? "folder-tree" : "database-index",
+            resultSource: contentMode == .folders
+                ? "folder-tree"
+                : contentMode == .favorites ? "favorite-track-history" : "database-index",
             isTemporary: isSearching
         )
     }
@@ -256,6 +273,12 @@ final class PlayerViewModel {
             refreshPlaylistTotalDurationReadout()
         }
     }
+    private(set) var favoriteRecords: [FavoriteTrackRecord] = []
+    private(set) var favoriteRevision = 0
+    var favoriteTracks: [TrackItem] {
+        favoriteRecords.compactMap { TrackItem.fromPersistedValue($0.persistedTrack) }
+    }
+    var isFavoritesSidebar: Bool { sidebarBrowserMode == .favorites }
     private(set) var playlistContentRevision = 0
     private var isRestoringPersistedPlaylist = false
     private var deferredPersistedPlaylistValues: [String] = []
@@ -326,12 +349,15 @@ final class PlayerViewModel {
             databaseSidebarLoader.fileLoadingStatus.isEmpty
                 ? "Preparing the folder tree…"
                 : databaseSidebarLoader.fileLoadingStatus
+        case .favorites:
+            "Reading Favorites"
         }
     }
     var databaseSidebarLoadError: String? {
         switch effectiveSidebarBrowserMode {
         case .games: databaseSidebarLoader.gameLoadError
         case .files: databaseSidebarLoader.fileLoadError
+        case .favorites: nil
         }
     }
 
@@ -583,6 +609,7 @@ final class PlayerViewModel {
             libraryDatabaseLocationStatus = "Library database unavailable: \(error.localizedDescription)"
         }
         restorePlaybackPreferences(restoredState.playbackPreferences)
+        restoreFavorites()
         Task { [weak self] in
             let recovery = await Task.detached(priority: .utility) {
                 ZipArchiveSupport.reclaimAbandonedMaterializations()
@@ -1342,9 +1369,105 @@ final class PlayerViewModel {
 
     func setSidebarBrowserMode(_ mode: SidebarBrowserMode) {
         sidebarBrowserMode = mode
+        if mode == .favorites {
+            playlist = favoriteTracks
+            metadataCache = Dictionary(uniqueKeysWithValues: favoriteRecords.compactMap { record in
+                guard let metadata = record.metadata else { return nil }
+                return (record.identity.id, metadata)
+            })
+            statusText = favoriteTracks.isEmpty ? "No favorites yet." : "Showing (favoriteTracks.count) favorite tracks."
+        }
         applySidebarSearch()
-        loadDatabaseSidebarIfNeeded()
+        if mode != .favorites { loadDatabaseSidebarIfNeeded() }
         savePreferencesNow()
+    }
+
+    func isFavorite(_ track: TrackItem) -> Bool {
+        favoriteRecords.contains { $0.identity.id == favoriteIdentity(for: track).id }
+    }
+
+    func toggleFavorites() {
+        let selected = playlist.filter { selectedTrackIDs.contains($0.id) }
+        if !selected.isEmpty {
+            toggleFavorites(for: selected, metadata: metadataCache)
+            return
+        }
+        let selectedGames = databaseGameItems.filter { selectedDatabaseGameIDs.contains($0.id) }
+        guard !selectedGames.isEmpty else { return }
+        Task { [weak self] in
+            guard let self, let databaseURL = self.libraryDatabaseURL else { return }
+            do {
+                let loaded = try await PlaylistQueueLoader.loadLibraryTracksForGames(
+                    databaseURL: databaseURL,
+                    gameItems: selectedGames,
+                    preferFoldersOverMetadata: self.preferFoldersOverMetadata
+                )
+                self.toggleFavorites(for: loaded.tracks, metadata: loaded.metadata)
+            } catch {
+                self.statusText = "Could not favorite selection: (error.localizedDescription)"
+            }
+        }
+    }
+
+    func toggleFavorites(for track: TrackItem) {
+        toggleFavorites(for: [track], metadata: metadataCache)
+    }
+
+    func toggleFavorites(for game: DatabaseGameItem) {
+        Task { [weak self] in
+            guard let self, let databaseURL = self.libraryDatabaseURL else { return }
+            do {
+                let loaded = try await PlaylistQueueLoader.loadLibraryTracksForGames(
+                    databaseURL: databaseURL,
+                    gameItems: [game],
+                    preferFoldersOverMetadata: self.preferFoldersOverMetadata
+                )
+                self.toggleFavorites(for: loaded.tracks, metadata: loaded.metadata)
+            } catch {
+                self.statusText = "Could not favorite album: \(error.localizedDescription)"
+            }
+        }
+    }
+
+    private func toggleFavorites(for tracks: [TrackItem], metadata: [String: TrackMetadata]) {
+        let identities = tracks.map(favoriteIdentity(for:))
+        var collection = FavoriteTrackCollection(entries: favoriteRecords.map(\.identity))
+        _ = collection.toggleGroup(identities)
+        let snapshots = Dictionary(uniqueKeysWithValues: favoriteRecords.map { ($0.identity.id, $0) })
+        let additions = Dictionary(uniqueKeysWithValues: zip(tracks, identities).map { track, identity in
+            (identity.id, FavoriteTrackRecord(
+                identity: identity,
+                persistedTrack: track.persistedValue,
+                metadata: metadata[track.id] ?? self.metadataCache[track.id]
+            ))
+        })
+        favoriteRecords = collection.entries.compactMap { identity in
+            additions[identity.id] ?? snapshots[identity.id]
+        }
+        favoriteRevision &+= 1
+        persistFavorites()
+        if isFavoritesSidebar { playlist = favoriteTracks }
+        statusText = tracks.count == 1 ? (isFavorite(tracks[0]) ? "Added to Favorites." : "Removed from Favorites.") : "Updated Favorites for (tracks.count) tracks."
+    }
+
+    private func favoriteIdentity(for track: TrackItem) -> FavoriteTrackIdentity {
+        FavoriteTrackIdentity(
+            sourcePath: track.url.path,
+            archiveEntry: track.archiveEntryPath,
+            trackIndex: track.trackIndex,
+            trackCount: track.trackCount
+        )
+    }
+
+    private func restoreFavorites() {
+        guard let data = UserDefaults.standard.data(forKey: AppDefaultsKey.favorites),
+              let records = try? JSONDecoder().decode([FavoriteTrackRecord].self, from: data) else { return }
+        favoriteRecords = records
+    }
+
+    private func persistFavorites() {
+        guard let data = try? JSONEncoder().encode(favoriteRecords) else { return }
+        UserDefaults.standard.set(data, forKey: AppDefaultsKey.favorites)
     }
 
     func refreshArchiveCacheSummary() {
@@ -2615,6 +2738,12 @@ final class PlayerViewModel {
     }
 
     private func applySidebarSearch() {
+        if sidebarBrowserMode == .favorites {
+            databaseSidebar.searchText = ""
+            databaseFileSidebarSearchTaskOwner.cancel()
+            if playlist != favoriteTracks { playlist = favoriteTracks }
+            return
+        }
         let hasQuery = !sidebarSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if hasQuery || sidebarBrowserMode == .games {
             databaseFileSidebarSearchTaskOwner.cancel()

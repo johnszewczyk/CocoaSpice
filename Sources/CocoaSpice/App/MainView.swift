@@ -20,6 +20,16 @@ struct MainView: View {
                 .accessibilityLabel(model.sidebarBrowserMode == .games ? "Show Files" : "Show Games")
             }
             .sharedBackgroundVisibility(.hidden)
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    model.setSidebarBrowserMode(.favorites)
+                } label: {
+                    Image(systemName: "star")
+                        .foregroundStyle(model.isFavoritesSidebar ? .primary : .secondary)
+                }
+                .help("Show Favorites")
+                .accessibilityLabel("Show Favorites")
+            }
             ToolbarItemGroup(placement: .navigation) {
                 Button {
                     model.playPrevious()
@@ -115,7 +125,9 @@ struct MainView: View {
                 }
 
                 Group {
-                    if model.effectiveSidebarBrowserMode == .games
+                    if model.isFavoritesSidebar {
+                        FavoritesSidebarListView(model: model)
+                    } else if model.effectiveSidebarBrowserMode == .games
                         ? model.isLoadingDatabaseSidebar
                         : model.isLoadingDatabaseFileSidebar {
                         VStack(spacing: 10) {
@@ -221,6 +233,53 @@ struct MainView: View {
         .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(.bar)
+    }
+}
+
+private struct FavoritesSidebarListView: View {
+    @Bindable var model: PlayerViewModel
+
+    private var visibleTracks: [TrackItem] {
+        let query = model.sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !query.isEmpty else { return model.favoriteTracks }
+        return model.favoriteTracks.filter {
+            $0.filename.lowercased().contains(query)
+                || $0.fullPathText.lowercased().contains(query)
+        }
+    }
+
+    var body: some View {
+        if visibleTracks.isEmpty {
+            ContentUnavailableView(
+                model.favoriteTracks.isEmpty ? "No Favorites" : "No Matches",
+                systemImage: "star",
+                description: Text(model.favoriteTracks.isEmpty ? "Select a track or album and press Command-D." : "No favorites match the current sidebar search.")
+            )
+        } else {
+            List(visibleTracks) { track in
+                Button {
+                    model.selectedTrackID = track.id
+                    model.selectedTrackIDs = [track.id]
+                } label: {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(track.displayName)
+                            .lineLimit(1)
+                        Text(track.fullPathText)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.plain)
+                .contextMenu {
+                    Button("Play") { model.playNowTrack(track) }
+                    Button("Remove from Favorites") { model.toggleFavorites(for: track) }
+                }
+                .onTapGesture(count: 2) { model.playNowTrack(track) }
+            }
+            .listStyle(.plain)
+        }
     }
 }
 
@@ -571,6 +630,11 @@ private struct DatabaseGameListView: NSViewRepresentable {
             enqueue.target = self
             menu.addItem(enqueue)
 
+            let favorite = NSMenuItem(title: "Toggle Favorites", action: #selector(handleFavorite(_:)), keyEquivalent: "")
+            favorite.representedObject = item.id
+            favorite.target = self
+            menu.addItem(favorite)
+
             return menu
         }
 
@@ -584,6 +648,12 @@ private struct DatabaseGameListView: NSViewRepresentable {
             guard let id = sender.representedObject as? String,
                   let item = model.databaseGameItems.first(where: { $0.id == id }) else { return }
             model.activateDatabaseGame(item, replace: false)
+        }
+
+        @objc private func handleFavorite(_ sender: NSMenuItem) {
+            guard let id = sender.representedObject as? String,
+                  let item = model.databaseGameItems.first(where: { $0.id == id }) else { return }
+            model.toggleFavorites(for: item)
         }
 
         private func reloadVisibleRows() {

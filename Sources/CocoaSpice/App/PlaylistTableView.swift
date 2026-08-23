@@ -88,6 +88,7 @@ struct PlaylistTableView: NSViewRepresentable {
 
         private enum Column: String, CaseIterable {
             case transport
+            case favorite
             case index
             case file
             case title
@@ -101,6 +102,7 @@ struct PlaylistTableView: NSViewRepresentable {
             var title: String {
                 switch self {
                 case .transport: ""
+                case .favorite: ""
                 case .index: "#"
                 case .file: "File"
                 case .title: "Title"
@@ -116,6 +118,7 @@ struct PlaylistTableView: NSViewRepresentable {
             var defaultWidth: CGFloat {
                 switch self {
                 case .transport: 32
+                case .favorite: 32
                 case .index: 36
                 case .file: 220
                 case .title: 220
@@ -131,6 +134,7 @@ struct PlaylistTableView: NSViewRepresentable {
             var minWidth: CGFloat {
                 switch self {
                 case .transport: 32
+                case .favorite: 32
                 case .index: 32
                 case .file, .title, .game: 120
                 case .author: 90
@@ -142,12 +146,12 @@ struct PlaylistTableView: NSViewRepresentable {
             }
 
             var userConfigurable: Bool {
-                self != .transport
+                self != .transport && self != .favorite
             }
 
             var sortColumn: PlayerViewModel.PlaylistSortColumn? {
                 switch self {
-                case .transport:
+                case .transport, .favorite:
                     nil
                 case .index:
                     .index
@@ -177,6 +181,7 @@ struct PlaylistTableView: NSViewRepresentable {
         private var suppressSelectionSync = false
         private var lastAppliedMetadataLoadToken = -1
         private var lastPlaylistContentRevision = -1
+        private var lastFavoriteRevision = -1
         private var lastSelectedTrackIDs: Set<String> = []
         private var lastPrimarySelectedTrackID: String?
         private var lastCurrentTrackID: String?
@@ -236,6 +241,7 @@ struct PlaylistTableView: NSViewRepresentable {
             let sortDirection = model.playlistSortDirection
             let metadataTokenChanged = model.playlistMetadataLoadToken != lastAppliedMetadataLoadToken
             let rowsChanged = playlistContentRevision != lastPlaylistContentRevision
+            let favoritesChanged = model.favoriteRevision != lastFavoriteRevision
             let playbackStateChanged = currentTrackID != lastCurrentTrackID || isPlaying != lastIsPlaying
             let sortChanged = sortColumn != lastSortColumn || sortDirection != lastSortDirection
             let fontChanged = model.playlistFontSize != lastFontSize
@@ -246,7 +252,7 @@ struct PlaylistTableView: NSViewRepresentable {
                 tableView.rowHeight = rowHeight
             }
 
-            if rowsChanged || sortChanged || fontChanged {
+            if rowsChanged || favoritesChanged || sortChanged || fontChanged {
                 let reloadStartedAt = ContinuousClock.now
                 tableView.reloadData()
                 let reloadElapsed = reloadStartedAt.duration(to: .now)
@@ -287,6 +293,7 @@ struct PlaylistTableView: NSViewRepresentable {
             )
 
             lastPlaylistContentRevision = playlistContentRevision
+            lastFavoriteRevision = model.favoriteRevision
             lastSelectedTrackIDs = selectedTrackIDs
             lastPrimarySelectedTrackID = primarySelectedTrackID
             lastCurrentTrackID = currentTrackID
@@ -406,6 +413,15 @@ struct PlaylistTableView: NSViewRepresentable {
                     transportButton(in: cell)?.contentTintColor =
                         model.currentTrack?.id == track.id ? NSColor.labelColor : NSColor.secondaryLabelColor
                     return cell
+                case .favorite:
+                    let cell = makeFavoriteCell(in: tableView)
+                    favoriteButton(in: cell)?.tag = row
+                    favoriteButton(in: cell)?.image = NSImage(
+                        systemSymbolName: model.isFavorite(track) ? "star.fill" : "star",
+                        accessibilityDescription: "Favorite"
+                    )
+                    favoriteButton(in: cell)?.contentTintColor = model.isFavorite(track) ? NSColor.systemYellow : NSColor.secondaryLabelColor
+                    return cell
                 case .index:
                     return configuredTextCell(in: tableView, row: row, identifier: column.rawValue, text: model.indexText(for: track), isCurrentTrack: model.currentTrack?.id == track.id, monospace: true)
                 case .file:
@@ -509,6 +525,15 @@ struct PlaylistTableView: NSViewRepresentable {
             }
         }
 
+        @objc
+        nonisolated func handleFavoriteButton(_ sender: NSButton) {
+            MainActor.assumeIsolated {
+                let row = sender.tag
+                guard row >= 0, row < model.visiblePlaylist.count else { return }
+                model.toggleFavorites(for: model.visiblePlaylist[row])
+            }
+        }
+
         private func makeTransportCell(in tableView: NSTableView) -> NSTableCellView {
             let identifier = NSUserInterfaceItemIdentifier(Column.transport.rawValue)
             if let existing = tableView.makeView(withIdentifier: identifier, owner: nil) as? NSTableCellView {
@@ -538,6 +563,32 @@ struct PlaylistTableView: NSViewRepresentable {
         }
 
         private func transportButton(in cell: NSTableCellView) -> NSButton? {
+            cell.subviews.compactMap { $0 as? NSButton }.first
+        }
+
+        private func makeFavoriteCell(in tableView: NSTableView) -> NSTableCellView {
+            let identifier = NSUserInterfaceItemIdentifier(Column.favorite.rawValue)
+            if let existing = tableView.makeView(withIdentifier: identifier, owner: nil) as? NSTableCellView {
+                return existing
+            }
+            let cell = NSTableCellView()
+            cell.identifier = identifier
+            let button = NSButton(frame: .zero)
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.isBordered = false
+            button.imagePosition = .imageOnly
+            button.setButtonType(.momentaryChange)
+            button.target = self
+            button.action = #selector(handleFavoriteButton(_:))
+            cell.addSubview(button)
+            NSLayoutConstraint.activate([
+                button.centerXAnchor.constraint(equalTo: cell.centerXAnchor),
+                button.centerYAnchor.constraint(equalTo: cell.centerYAnchor)
+            ])
+            return cell
+        }
+
+        private func favoriteButton(in cell: NSTableCellView) -> NSButton? {
             cell.subviews.compactMap { $0 as? NSButton }.first
         }
 
@@ -658,7 +709,7 @@ struct PlaylistTableView: NSViewRepresentable {
                 return switch column {
                 case .title, .game, .author, .system, .length:
                     index
-                case .transport, .index, .file, .path, .fileSize:
+                case .transport, .favorite, .index, .file, .path, .fileSize:
                     nil
                 }
             })
@@ -692,8 +743,9 @@ struct PlaylistTableView: NSViewRepresentable {
         private func resolvedColumnOrder() -> [Column] {
             let stored = model.pendingPlaylistColumnOrder ?? []
             let mapped = stored.compactMap(Column.init(rawValue:))
-            let missing = Column.allCases.filter { !mapped.contains($0) }
-            return mapped + missing
+            let configurable = mapped.filter { $0.userConfigurable }
+            let missing = Column.allCases.filter { $0.userConfigurable && !configurable.contains($0) }
+            return [.transport, .favorite] + configurable + missing
         }
 
         private func storedVisibility() -> [String: Bool] {
@@ -1037,7 +1089,7 @@ struct PlaylistTableView: NSViewRepresentable {
         private func widthHintValue(for column: Column) -> String? {
             guard let hints = model.playlistColumnWidthHints else { return nil }
             return switch column {
-            case .transport:
+            case .transport, .favorite:
                 nil
             case .index:
                 hints.indexText
@@ -1062,7 +1114,7 @@ struct PlaylistTableView: NSViewRepresentable {
 
         private func value(for column: Column, track: TrackItem) -> String {
             switch column {
-            case .transport:
+            case .transport, .favorite:
                 ""
             case .index:
                 model.indexText(for: track)

@@ -3,7 +3,7 @@
 ## Display
 
 - Display: file metadata in a headed table.
-- Columns: transport, index, file, title, game, author, system, path, and length.
+- Columns: transport, favorite, index, file, title, game, author, system, path, and length. The favorite glyph is immediately before # and lights for favorited tracks.
 - Columns: missing metadata falls back to useful file or folder text.
 - Columns: includes a user-configurable Size column for direct files; archive entries show an unavailable marker until archive-entry sizing is modeled separately.
 - Metadata: catalog-backed queues display only the fields published in the selected catalog; incomplete fields remain incomplete until MediaScanner republishes them.
@@ -26,6 +26,7 @@
 - Rows: double-click starts playback.
 - Rows: Return starts playback of the primary selected row.
 - Rows: transport button plays or stops the row.
+- Favorites: Command-D toggles the selected track; the favorite glyph toggles the clicked track directly.
 - Queue: cut, paste, delete, move, and drag-reorder.
 - Context menu: `Export AAC` renders the clicked playlist track through bundled VGMBoy into the
   configured AAC Export Folder. It uses the active Long Play/end-fade timing and does not interrupt

@@ -200,7 +200,18 @@ struct OptionsView: View {
 
     private var diagnosticsPage: some View {
         VStack(alignment: .leading, spacing: 16) {
-            sectionCard(title: "Playback Diagnostics") {
+            sectionCard(title: "Transport") {
+                diagnosticRow("Output", model.playbackDiagnostics.outputHealth.rawValue.capitalized)
+                diagnosticRow("Underruns", "\(model.playbackDiagnostics.underrunCount)")
+            }
+            sectionCard(title: "Buffer") {
+                diagnosticRow(
+                    "Buffer",
+                    "\(model.playbackDiagnostics.bufferedMilliseconds) ms • \(model.playbackDiagnostics.bufferPercent)%"
+                )
+                diagnosticRow("Source Clips", "\(model.playbackDiagnostics.clippedSampleCount)")
+            }
+            sectionCard(title: "Decoder") {
                 diagnosticRow("Decoder", model.playbackDiagnostics.decoderFamily ?? "—")
                 diagnosticRow(
                     "Rates",
@@ -214,14 +225,6 @@ struct OptionsView: View {
                     "Tempo",
                     "\(model.playbackDiagnostics.tempo.formatted(.number.precision(.fractionLength(3))))×"
                 )
-                diagnosticRow(
-                    "Buffer",
-                    "\(model.playbackDiagnostics.bufferedMilliseconds) ms • \(model.playbackDiagnostics.bufferPercent)%"
-                )
-                diagnosticRow("Output", model.playbackDiagnostics.outputHealth.rawValue.capitalized)
-                diagnosticRow("Underruns", "\(model.playbackDiagnostics.underrunCount)")
-                diagnosticRow("Source Clips", "\(model.playbackDiagnostics.clippedSampleCount)")
-
                 Text("Output detects when the source node stops receiving render requests while CocoaSpice thinks it is playing. It cannot detect a Bluetooth radio, codec, or speaker failure after Core Audio. Counters reset for each new track.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
@@ -518,7 +521,6 @@ struct OptionsView: View {
     private var dataPage: some View {
         VStack(alignment: .leading, spacing: 16) {
             sectionCard(title: "Database") {
-                Text("MediaScanner Catalog")
                 pathBar(path: model.configuredLibraryDatabasePath, browse: model.chooseLibraryDatabase)
 
                 if let status = model.libraryDatabaseLocationStatus {
@@ -532,9 +534,9 @@ struct OptionsView: View {
                 }
 
                 HStack(spacing: 8) {
-                    Button("Reload Library") { model.reloadLibrary() }
-                        .frame(maxWidth: .infinity, minHeight: 24)
                     Button("Use Default") { model.useDefaultLibraryDatabase() }
+                        .frame(maxWidth: .infinity, minHeight: 24)
+                    Button("Reload Library") { model.reloadLibrary() }
                         .frame(maxWidth: .infinity, minHeight: 24)
                     Button("Show in Finder") { model.showLibraryDatabaseInFinder() }
                         .frame(maxWidth: .infinity, minHeight: 24)
@@ -545,6 +547,7 @@ struct OptionsView: View {
             }
 
             sectionCard(title: "Cache") {
+                pathBar(path: ZipArchiveSupport.cacheDirectoryURL.path, browse: model.showArchiveCacheInFinder)
                 HStack(alignment: .center, spacing: 12) {
                     Toggle(isOn: Binding(
                         get: { model.archiveCachePolicy.isEnabled },
@@ -577,6 +580,11 @@ struct OptionsView: View {
                 }
 
                 HStack(spacing: 8) {
+                    Button("Use Default") {
+                        model.setArchiveCacheEnabled(true)
+                        model.setArchiveCacheLimitBytes(ArchiveCachePolicy.defaultLimitBytes)
+                    }
+                        .frame(maxWidth: .infinity, minHeight: 24)
                     Button("Clear Cache") { model.clearArchiveCache() }
                         .disabled(model.isClearingArchiveCache)
                         .frame(maxWidth: .infinity, minHeight: 24)

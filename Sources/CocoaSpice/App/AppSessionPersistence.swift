@@ -42,6 +42,7 @@ enum AppDefaultsKey {
     static let sidebarSystemMode = "CocoaSpice.sidebarSystemMode"
     static let preferEmbeddedConsoleTags = "CocoaSpice.preferEmbeddedConsoleTags"
     static let sidebarBrowserMode = "CocoaSpice.sidebarBrowserMode"
+    static let favorites = "CocoaSpice.favorites"
     static let archiveCacheMode = "CocoaSpice.archiveCacheMode"
     static let archiveCacheLimitBytes = "CocoaSpice.archiveCacheLimitBytes"
     static let aacExportDirectory = "CocoaSpice.aacExportDirectory"
