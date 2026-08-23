@@ -1,4 +1,5 @@
 import AppKit
+import FrontendCommandCore
 import SwiftUI
 
 let databaseFileSidebarDragType = NSPasteboard.PasteboardType("com.cocoaspice.database-file-sidebar-items")
@@ -11,24 +12,21 @@ struct MainView: View {
         .frame(minWidth: 320, minHeight: 240)
         .toolbar {
             ToolbarItem(placement: .navigation) {
-                Button {
-                    model.setSidebarBrowserMode(model.sidebarBrowserMode == .games ? .files : .games)
+                Menu {
+                    Button(FrontendSidebarView.consoles.title) {
+                        model.setSidebarBrowserMode(.games)
+                    }
+                    Button(FrontendSidebarView.paths.title) {
+                        model.setSidebarBrowserMode(.files)
+                    }
+                    Button(FrontendSidebarView.favorites.title) {
+                        model.setSidebarBrowserMode(.favorites)
+                    }
                 } label: {
-                    Image(systemName: model.sidebarBrowserMode == .games ? "folder" : "square.grid.2x2")
+                    Image(systemName: "sidebar.left")
                 }
-                .help(model.sidebarBrowserMode == .games ? "Show Files" : "Show Games")
-                .accessibilityLabel(model.sidebarBrowserMode == .games ? "Show Files" : "Show Games")
-            }
-            .sharedBackgroundVisibility(.hidden)
-            ToolbarItem(placement: .navigation) {
-                Button {
-                    model.setSidebarBrowserMode(.favorites)
-                } label: {
-                    Image(systemName: "star")
-                        .foregroundStyle(model.isFavoritesSidebar ? .primary : .secondary)
-                }
-                .help("Show Favorites")
-                .accessibilityLabel("Show Favorites")
+                .help("Library View")
+                .accessibilityLabel("Library View")
             }
             ToolbarItemGroup(placement: .navigation) {
                 Button {

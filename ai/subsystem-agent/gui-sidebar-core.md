@@ -16,6 +16,9 @@
 - Sidebar search filters the database list instead of switching to a separate legacy result view.
 - Right-clicking a sidebar row opens its context menu without changing sidebar selection.
 - Favorites is a third stored sidebar mode. Its ordered entries are individual track identities; selecting a Games row and pressing Command-D toggles the loaded album/group as one favorite set.
+- The toolbar exposes one Library View menu with `Database / Console View`, `Paths View`, and
+  `Favorites View`. The application View menu exposes the same three commands through the shared
+  `FrontendCommandCore` contract.
 
 ## Rules
 
@@ -23,6 +26,8 @@
 - Keep the sidebar database-backed rather than reintroducing direct filesystem browsing.
 - Keep sidebar behavior separate from queue behavior.
 - Keep catalog aggregation in the shared CatalogBrowserCore/CatalogReader boundary. Favorite membership and history are frontend state and must not be written into the scan catalog.
+- Keep the three-view command vocabulary shared while keeping SwiftUI row rendering and favorite
+  storage native to this skin.
 
 ## Files
 

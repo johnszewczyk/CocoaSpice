@@ -1,4 +1,5 @@
 import AppKit
+import FrontendCommandCore
 import SwiftUI
 
 extension Notification.Name {
@@ -179,6 +180,23 @@ private struct CocoaSpiceCommands: Commands {
             .keyboardShortcut(.delete, modifiers: [])
             .disabled(!model.canCutSelectedTracks)
 
+        }
+
+        CommandMenu("View") {
+            Button(FrontendSidebarView.consoles.title) {
+                model.setSidebarBrowserMode(.games)
+            }
+            .keyboardShortcut("2", modifiers: .command)
+
+            Button(FrontendSidebarView.paths.title) {
+                model.setSidebarBrowserMode(.files)
+            }
+            .keyboardShortcut("1", modifiers: .command)
+
+            Button(FrontendSidebarView.favorites.title) {
+                model.setSidebarBrowserMode(.favorites)
+            }
+            .keyboardShortcut("4", modifiers: .command)
         }
 
         CommandGroup(replacing: .appSettings) {

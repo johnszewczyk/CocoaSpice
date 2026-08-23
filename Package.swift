@@ -20,6 +20,7 @@ let package = Package(
             name: "CocoaSpice",
             dependencies: [
                 .product(name: "CatalogReader", package: "CatalogReader"),
+                .product(name: "FrontendCommandCore", package: "CatalogReader"),
                 .product(name: "LocalFileBrowserCore", package: "FrontendCore"),
                 .product(name: "FavoriteTrackCore", package: "FrontendCore"),
                 .product(name: "VGMBoyKit", package: "VGMBoy"),
