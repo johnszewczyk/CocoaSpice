@@ -737,6 +737,11 @@ final class PlayerViewModel {
         statusText = "Showing \(url.lastPathComponent) on disk"
     }
 
+    func showLibraryDatabaseInFinder() {
+        let url = URL(fileURLWithPath: configuredLibraryDatabasePath).standardizedFileURL
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
     func selectDatabaseFileSidebarItems(
         fileIDs: [String],
         primaryFileID: String?,
@@ -1399,6 +1404,12 @@ final class PlayerViewModel {
             self?.isClearingArchiveCache = false
             self?.refreshArchiveCacheSummary()
         }
+    }
+
+    func showArchiveCacheInFinder() {
+        let url = ZipArchiveSupport.cacheDirectoryURL
+        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        NSWorkspace.shared.activateFileViewerSelecting([url.standardizedFileURL])
     }
 
     func toggleDatabaseFileFolder(_ folderID: String) {

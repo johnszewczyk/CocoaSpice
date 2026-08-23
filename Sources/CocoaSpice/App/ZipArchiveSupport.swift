@@ -4,6 +4,8 @@ import Dispatch
 import Foundation
 
 enum ZipArchiveSupport {
+    static var cacheDirectoryURL: URL { cacheRootURL() }
+
     static let supportedArchiveExtensions: Set<String> = ["zip", "7z", "rsn", "tzst"]
     private static let archiveListingTimeout: TimeInterval = 30
     private static let archiveExtractionTimeout: TimeInterval = 600

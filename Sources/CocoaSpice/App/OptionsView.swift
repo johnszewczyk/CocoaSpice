@@ -13,6 +13,7 @@ struct OptionsView: View {
     private enum OptionsSection: String, CaseIterable, Identifiable {
         case audio = "Audio"
         case data = "Database"
+        case diagnostics = "Diagnostics"
         case interface = "Interface"
         case playback = "Playback"
 
@@ -22,14 +23,15 @@ struct OptionsView: View {
             switch self {
             case .audio: "speaker.wave.2"
             case .data: "cylinder.split.1x2"
+            case .diagnostics: "waveform.path.ecg"
             case .interface: "paintbrush"
             case .playback: "waveform"
             }
         }
     }
 
-    private static let appSections: [OptionsSection] = [.audio, .data, .interface]
-    private static let remoteSections: [OptionsSection] = [.playback]
+    private static let appSections: [OptionsSection] = [.data, .interface]
+    private static let remoteSections: [OptionsSection] = [.audio, .diagnostics, .playback]
 
     private let windowBackground = Color(red: 30 / 255, green: 30 / 255, blue: 30 / 255)
     private let panelBackground = Color(red: 40 / 255, green: 40 / 255, blue: 40 / 255)
@@ -43,7 +45,7 @@ struct OptionsView: View {
                             .tag(section)
                     }
                 }
-                Section("VGMBoy Remote Interface") {
+                Section("VGMBoy") {
                     ForEach(Self.remoteSections) { section in
                         Label(section.rawValue, systemImage: section.systemImage)
                             .tag(section)
@@ -70,6 +72,7 @@ struct OptionsView: View {
                         switch selection {
                         case .audio: audioPage
                         case .data: dataPage
+                        case .diagnostics: diagnosticsPage
                         case .interface: interfacePage
                         case .playback: playbackPage
                         }
@@ -192,8 +195,11 @@ struct OptionsView: View {
                 .toggleStyle(.checkbox)
             }
 
-            libraryBehaviorCard
+        }
+    }
 
+    private var diagnosticsPage: some View {
+        VStack(alignment: .leading, spacing: 16) {
             sectionCard(title: "Playback Diagnostics") {
                 diagnosticRow("Decoder", model.playbackDiagnostics.decoderFamily ?? "—")
                 diagnosticRow(
@@ -305,9 +311,9 @@ struct OptionsView: View {
 
     private var audioPage: some View {
         VStack(alignment: .leading, spacing: 16) {
-            equalizerCard
             appVolumeCard
             monoCard
+            equalizerCard
             sectionCard(title: "AAC Export") {
                 Text("Export Folder")
                 pathBar(path: model.aacExportDirectoryPath, browse: model.chooseAACExportDirectory)
@@ -443,6 +449,8 @@ struct OptionsView: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .trailing)
             }
+
+            libraryBehaviorCard
         }
     }
 
@@ -525,13 +533,15 @@ struct OptionsView: View {
 
                 HStack(spacing: 8) {
                     Button("Reload Library") { model.reloadLibrary() }
-                        .frame(maxWidth: .infinity)
+                        .frame(maxWidth: .infinity, minHeight: 24)
                     Button("Use Default") { model.useDefaultLibraryDatabase() }
-                        .frame(maxWidth: .infinity)
+                        .frame(maxWidth: .infinity, minHeight: 24)
+                    Button("Show in Finder") { model.showLibraryDatabaseInFinder() }
+                        .frame(maxWidth: .infinity, minHeight: 24)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
 
             sectionCard(title: "Cache") {
@@ -545,7 +555,7 @@ struct OptionsView: View {
                             Text("Decompressed files can be retained to reduce load time.")
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
-                            Text("Usage: (model.archiveCacheSummaryText)")
+                            Text("Usage: \(model.archiveCacheSummaryText)")
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
                         }
@@ -566,11 +576,16 @@ struct OptionsView: View {
                     .disabled(!model.archiveCachePolicy.isEnabled)
                 }
 
-                Button("Clear Cache") { model.clearArchiveCache() }
-                    .disabled(model.isClearingArchiveCache)
-                    .frame(maxWidth: .infinity)
-                    .buttonStyle(.bordered)
-                    .controlSize(.regular)
+                HStack(spacing: 8) {
+                    Button("Clear Cache") { model.clearArchiveCache() }
+                        .disabled(model.isClearingArchiveCache)
+                        .frame(maxWidth: .infinity, minHeight: 24)
+                    Button("Show in Finder") { model.showArchiveCacheInFinder() }
+                        .frame(maxWidth: .infinity, minHeight: 24)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
         .onAppear {
@@ -655,17 +670,14 @@ struct OptionsView: View {
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(.secondary)
                             .frame(width: 34, alignment: .trailing)
-                        TextField(
-                            "0.0",
+                        Slider(
                             value: Binding(
                                 get: { Double(model.equalizerBandGains[index]) },
                                 set: { model.setEqualizerBandGain(Float($0), at: index) }
                             ),
-                            format: .number.precision(.fractionLength(1))
+                            in: Double(AudioEqualizer.gainRange.lowerBound)...Double(AudioEqualizer.gainRange.upperBound),
+                            step: 0.5
                         )
-                        .textFieldStyle(.roundedBorder)
-                        .multilineTextAlignment(.trailing)
-                        .frame(width: 72)
                         Text(String(format: "%+.1f", model.equalizerBandGains[index]))
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(.secondary)
@@ -688,19 +700,18 @@ struct OptionsView: View {
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 8) {
-                TextField(
-                    "100",
+                Slider(
                     value: Binding(
-                        get: { Double(model.appVolume * 100) },
-                        set: { model.setAppVolume(Float($0 / 100)) }
+                        get: { Double(model.appVolume) },
+                        set: { model.setAppVolume(Float($0)) }
                     ),
-                    format: .number.precision(.fractionLength(0))
+                    in: Double(AudioOutputVolume.range.lowerBound)...Double(AudioOutputVolume.range.upperBound),
+                    step: 0.01
                 )
-                .textFieldStyle(.roundedBorder)
-                .multilineTextAlignment(.trailing)
-                .frame(width: 72)
-                Text("%")
+                Text("\(Int((model.appVolume * 100).rounded()))%")
+                    .font(.system(size: 11, design: .monospaced))
                     .foregroundStyle(.secondary)
+                    .frame(width: 34, alignment: .trailing)
             }
         }
     }
