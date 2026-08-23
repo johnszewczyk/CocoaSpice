@@ -30,6 +30,6 @@
 
 ## Files
 
-- [LatestTaskOwner.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LatestTaskOwner.swift)
-- [PlaybackRequestState.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlaybackRequestState.swift)
-- [PlayerViewModel.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
+- [LatestTaskOwner.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/LatestTaskOwner.swift)
+- [PlaybackRequestState.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/PlaybackRequestState.swift)
+- [PlayerViewModel.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)

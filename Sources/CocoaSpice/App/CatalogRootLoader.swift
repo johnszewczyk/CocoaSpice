@@ -21,7 +21,7 @@ enum CatalogBrowser {
         preferFoldersOverMetadata: Bool = true
     ) throws -> [DatabaseGameItem] {
         let catalog = try ReadOnlyCatalog(databaseURL: databaseURL)
-        let items = try catalog.gameBuckets().map { bucket in
+        let items = try catalog.gameBuckets(preferFoldersOverMetadata: preferFoldersOverMetadata).map { bucket in
             let name = bucket.game.trimmingCharacters(in: .whitespacesAndNewlines)
             return DatabaseGameItem(
                 rootID: bucket.rootID,

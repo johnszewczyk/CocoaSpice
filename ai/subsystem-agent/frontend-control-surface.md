@@ -17,11 +17,16 @@ knowledge.
 - The native `OptionsView` owns `NSOpenPanel` presentation only. It passes the
   chosen URL to `PlayerViewModel.selectLibraryDatabase(at:)`, the same
   path-taking action exposed by the control surface.
+- Native Options presents CocoaSpice-owned settings separately from the
+  VGMBoy Remote Interface settings. Path values are selectable full-width
+  readouts; browsing remains a native window concern and playback commands
+  remain in the typed control boundary.
 
 ## Current Surface
 
 - `CocoaSpiceFrontendSurface.v1` declares the available `options` and
-  `main_playback` features.
+  `main_playback` features and carries the canonical `VGMBoyEndpointSurface`
+  from `VGMBoyEndpointCore`.
 - `CocoaSpiceOptionsSnapshot` includes every current Options preference,
   catalog/cache presentation value, and read-only playback diagnostic value.
 - `CocoaSpiceOptionsCommand` changes those options and performs each
@@ -35,6 +40,9 @@ knowledge.
   the visible transport, seek, Long Play, repeat, and random controls.
 - A caller queries a fresh snapshot after a command. There is no WebKit
   message bridge or alternate renderer in this repository yet.
+- CocoaSpice and SPCBoy WK consume the same VGMBoy endpoint capability map;
+  app-specific control surfaces may expose fewer UI features, but they must
+  not rename or reinterpret the shared endpoint operations.
 
 ## Deliberate Boundary
 
@@ -48,5 +56,5 @@ knowledge.
 
 ## Files
 
-- [CocoaSpiceFrontendControlSurface.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/CocoaSpiceFrontendControlSurface.swift)
-- [PlayerViewModel.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
+- [CocoaSpiceFrontendControlSurface.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/CocoaSpiceFrontendControlSurface.swift)
+- [PlayerViewModel.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)

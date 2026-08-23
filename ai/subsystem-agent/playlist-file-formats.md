@@ -23,6 +23,6 @@
 
 ## Files
 
-- [PlaylistM3UCodec.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlaylistM3UCodec.swift)
-- [PlayerViewModel.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
-- [CocoaSpiceApp.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/CocoaSpiceApp.swift)
+- [PlaylistM3UCodec.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/PlaylistM3UCodec.swift)
+- [PlayerViewModel.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
+- [CocoaSpiceApp.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/CocoaSpiceApp.swift)

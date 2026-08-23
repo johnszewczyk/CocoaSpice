@@ -1169,7 +1169,7 @@ final class AnimatedCapsuleSelectionHighlightView: NSView {
         let movement = CABasicAnimation(keyPath: "position")
         movement.fromValue = startPosition
         movement.toValue = targetPosition
-        movement.duration = 0.18
+        movement.duration = 0.333
         movement.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
         primarySelectionLayer.add(movement, forKey: "playlistSelectionMovement")
     }

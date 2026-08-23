@@ -6,9 +6,9 @@ Resolved in code and covered by regression tests on 2026-08-11.
 
 Canonical current behavior and engineering constraints live in:
 
-- [Database Browser](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-human/database-browser.md)
-- [Library Browser Database](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/library-browser-database.md)
-- [Database Sidebar Presentation](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/database-sidebar-presentation.md)
+- [Database Browser](/Users/john/Downloads/Code/VGMMan/CocoaSpice/ai/subsystem-human/database-browser.md)
+- [Library Browser Database](/Users/john/Downloads/Code/VGMMan/CocoaSpice/ai/subsystem-agent/library-browser-database.md)
+- [Database Sidebar Presentation](/Users/john/Downloads/Code/VGMMan/CocoaSpice/ai/subsystem-agent/database-sidebar-presentation.md)
 
 This report retains the measured closeout evidence for the original bug.
 
@@ -44,7 +44,7 @@ Full rescans persist into a disabled staging root while the last committed sideb
 
 ## Relevant Code
 
-- [DatabaseSidebarLoader.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarLoader.swift)
-- [LibraryDatabase.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase.swift)
-- [LibraryDatabase+ReadQueries.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase+ReadQueries.swift)
-- [PlaylistQueueLoader.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlaylistQueueLoader.swift)
+- [DatabaseSidebarLoader.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarLoader.swift)
+- [LibraryDatabase.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase.swift)
+- [LibraryDatabase+ReadQueries.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase+ReadQueries.swift)
+- [PlaylistQueueLoader.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/PlaylistQueueLoader.swift)

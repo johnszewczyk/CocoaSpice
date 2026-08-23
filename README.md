@@ -30,7 +30,8 @@ The components communicate through files and in-process APIs:
 5. VGMBoy emits playback status and natural-end events. CocoaSpice applies the next playlist,
    repeat, shuffle, and UI decision.
 
-SPCBoy continues to use its working playback implementation until its separate VGMBoy migration.
+SPCBoy WK is the active native WebKit frontend and uses the shared VGMBoy endpoint/core boundary.
+The original Electron SPCBoy remains archived and is not part of current feature parity work.
 
 ## What CocoaSpice does
 

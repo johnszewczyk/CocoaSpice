@@ -31,9 +31,9 @@ SPCBoy uses a 10 ms linear envelope. This is intentionally short enough to leave
 
 The helper bridge stays narrow:
 
-- [native-audio-tools.js](/Users/john/Downloads/Code/SPCBoy/electron/native-audio-tools.js) exposes `rampNativePlaybackGain()` and `unloadNativePlayback()`.
-- [main.js](/Users/john/Downloads/Code/SPCBoy/electron/main.js) carries those through IPC.
-- [preload.js](/Users/john/Downloads/Code/SPCBoy/electron/preload.js) exposes only the renderer-safe calls.
+- [native-audio-tools.js](/Users/john/Downloads/Code/VGMMan/SPCBoy/electron/native-audio-tools.js) exposes `rampNativePlaybackGain()` and `unloadNativePlayback()`.
+- [main.js](/Users/john/Downloads/Code/VGMMan/SPCBoy/electron/main.js) carries those through IPC.
+- [preload.js](/Users/john/Downloads/Code/VGMMan/SPCBoy/electron/preload.js) exposes only the renderer-safe calls.
 
 ### Warm native replacement
 
@@ -46,7 +46,7 @@ Normal native track replacement no longer closes the helper/output runtime betwe
 
 This is specifically different from “leave stale PCM in a ring.” The old decoder and ring data are still invalidated; only the output runtime is retained. The result is no device-level close/reopen discontinuity and no stale-audio leak.
 
-Relevant implementation: [SPCBoy renderer transition coordinator](/Users/john/Downloads/Code/SPCBoy/web/app-playback.js).
+Relevant implementation: [SPCBoy renderer transition coordinator](/Users/john/Downloads/Code/VGMMan/SPCBoy/web/app-playback.js).
 
 ### Renderer-PCM equivalent
 
@@ -56,7 +56,7 @@ Renderer-decoded formats need the same behavior even though they do not use the 
 - `fadeRendererTransportGain()` schedules the transport fade to zero.
 - `fadeActiveOutput()` dispatches the correct native or renderer envelope, then waits only for the requested envelope duration before destructive transition work.
 
-See [app-playback.js](/Users/john/Downloads/Code/SPCBoy/web/app-playback.js). This preserves equalizer and app-volume semantics while making OpenMPT/standard-audio renderer paths follow the same de-click rule as native paths.
+See [app-playback.js](/Users/john/Downloads/Code/VGMMan/SPCBoy/web/app-playback.js). This preserves equalizer and app-volume semantics while making OpenMPT/standard-audio renderer paths follow the same de-click rule as native paths.
 
 ## Faded Skip
 
@@ -78,7 +78,7 @@ It must not seek/reload the current track at the current position with a synthet
 - `finalizePlaybackEnded()` stops/unloads only after silence, selects the requested neighbor, and preserves warm native output when the next backend is native.
 - A second Previous/Next during the active Faded Skip cancels the long fade, uses only the 10 ms de-click, then advances immediately.
 
-Direct implementation: [Faded Skip coordinator](/Users/john/Downloads/Code/SPCBoy/web/app-playback.js).
+Direct implementation: [Faded Skip coordinator](/Users/john/Downloads/Code/VGMMan/SPCBoy/web/app-playback.js).
 
 ### CocoaSpice implications
 

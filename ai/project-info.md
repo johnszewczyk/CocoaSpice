@@ -20,21 +20,21 @@
 
 Human-facing behavior:
 
-- Main shell: [main-shell.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-human/main-shell.md)
-- Playlist: [playlist.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-human/playlist.md)
-- Playback: [playback.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-human/playback.md)
-- Supported formats: [supported-formats.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-human/supported-formats.md)
-- Database browser: [database-browser.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-human/database-browser.md)
-- Options: [options.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-human/options.md)
+- Main shell: [main-shell.md](/Users/john/Downloads/Code/VGMMan/CocoaSpice/ai/subsystem-human/main-shell.md)
+- Playlist: [playlist.md](/Users/john/Downloads/Code/VGMMan/CocoaSpice/ai/subsystem-human/playlist.md)
+- Playback: [playback.md](/Users/john/Downloads/Code/VGMMan/CocoaSpice/ai/subsystem-human/playback.md)
+- Supported formats: [supported-formats.md](/Users/john/Downloads/Code/VGMMan/CocoaSpice/ai/subsystem-human/supported-formats.md)
+- Database browser: [database-browser.md](/Users/john/Downloads/Code/VGMMan/CocoaSpice/ai/subsystem-human/database-browser.md)
+- Options: [options.md](/Users/john/Downloads/Code/VGMMan/CocoaSpice/ai/subsystem-human/options.md)
 
 Agent engineering notes:
 
-- VGMBoy playback integration: [audio-playback-backend-routing.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/audio-playback-backend-routing.md)
-- Skin-neutral Options control boundary: [frontend-control-surface.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/frontend-control-surface.md)
-- Database ownership: [library-browser-database.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/library-browser-database.md), [shared-catalog-boundary.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/shared-catalog-boundary.md), [database-sidebar-presentation.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/database-sidebar-presentation.md)
-- Playlist ownership and formats: [playlist-queue-core.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/playlist-queue-core.md), [playlist-file-formats.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/playlist-file-formats.md), [gui-playlist-columns.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/gui-playlist-columns.md), [gui-playlist-selection-operations.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/gui-playlist-selection-operations.md)
-- App state and async work: [app-session-persistence.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/app-session-persistence.md), [async-task-ownership.md](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/async-task-ownership.md)
-- Remaining engineering notes: [subsystem-agent/](/Users/john/Downloads/Code/CocoaSpice/ai/subsystem-agent/)
+- VGMBoy playback integration: [audio-playback-backend-routing.md](/Users/john/Downloads/Code/VGMMan/CocoaSpice/ai/subsystem-agent/audio-playback-backend-routing.md)
+- Skin-neutral Options control boundary: [frontend-control-surface.md](/Users/john/Downloads/Code/VGMMan/CocoaSpice/ai/subsystem-agent/frontend-control-surface.md)
+- Database ownership: [library-browser-database.md](/Users/john/Downloads/Code/VGMMan/CocoaSpice/ai/subsystem-agent/library-browser-database.md), [shared-catalog-boundary.md](/Users/john/Downloads/Code/VGMMan/CocoaSpice/ai/subsystem-agent/shared-catalog-boundary.md), [database-sidebar-presentation.md](/Users/john/Downloads/Code/VGMMan/CocoaSpice/ai/subsystem-agent/database-sidebar-presentation.md)
+- Playlist ownership and formats: [playlist-queue-core.md](/Users/john/Downloads/Code/VGMMan/CocoaSpice/ai/subsystem-agent/playlist-queue-core.md), [playlist-file-formats.md](/Users/john/Downloads/Code/VGMMan/CocoaSpice/ai/subsystem-agent/playlist-file-formats.md), [gui-playlist-columns.md](/Users/john/Downloads/Code/VGMMan/CocoaSpice/ai/subsystem-agent/gui-playlist-columns.md), [gui-playlist-selection-operations.md](/Users/john/Downloads/Code/VGMMan/CocoaSpice/ai/subsystem-agent/gui-playlist-selection-operations.md)
+- App state and async work: [app-session-persistence.md](/Users/john/Downloads/Code/VGMMan/CocoaSpice/ai/subsystem-agent/app-session-persistence.md), [async-task-ownership.md](/Users/john/Downloads/Code/VGMMan/CocoaSpice/ai/subsystem-agent/async-task-ownership.md)
+- Remaining engineering notes: [subsystem-agent/](/Users/john/Downloads/Code/VGMMan/CocoaSpice/ai/subsystem-agent/)
 
 ## Local Rules
 

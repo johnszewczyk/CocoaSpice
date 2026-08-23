@@ -15,7 +15,6 @@ struct OptionsView: View {
         case data = "Database"
         case interface = "Interface"
         case playback = "Playback"
-        case plugins = "Plugins"
 
         var id: Self { self }
 
@@ -25,10 +24,12 @@ struct OptionsView: View {
             case .data: "cylinder.split.1x2"
             case .interface: "paintbrush"
             case .playback: "waveform"
-            case .plugins: "puzzlepiece.extension"
             }
         }
     }
+
+    private static let appSections: [OptionsSection] = [.audio, .data, .interface]
+    private static let remoteSections: [OptionsSection] = [.playback]
 
     private let windowBackground = Color(red: 30 / 255, green: 30 / 255, blue: 30 / 255)
     private let panelBackground = Color(red: 40 / 255, green: 40 / 255, blue: 40 / 255)
@@ -36,8 +37,14 @@ struct OptionsView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selection) {
-                Section("Components") {
-                    ForEach(OptionsSection.allCases) { section in
+                Section("CocoaSpice") {
+                    ForEach(Self.appSections) { section in
+                        Label(section.rawValue, systemImage: section.systemImage)
+                            .tag(section)
+                    }
+                }
+                Section("VGMBoy Remote Interface") {
+                    ForEach(Self.remoteSections) { section in
                         Label(section.rawValue, systemImage: section.systemImage)
                             .tag(section)
                     }
@@ -65,7 +72,6 @@ struct OptionsView: View {
                         case .data: dataPage
                         case .interface: interfacePage
                         case .playback: playbackPage
-                        case .plugins: pluginsPage
                         }
                     }
                     .padding(20)
@@ -189,6 +195,19 @@ struct OptionsView: View {
             libraryBehaviorCard
 
             sectionCard(title: "Playback Diagnostics") {
+                diagnosticRow("Decoder", model.playbackDiagnostics.decoderFamily ?? "—")
+                diagnosticRow(
+                    "Rates",
+                    "\(model.playbackDiagnostics.decoderSampleRate) / \(model.playbackDiagnostics.sampleRate) Hz"
+                )
+                diagnosticRow(
+                    "Decoded / Audible",
+                    "\(model.playbackDiagnostics.decodedFrames) / \(model.playbackDiagnostics.audiblePositionFrames) frames"
+                )
+                diagnosticRow(
+                    "Tempo",
+                    "\(model.playbackDiagnostics.tempo.formatted(.number.precision(.fractionLength(3))))×"
+                )
                 diagnosticRow(
                     "Buffer",
                     "\(model.playbackDiagnostics.bufferedMilliseconds) ms • \(model.playbackDiagnostics.bufferPercent)%"
@@ -206,9 +225,13 @@ struct OptionsView: View {
 
     private var tempoCard: some View {
         sectionCard(title: "Play Speed") {
+            Text("Fractions and decimals are accepted and snap to 1/32 increments.")
+                .font(.system(size: 11))
+                .foregroundStyle(.secondary)
+
             tempoRow(
                 title: "libgme",
-                detail: "SPC, NSF/NSFE, GBS, HES, KSS, AY, and SAP. Exact decimals and fractions are accepted.",
+                detail: "SPC, NSF/NSFE, GBS, HES, KSS, AY, and SAP",
                 enabled: Binding(
                     get: { model.libgmeTempoEnabled },
                     set: { model.setLibGmeTempoEnabled($0) }
@@ -218,7 +241,7 @@ struct OptionsView: View {
             )
             tempoRow(
                 title: "libvgm",
-                detail: "GYM, S98, VGM, VGZ, and DRO. Changes emulated playback rate; exact decimals and fractions are accepted.",
+                detail: "GYM, S98, VGM, VGZ, and DRO",
                 enabled: Binding(
                     get: { model.libvgmTempoEnabled },
                     set: { model.setLibVgmTempoEnabled($0) }
@@ -252,10 +275,11 @@ struct OptionsView: View {
                 }
             }
             .toggleStyle(.checkbox)
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             TextField("1", text: text)
                 .textFieldStyle(.roundedBorder)
-                .frame(width: 72)
+                .frame(width: 72, alignment: .trailing)
                 .multilineTextAlignment(.trailing)
                 .onSubmit(commit)
         }
@@ -281,28 +305,15 @@ struct OptionsView: View {
 
     private var audioPage: some View {
         VStack(alignment: .leading, spacing: 16) {
+            equalizerCard
             appVolumeCard
             monoCard
-            equalizerCard
             sectionCard(title: "AAC Export") {
-                HStack(alignment: .center, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Export Folder")
-                        Text(model.aacExportDirectoryPath)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .textSelection(.enabled)
-                        Text("Playlist Export AAC writes a finite VGMBoy render here. New installs default to Downloads.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button("Browse…") {
-                        model.chooseAACExportDirectory()
-                    }
-                }
+                Text("Export Folder")
+                pathBar(path: model.aacExportDirectoryPath, browse: model.chooseAACExportDirectory)
+                Text("Playlist Export AAC writes a finite VGMBoy render here. New installs default to Downloads.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
             }
         }
     }
@@ -334,44 +345,6 @@ struct OptionsView: View {
                 .foregroundStyle(.secondary)
         }
     }
-
-    private var pluginsPage: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            sectionCard(title: "External Plugins and Software") {
-                Text("This page currently lists the external decoders, emulators, and libraries used by CocoaSpice. It is an inventory only; plugin loading and configuration are not exposed here yet.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-
-                ForEach(Self.externalComponents) { component in
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text(component.name)
-                            .foregroundStyle(.white)
-                        Spacer()
-                        Text(component.version)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-            }
-        }
-    }
-
-    private struct ExternalComponent: Identifiable {
-        let id = UUID()
-        let name: String
-        let version: String
-    }
-
-    private static let externalComponents = [
-        ExternalComponent(name: "Game Music Emu / libgme", version: "0.6.5"),
-        ExternalComponent(name: "libopenmpt", version: "0.8.7"),
-        ExternalComponent(name: "libvgm", version: "vendored snapshot"),
-        ExternalComponent(name: "vgmstream", version: "vendored snapshot"),
-        ExternalComponent(name: "mGBA / Highly Complete", version: "vendored snapshot"),
-        ExternalComponent(name: "lazyusf2", version: "vendored snapshot"),
-        ExternalComponent(name: "2sf2wav", version: "vendored snapshot"),
-        ExternalComponent(name: "psflib", version: "vendored snapshot")
-    ]
 
     private var interfacePage: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -537,27 +510,8 @@ struct OptionsView: View {
     private var dataPage: some View {
         VStack(alignment: .leading, spacing: 16) {
             sectionCard(title: "Database") {
-                HStack(alignment: .center, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("MediaScanner Catalog")
-                        Text(model.configuredLibraryDatabasePath)
-                            .font(.system(size: 11, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                            .truncationMode(.middle)
-                            .textSelection(.enabled)
-                    }
-                    Spacer()
-                    Button("Reload Library") {
-                        model.reloadLibrary()
-                    }
-                    Button("Use Default") {
-                        model.useDefaultLibraryDatabase()
-                    }
-                    Button("Browse…") {
-                        model.chooseLibraryDatabase()
-                    }
-                }
+                Text("MediaScanner Catalog")
+                pathBar(path: model.configuredLibraryDatabasePath, browse: model.chooseLibraryDatabase)
 
                 if let status = model.libraryDatabaseLocationStatus {
                     Text(status)
@@ -568,23 +522,38 @@ struct OptionsView: View {
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }
+
+                HStack(spacing: 8) {
+                    Button("Reload Library") { model.reloadLibrary() }
+                        .frame(maxWidth: .infinity)
+                    Button("Use Default") { model.useDefaultLibraryDatabase() }
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .frame(maxWidth: .infinity)
             }
 
             sectionCard(title: "Cache") {
-                Toggle(isOn: Binding(
-                    get: { model.archiveCachePolicy.isEnabled },
-                    set: { model.setArchiveCacheEnabled($0) }
-                )) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Enable Cache")
-                        Text("Keep extracted archive material for faster replay. Turn off to use disposable playback storage.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
+                HStack(alignment: .center, spacing: 12) {
+                    Toggle(isOn: Binding(
+                        get: { model.archiveCachePolicy.isEnabled },
+                        set: { model.setArchiveCacheEnabled($0) }
+                    )) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text("Enable Cache")
+                            Text("Decompressed files can be retained to reduce load time.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                            Text("Usage: (model.archiveCacheSummaryText)")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                }
-
-                if model.archiveCachePolicy.isEnabled {
-                    Picker("Cache Size", selection: Binding(
+                    .toggleStyle(.checkbox)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Spacer(minLength: 12)
+                    Picker("", selection: Binding(
                         get: { model.archiveCachePolicy.maximumBytes },
                         set: { model.setArchiveCacheLimitBytes($0) }
                     )) {
@@ -592,27 +561,43 @@ struct OptionsView: View {
                             Text(ArchiveCachePolicy.displayLimit(bytes)).tag(bytes)
                         }
                     }
+                    .labelsHidden()
                     .pickerStyle(.menu)
+                    .disabled(!model.archiveCachePolicy.isEnabled)
                 }
 
-                HStack(alignment: .center, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(model.archiveCachePolicy.isEnabled ? "Usage" : "Disposable Storage")
-                        Text(model.archiveCacheSummaryText)
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    Button("Clear Cache") {
-                        model.clearArchiveCache()
-                    }
+                Button("Clear Cache") { model.clearArchiveCache() }
                     .disabled(model.isClearingArchiveCache)
-                }
+                    .frame(maxWidth: .infinity)
+                    .buttonStyle(.bordered)
+                    .controlSize(.regular)
             }
         }
         .onAppear {
             model.refreshArchiveCacheSummary()
         }
+    }
+
+    private func pathBar(path: String, browse: @escaping () -> Void) -> some View {
+        HStack(spacing: 8) {
+            Text(path)
+                .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Button(action: browse) {
+                Image(systemName: "folder")
+            }
+            .buttonStyle(.bordered)
+            .controlSize(.small)
+            .accessibilityLabel("Browse")
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
     }
 
     private var libraryBehaviorCard: some View {
@@ -670,14 +655,17 @@ struct OptionsView: View {
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(.secondary)
                             .frame(width: 34, alignment: .trailing)
-                        Slider(
+                        TextField(
+                            "0.0",
                             value: Binding(
                                 get: { Double(model.equalizerBandGains[index]) },
                                 set: { model.setEqualizerBandGain(Float($0), at: index) }
                             ),
-                            in: Double(AudioEqualizer.gainRange.lowerBound)...Double(AudioEqualizer.gainRange.upperBound),
-                            step: 0.5
+                            format: .number.precision(.fractionLength(1))
                         )
+                        .textFieldStyle(.roundedBorder)
+                        .multilineTextAlignment(.trailing)
+                        .frame(width: 72)
                         Text(String(format: "%+.1f", model.equalizerBandGains[index]))
                             .font(.system(size: 11, design: .monospaced))
                             .foregroundStyle(.secondary)
@@ -700,18 +688,19 @@ struct OptionsView: View {
                 .foregroundStyle(.secondary)
 
             HStack(spacing: 8) {
-                Slider(
+                TextField(
+                    "100",
                     value: Binding(
-                        get: { Double(model.appVolume) },
-                        set: { model.setAppVolume(Float($0)) }
+                        get: { Double(model.appVolume * 100) },
+                        set: { model.setAppVolume(Float($0 / 100)) }
                     ),
-                    in: Double(AudioOutputVolume.range.lowerBound)...Double(AudioOutputVolume.range.upperBound),
-                    step: 0.01
+                    format: .number.precision(.fractionLength(0))
                 )
-                Text("\(Int((model.appVolume * 100).rounded()))%")
-                    .font(.system(size: 11, design: .monospaced))
+                .textFieldStyle(.roundedBorder)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 72)
+                Text("%")
                     .foregroundStyle(.secondary)
-                    .frame(width: 34, alignment: .trailing)
             }
         }
     }

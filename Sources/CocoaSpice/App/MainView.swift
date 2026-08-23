@@ -389,6 +389,7 @@ private struct DatabaseGameListView: NSViewRepresentable {
         var sidebarMonospace: Bool
         private weak var tableView: DatabaseSidebarNativeTableView?
         private var reloadScheduled = false
+        private var isSynchronizingTableSelection = false
         private var cachedSidebarRows: [SidebarRow] = []
         private var lastSidebarContentRevision = -1
         private var lastSidebarSystemMode: Bool?
@@ -457,6 +458,8 @@ private struct DatabaseGameListView: NSViewRepresentable {
         }
 
         private func syncSelection(in tableView: NSTableView, refreshHighlight: Bool) {
+            isSynchronizingTableSelection = true
+            defer { isSynchronizingTableSelection = false }
             let rows = IndexSet(cachedSidebarRows.enumerated().compactMap { index, row in
                 row.game.flatMap { model.selectedDatabaseGameIDs.contains($0.id) ? index : nil }
             })
@@ -520,6 +523,7 @@ private struct DatabaseGameListView: NSViewRepresentable {
         }
 
         func tableViewSelectionDidChange(_ notification: Notification) {
+            guard !isSynchronizingTableSelection else { return }
             guard let tableView else { return }
             let rows = tableView.selectedRowIndexes.filter { $0 >= 0 && $0 < cachedSidebarRows.count }
             let items = rows.compactMap { cachedSidebarRows[$0].game }

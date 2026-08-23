@@ -164,6 +164,9 @@ import VGMBoyKit
     #expect(surface.version == CocoaSpiceFrontendProtocol.version)
     #expect(surface.supports(.options))
     #expect(surface.supports(.mainPlayback))
+    #expect(surface.vgmboyEndpointSurface.supports(.playback, .setTempo))
+    #expect(surface.vgmboyEndpointSurface.supports(.audio, .setEqualizer))
+    #expect(surface.vgmboyEndpointSurface.supports(.export, .exportAAC))
 
     let command = CocoaSpiceOptionsCommand.setEqualizerBand(index: 4, gain: 3.5)
     let decoded = try JSONDecoder().decode(

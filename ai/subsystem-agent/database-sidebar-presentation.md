@@ -27,7 +27,7 @@
 - `DatabaseSidebarLoader` owns the Games/Files snapshot cache. A mode toggle reads an already loaded snapshot; only a scan, root-state change, maintenance write, or explicit database reset invalidates it.
 - `DatabaseSidebarLoader` publishes observable loading phase and activity state. It clears the active-loading state before invoking its completion callback, so SwiftUI removes the loading surface without requiring a window-focus or input event.
 - A failed snapshot refresh leaves the last committed snapshot intact and displays an inline error with Retry. Do not clear loaded rows or reinterpret a read failure as an empty database.
-- Folder-first Games reads and activation use MediaScanner's indexed `browser_system` bucket projection. Metadata-first mode evaluates `track_metadata.system` on the read-only connection. Changing source preference reloads the view without mutating the scanner catalog.
+- Games reads and activation use CatalogReader's shared folder-versus-metadata aggregation. Folder-first mode prefers MediaScanner's indexed `browser_system`, metadata-first mode prefers `track_metadata.system`, and either falls through when the preferred value is empty. Changing source preference reloads the view without mutating the scanner catalog.
 - Games search caches the candidate indices from the preceding query when new terms extend it. Query changes that are not an extension intentionally restart from the complete game list so results stay exact.
 - File roots begin collapsed after a Files refresh. This keeps flattened native-table construction proportional to the folders the user opens instead of eagerly building every source-file row.
 - The Files sidebar builds its reusable folder graph alongside the background SQLite read. Once published, a disclosure reload walks only expanded branches; it must never rebuild the full graph on the main actor.
@@ -48,10 +48,10 @@
 
 ## Files
 
-- [DatabaseSidebarPresentation.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarPresentation.swift)
-- [DatabaseSidebarState.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarState.swift)
-- [DatabaseFileSidebarInteraction.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/DatabaseFileSidebarInteraction.swift)
-- [LibraryDatabase.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase.swift)
-- [MainView.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
-- [PlayerViewModel.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
-- [LibraryModels.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryModels.swift)
+- [DatabaseSidebarPresentation.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarPresentation.swift)
+- [DatabaseSidebarState.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarState.swift)
+- [DatabaseFileSidebarInteraction.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/DatabaseFileSidebarInteraction.swift)
+- [LibraryDatabase.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase.swift)
+- [MainView.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
+- [PlayerViewModel.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
+- [LibraryModels.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/LibraryModels.swift)

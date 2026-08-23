@@ -90,8 +90,27 @@ final class PlaybackEngine: @unchecked Sendable {
     }
 
     func stop() async { await stopPlayback() }
-    func beginFadedSkip(duration: TimeInterval) async -> Int? { nil }
-    func isCurrentGeneration(_ generation: Int) async -> Bool { false }
+    func beginFadedSkip(duration: TimeInterval) async -> Int? {
+        await run {
+            guard self.currentTrack != nil else { return nil }
+            let status = self.controller.perform(.init(command: .status)).status
+            guard status?.isPlaying == true else { return nil }
+            let milliseconds = max(1, Int((duration * 1_000).rounded(.up)))
+            let event = self.controller.perform(.init(
+                command: .rampOutputGain,
+                payload: .init(outputGain: 0, rampMilliseconds: milliseconds)
+            ))
+            guard event.kind != .error else { return nil }
+            return status?.diagnostics.generation
+        }
+    }
+
+    func isCurrentGeneration(_ generation: Int) async -> Bool {
+        await run {
+            guard self.currentTrack != nil else { return false }
+            return self.controller.perform(.init(command: .status)).status?.diagnostics.generation == generation
+        }
+    }
 
     func statusSnapshot() async -> PlaybackStatusSnapshot {
         await run { self.snapshot(self.controller.perform(.init(command: .status)).status) }
@@ -99,7 +118,14 @@ final class PlaybackEngine: @unchecked Sendable {
 
     func diagnosticsSnapshot() -> PlaybackDiagnosticsSnapshot {
         let diagnostics = controller.diagnostics()
+        let status = controller.perform(.init(command: .status)).status
+        let statistics = status?.statistics
         return PlaybackDiagnosticsSnapshot(
+            decoderFamily: statistics?.decoderFamily,
+            decoderSampleRate: statistics?.decoderSampleRate ?? 0,
+            decodedFrames: statistics?.decodedFrames ?? 0,
+            audiblePositionFrames: statistics?.audiblePositionFrames ?? 0,
+            tempo: statistics?.tempo ?? 1,
             bufferedFrames: Int64(diagnostics.bufferedFrames),
             ringBufferFrames: Int64(diagnostics.capacityFrames),
             underrunCount: diagnostics.underrunCount,

@@ -1,4 +1,5 @@
 import Foundation
+import VGMBoyEndpointCore
 import VGMBoyKit
 
 /// Versioned, skin-neutral capability declaration for CocoaSpice itself.
@@ -16,6 +17,7 @@ enum CocoaSpiceFrontendFeature: String, Codable, CaseIterable, Sendable {
 struct CocoaSpiceFrontendSurface: Codable, Equatable, Sendable {
     let version: Int
     let features: Set<CocoaSpiceFrontendFeature>
+    let vgmboyEndpointSurface: VGMBoyEndpointSurface
 
     func supports(_ feature: CocoaSpiceFrontendFeature) -> Bool {
         features.contains(feature)
@@ -23,7 +25,8 @@ struct CocoaSpiceFrontendSurface: Codable, Equatable, Sendable {
 
     static let v1 = CocoaSpiceFrontendSurface(
         version: CocoaSpiceFrontendProtocol.version,
-        features: Set(CocoaSpiceFrontendFeature.allCases)
+        features: Set(CocoaSpiceFrontendFeature.allCases),
+        vgmboyEndpointSurface: .v1
     )
 }
 

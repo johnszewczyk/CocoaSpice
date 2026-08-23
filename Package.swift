@@ -21,7 +21,8 @@ let package = Package(
             dependencies: [
                 .product(name: "CatalogReader", package: "CatalogReader"),
                 .product(name: "LocalFileBrowserCore", package: "FrontendCore"),
-                .product(name: "VGMBoyKit", package: "VGMBoy")
+                .product(name: "VGMBoyKit", package: "VGMBoy"),
+                .product(name: "VGMBoyEndpointCore", package: "VGMBoy")
             ],
             linkerSettings: [
                 .linkedFramework("AppKit"),

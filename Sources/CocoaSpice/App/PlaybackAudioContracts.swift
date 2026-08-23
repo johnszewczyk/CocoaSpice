@@ -53,6 +53,11 @@ struct NativeAudioOutputSnapshot: Equatable, Sendable {
 }
 
 struct PlaybackDiagnosticsSnapshot: Codable, Equatable, Sendable {
+    let decoderFamily: String?
+    let decoderSampleRate: Int
+    let decodedFrames: Int64
+    let audiblePositionFrames: Int64
+    let tempo: Double
     let bufferedFrames: Int64
     let ringBufferFrames: Int64
     let underrunCount: Int64
@@ -61,6 +66,11 @@ struct PlaybackDiagnosticsSnapshot: Codable, Equatable, Sendable {
     let outputHealth: PlaybackOutputHealth
 
     static let idle = PlaybackDiagnosticsSnapshot(
+        decoderFamily: nil,
+        decoderSampleRate: 0,
+        decodedFrames: 0,
+        audiblePositionFrames: 0,
+        tempo: 1,
         bufferedFrames: 0,
         ringBufferFrames: 0,
         underrunCount: 0,

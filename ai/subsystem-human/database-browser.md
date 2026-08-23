@@ -7,7 +7,7 @@
 - Files: the standalone icon immediately left of the transport controls switches to a folder tree built only from scanned database records. It uses the same dense native row style as Games, with `▾`/`▸` disclosure glyphs and nested text indentation. Its own toolbar grouping distinguishes browser navigation from playback. It loads only when opened and starts with library roots collapsed, so a very large collection does not delay launch. It shows enabled library roots, scanned subfolders, and source files without live filesystem browsing.
 - Files: selecting a source file queues its stored tracks; archive files remain one source-file leaf and queue their indexed members.
 - Files: source-file leaves are stored with the scan database. Opening or revisiting Files reads that stored tree; it does not regroup every indexed track.
-- Group by Console: Options can group games under expandable console headings. `Prefer Folders over Metadatas` uses the catalog's recognized parent console folder (including the parent of a `.tar.zst` game archive) before embedded console metadata; disabling it reverses that source priority. Changing it reloads the read-only sidebar without rewriting the catalog.
+- Group by Console: Options can group games under expandable console headings. `Prefer Folders over Metadatas` uses the catalog's recognized parent console folder (including the parent of a `.tar.zst` game archive) before embedded console metadata; when that folder tag is empty, the embedded metadata fills the gap. Disabling it reverses that source priority. Changing it reloads the read-only sidebar without rewriting the catalog.
 - Game names: use the inspected game tag when present, otherwise the archive filename for archived tracks or immediate parent-folder name for loose tracks. A recognized terminal console tag is omitted from an archive game name, while unrelated suffixes such as `[USA]` remain part of the title.
 - Rows: show track counts and scan-root status. The same game/system scanned from different library paths remains separate; only those duplicate rows include their compact source-root name (for example, `JoshW` or `SNESMusicOrg`).
 - MediaScanner incremental scans retain successful unchanged ZIP, 7z, and TAR+Zstandard archive results instead of re-inspecting their playable members.
@@ -18,7 +18,7 @@
 ## Search
 
 - Search: accepts typing immediately, waits 250 ms before a new first-character query, then filters follow-up typing after 100 ms.
-- Search: temporarily replaces either Games or Files with the same indexed game results. Clearing it returns to the previously selected view.
+- Search: temporarily presents the indexed game results in the dense list while preserving the stored Games or Files mode. Clearing it returns to that mode.
 - Search: matches game titles and compact source-root names; console headings organize the results but are not an additional search field.
 - Search: preserves the active database selection when the query changes.
 - Search: Return and list navigation act on the visible indexed game results even when Files is the covered underlying view.
@@ -42,6 +42,6 @@
 
 ## Files
 
-- [MainView.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
-- [LibraryDatabase.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase.swift)
-- [LibraryModels.swift](/Users/john/Downloads/Code/CocoaSpice/Sources/CocoaSpice/App/LibraryModels.swift)
+- [MainView.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/MainView.swift)
+- [LibraryDatabase.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase.swift)
+- [LibraryModels.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/LibraryModels.swift)
