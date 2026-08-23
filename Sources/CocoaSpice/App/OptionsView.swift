@@ -534,12 +534,9 @@ struct OptionsView: View {
                 }
 
                 HStack(spacing: 8) {
-                    Button("Use Default") { model.useDefaultLibraryDatabase() }
-                        .frame(maxWidth: .infinity, minHeight: 24)
-                    Button("Reload Library") { model.reloadLibrary() }
-                        .frame(maxWidth: .infinity, minHeight: 24)
-                    Button("Show in Finder") { model.showLibraryDatabaseInFinder() }
-                        .frame(maxWidth: .infinity, minHeight: 24)
+                    fullWidthActionButton("Use Default") { model.useDefaultLibraryDatabase() }
+                    fullWidthActionButton("Reload Library") { model.reloadLibrary() }
+                    fullWidthActionButton("Show in Finder") { model.showLibraryDatabaseInFinder() }
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
@@ -580,16 +577,13 @@ struct OptionsView: View {
                 }
 
                 HStack(spacing: 8) {
-                    Button("Use Default") {
+                    fullWidthActionButton("Use Default") {
                         model.setArchiveCacheEnabled(true)
                         model.setArchiveCacheLimitBytes(ArchiveCachePolicy.defaultLimitBytes)
                     }
-                        .frame(maxWidth: .infinity, minHeight: 24)
-                    Button("Clear Cache") { model.clearArchiveCache() }
+                    fullWidthActionButton("Clear Cache") { model.clearArchiveCache() }
                         .disabled(model.isClearingArchiveCache)
-                        .frame(maxWidth: .infinity, minHeight: 24)
-                    Button("Show in Finder") { model.showArchiveCacheInFinder() }
-                        .frame(maxWidth: .infinity, minHeight: 24)
+                    fullWidthActionButton("Show in Finder") { model.showArchiveCacheInFinder() }
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
@@ -621,6 +615,14 @@ struct OptionsView: View {
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
         .background(Color.white.opacity(0.06), in: RoundedRectangle(cornerRadius: 6))
+    }
+
+    private func fullWidthActionButton(_ title: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title)
+                .frame(maxWidth: .infinity)
+        }
+        .frame(maxWidth: .infinity, minHeight: 24)
     }
 
     private var libraryBehaviorCard: some View {

@@ -8,7 +8,7 @@
 
 ## Current State
 
-- Current columns are transport, favorite, index, file, title, game, author, system, path, and length. Favorite is fixed immediately before index and is not user-hidden or reordered.
+- Current columns are transport, favorite, index, file, title, game, author, system, path, and length. Favorite is fixed immediately before index, uses a star header, and is not user-hidden or reordered.
 - Metadata-backed columns fall back to filename or parent-folder text when metadata is absent.
 - The Path column uses `TrackItem.fullPathText`: a full filesystem path for ordinary files and `archive-path#member-path` for archive members.
 - Column visibility, order, and width are persisted in `UserDefaults`.

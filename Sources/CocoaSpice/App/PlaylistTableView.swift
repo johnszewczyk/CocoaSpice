@@ -102,7 +102,7 @@ struct PlaylistTableView: NSViewRepresentable {
             var title: String {
                 switch self {
                 case .transport: ""
-                case .favorite: ""
+                case .favorite: "★"
                 case .index: "#"
                 case .file: "File"
                 case .title: "Title"

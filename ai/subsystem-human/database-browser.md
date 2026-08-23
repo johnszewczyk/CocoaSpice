@@ -15,6 +15,7 @@
 - When a changed archive is rescanned, its stored member set is replaced as a whole. Renamed or removed members therefore cannot remain in the Database after a repack.
 - While MediaScanner writes, CocoaSpice continues showing its opened read-only snapshot. Choose Options > Database > Reload Library after publication to consume the current catalog without restarting or interrupting playback.
 - If a database sidebar read fails, the existing list remains available and an inline Retry message shows the error instead of presenting an empty library.
+- Database reads show a loading status while the indexed snapshot is being obtained; the database view never expands by walking source folders.
 
 ## Search
 
