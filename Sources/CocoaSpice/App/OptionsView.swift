@@ -7,6 +7,7 @@ import VGMBoyKit
 struct OptionsView: View {
     @Bindable var model: PlayerViewModel
     @State private var longPlayTimeText = ""
+    @State private var unknownDurationTimeText = ""
     @State private var libGmeTempoText = PlaybackTempo.defaultValue.displayString
     @State private var libVgmTempoText = PlaybackTempo.defaultValue.displayString
     @State private var selection: OptionsSection = .data
@@ -93,6 +94,7 @@ struct OptionsView: View {
         .background(OptionsWindowConfigurator(alwaysOnTop: model.settingsWindowAlwaysOnTop))
         .onAppear {
             longPlayTimeText = Self.formatTime(model.manualPreFadeSeconds)
+            unknownDurationTimeText = Self.formatTime(model.unknownDurationSeconds)
             libGmeTempoText = model.libgmeTempo.displayString
             libVgmTempoText = model.libvgmTempo.displayString
             DispatchQueue.main.async {
@@ -109,6 +111,12 @@ struct OptionsView: View {
             let formatted = Self.formatTime(newValue)
             if longPlayTimeText != formatted {
                 longPlayTimeText = formatted
+            }
+        }
+        .onChange(of: model.unknownDurationSeconds) { _, newValue in
+            let formatted = Self.formatTime(newValue)
+            if unknownDurationTimeText != formatted {
+                unknownDurationTimeText = formatted
             }
         }
     }
@@ -165,6 +173,36 @@ struct OptionsView: View {
                                 .stroke(Color.white.opacity(0.12), lineWidth: 1)
                         )
                         .onSubmit(applyLongPlayTimeText)
+                }
+
+                HStack(spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Unknown-length default")
+                            .foregroundStyle(.white)
+                        Text("Used when a decoder provides no natural duration and Long Play is off.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+
+                    Spacer(minLength: 24)
+
+                    TextField("0:00", text: $unknownDurationTimeText)
+                        .textFieldStyle(.plain)
+                        .multilineTextAlignment(.trailing)
+                        .foregroundStyle(.white)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(width: 72)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(Color.white.opacity(0.08))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 6)
+                                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                        )
+                        .onSubmit(applyUnknownDurationTimeText)
                 }
 
             }
@@ -808,6 +846,13 @@ struct OptionsView: View {
         model.manualPreFadeSeconds = max(30, parsedSeconds)
         model.handleManualPlaySecondsChanged()
         longPlayTimeText = Self.formatTime(model.manualPreFadeSeconds)
+    }
+
+    private func applyUnknownDurationTimeText() {
+        let trimmed = unknownDurationTimeText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parsedSeconds = Self.parseTime(trimmed) ?? model.unknownDurationSeconds
+        model.setUnknownDurationSeconds(parsedSeconds)
+        unknownDurationTimeText = Self.formatTime(model.unknownDurationSeconds)
     }
 
     private static func formatTime(_ totalSeconds: Int) -> String {

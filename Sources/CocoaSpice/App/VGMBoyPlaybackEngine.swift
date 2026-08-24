@@ -12,7 +12,7 @@ final class PlaybackEngine: @unchecked Sendable {
     private var playbackStateHandler: (@Sendable (PlaybackStatusSnapshot) -> Void)?
     private var currentMaterializedPath: String?
     private(set) var currentTrack: TrackItem?
-    private(set) var currentPlaybackPlan = PlaybackPlan(preFadeSeconds: 150, fadeSeconds: 6, totalSeconds: 156, usesNativeEnding: false, isLongPlay: false)
+    private(set) var currentPlaybackPlan = PlaybackPlan(preFadeSeconds: 150, fadeSeconds: 6, usesNativeEnding: false, isLongPlay: false)
     private let controlSurface: PlaybackControlSurface
 
     init() {
@@ -171,7 +171,8 @@ final class PlaybackEngine: @unchecked Sendable {
             path: url.path,
             longPlayEnabled: plan.isLongPlay,
             manualPlayMilliseconds: plan.preFadeSeconds * 1_000,
-            fadeMilliseconds: plan.fadeSeconds * 1_000
+            fadeMilliseconds: plan.fadeSeconds * 1_000,
+            unknownDurationMilliseconds: plan.unknownDurationSeconds * 1_000
         )
         // A mode command normally reconfigures the currently loaded track.
         // Supplying it atomically with the new load avoids briefly resuming
@@ -183,7 +184,8 @@ final class PlaybackEngine: @unchecked Sendable {
             tempo: tempo.multiplier,
             playbackMode: timing.playbackMode,
             playMilliseconds: timing.playMilliseconds,
-            fadeMilliseconds: timing.fadeMilliseconds
+            fadeMilliseconds: timing.fadeMilliseconds,
+            unknownDurationMilliseconds: timing.unknownDurationMilliseconds
         ))))
         if resumeAt > 0 {
             try requireSuccess(controller.perform(.init(command: .seek, payload: .init(positionMilliseconds: Int(resumeAt * 1_000)))))
@@ -237,14 +239,6 @@ final class PlaybackEngine: @unchecked Sendable {
     private func run<T: Sendable>(_ work: @escaping @Sendable () -> T) async -> T {
         await withCheckedContinuation { continuation in queue.async { continuation.resume(returning: work()) } }
     }
-}
-
-struct PlaybackPlan: Equatable, Sendable {
-    let preFadeSeconds: Int
-    let fadeSeconds: Int
-    let totalSeconds: Int
-    let usesNativeEnding: Bool
-    let isLongPlay: Bool
 }
 
 struct PlaybackStatusSnapshot: Sendable {

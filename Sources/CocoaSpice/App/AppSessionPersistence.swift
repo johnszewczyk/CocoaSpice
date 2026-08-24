@@ -11,6 +11,7 @@ enum AppDefaultsKey {
     static let playlistSearchText = "CocoaSpice.playlistSearchText"
     static let longPlayEnabled = "CocoaSpice.longPlayEnabled"
     static let manualPreFadeSeconds = "CocoaSpice.manualPreFadeSeconds"
+    static let unknownDurationSeconds = "CocoaSpice.unknownDurationSeconds"
     static let endFadeEnabled = "CocoaSpice.endFadeEnabled"
     static let fadedSkipEnabled = "CocoaSpice.fadedSkipEnabled"
     static let equalizerEnabled = "CocoaSpice.equalizerEnabled"
@@ -64,6 +65,7 @@ struct RestoredPlaybackPreferences {
     let longPlayEnabled: Bool
     let playlistFollowsCursor: Bool
     let manualPreFadeSeconds: Int?
+    let unknownDurationSeconds: Int?
     let endFadeEnabled: Bool
     let fadedSkipEnabled: Bool
     let equalizerEnabled: Bool
@@ -142,6 +144,10 @@ enum AppSessionPersistence {
                 let storedUnifiedPreFade = defaults.integer(forKey: AppDefaultsKey.manualPreFadeSeconds)
                 return storedUnifiedPreFade > 0 ? storedUnifiedPreFade : nil
             }(),
+            unknownDurationSeconds: {
+                let stored = defaults.integer(forKey: AppDefaultsKey.unknownDurationSeconds)
+                return stored > 0 ? stored : nil
+            }(),
             endFadeEnabled: defaults.object(forKey: AppDefaultsKey.endFadeEnabled) as? Bool ?? true,
             fadedSkipEnabled: defaults.object(forKey: AppDefaultsKey.fadedSkipEnabled) as? Bool ?? false,
             equalizerEnabled: defaults.object(forKey: AppDefaultsKey.equalizerEnabled) as? Bool ?? false,
@@ -198,6 +204,7 @@ enum AppSessionPersistence {
         longPlayEnabled: Bool,
         playlistFollowsCursor: Bool,
         manualPreFadeSeconds: Int,
+        unknownDurationSeconds: Int,
         endFadeEnabled: Bool,
         fadedSkipEnabled: Bool,
         equalizerEnabled: Bool,
@@ -228,6 +235,7 @@ enum AppSessionPersistence {
         defaults.set(longPlayEnabled, forKey: AppDefaultsKey.longPlayEnabled)
         defaults.set(playlistFollowsCursor, forKey: AppDefaultsKey.playlistFollowsCursor)
         defaults.set(manualPreFadeSeconds, forKey: AppDefaultsKey.manualPreFadeSeconds)
+        defaults.set(unknownDurationSeconds, forKey: AppDefaultsKey.unknownDurationSeconds)
         defaults.set(endFadeEnabled, forKey: AppDefaultsKey.endFadeEnabled)
         defaults.set(fadedSkipEnabled, forKey: AppDefaultsKey.fadedSkipEnabled)
         defaults.set(equalizerEnabled, forKey: AppDefaultsKey.equalizerEnabled)

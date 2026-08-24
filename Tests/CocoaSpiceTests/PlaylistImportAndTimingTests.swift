@@ -244,6 +244,32 @@ import VGMBoyKit
     #expect(plan.totalSeconds == 90)
 }
 
+@Test func unknownDurationDefaultIsIndependentFromLongPlayTarget() {
+    let plan = PlaybackTimingPolicy.playbackPlan(
+        metadata: nil,
+        trackPathExtension: "sid",
+        longPlayEnabled: false,
+        manualPreFadeSeconds: 240,
+        fadeSeconds: 6,
+        unknownDurationSeconds: 300
+    )
+
+    #expect(!plan.isLongPlay)
+    #expect(plan.preFadeSeconds == 300)
+    #expect(plan.totalSeconds == 306)
+
+    let longPlay = PlaybackTimingPolicy.playbackPlan(
+        metadata: nil,
+        trackPathExtension: "sid",
+        longPlayEnabled: true,
+        manualPreFadeSeconds: 240,
+        fadeSeconds: 6,
+        unknownDurationSeconds: 300
+    )
+    #expect(longPlay.isLongPlay)
+    #expect(longPlay.preFadeSeconds == 240)
+}
+
 @Test func longPlayLeavesFiniteCoreAudioDurationUntouched() {
     let metadata = TrackMetadata(
         game: "",

@@ -372,6 +372,7 @@ final class PlayerViewModel {
     var playlistFollowsCursor = false
     var longPlayEnabled = false
     var manualPreFadeSeconds: Int = 180
+    var unknownDurationSeconds: Int = PlaybackTimingPreferences.defaultUnknownDurationSeconds
     var endFadeEnabled = true
     var fadedSkipEnabled = false
     var libgmeTempo = PlaybackTempo.defaultValue
@@ -1440,6 +1441,7 @@ final class PlayerViewModel {
             longPlayEnabled: longPlayEnabled,
             playlistFollowsCursor: playlistFollowsCursor,
             manualPreFadeSeconds: manualPreFadeSeconds,
+            unknownDurationSeconds: unknownDurationSeconds,
             endFadeEnabled: endFadeEnabled,
             fadedSkipEnabled: fadedSkipEnabled,
             equalizerEnabled: equalizerEnabled,
@@ -2215,6 +2217,14 @@ final class PlayerViewModel {
         }
     }
 
+    func setUnknownDurationSeconds(_ seconds: Int) {
+        unknownDurationSeconds = max(1, seconds)
+        savePreferencesNow()
+        if currentTrack != nil {
+            applyPlaybackTiming()
+        }
+    }
+
     func toggleLongPlayEnabled() {
         savePreferencesNow()
         if currentTrackSupportsLongPlay {
@@ -2538,7 +2548,8 @@ final class PlayerViewModel {
             trackPathExtension: trackPathExtension ?? currentTrack?.playablePathExtension,
             longPlayEnabled: longPlayEnabled,
             manualPreFadeSeconds: manualPreFadeSeconds,
-            fadeSeconds: fadeSeconds
+            fadeSeconds: fadeSeconds,
+            unknownDurationSeconds: unknownDurationSeconds
         )
         let tempo = playbackTempo(forPathExtension: trackPathExtension ?? currentTrack?.playablePathExtension)
         guard tempo != .defaultValue else { return plan }
@@ -2546,9 +2557,9 @@ final class PlayerViewModel {
         return PlaybackPlan(
             preFadeSeconds: scaledPreFade,
             fadeSeconds: plan.fadeSeconds,
-            totalSeconds: scaledPreFade + plan.fadeSeconds,
             usesNativeEnding: plan.usesNativeEnding,
-            isLongPlay: plan.isLongPlay
+            isLongPlay: plan.isLongPlay,
+            unknownDurationSeconds: plan.unknownDurationSeconds
         )
     }
 
@@ -2920,6 +2931,9 @@ final class PlayerViewModel {
         playlistFollowsCursor = preferences.playlistFollowsCursor
         if let storedManualPreFade = preferences.manualPreFadeSeconds {
             manualPreFadeSeconds = storedManualPreFade
+        }
+        if let storedUnknownDuration = preferences.unknownDurationSeconds {
+            unknownDurationSeconds = max(1, storedUnknownDuration)
         }
         endFadeEnabled = preferences.endFadeEnabled
         fadedSkipEnabled = preferences.fadedSkipEnabled

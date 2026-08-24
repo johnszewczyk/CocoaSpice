@@ -40,6 +40,7 @@ struct CocoaSpiceOptionsSnapshot: Codable, Equatable, Sendable {
     let frontendInterface: FrontendInterfacePreferences
     let longPlayEnabled: Bool
     let manualPreFadeSeconds: Int
+    let unknownDurationSeconds: Int
     let endFadeEnabled: Bool
     let fadedSkipEnabled: Bool
     let equalizerEnabled: Bool
@@ -79,6 +80,7 @@ enum CocoaSpiceOptionsCommand: Codable, Equatable, Sendable {
     case setWindowAlwaysOnTop(role: FrontendWindowRole, enabled: Bool)
     case setLongPlayEnabled(Bool)
     case setManualPreFadeSeconds(Int)
+    case setUnknownDurationSeconds(Int)
     case setEndFadeEnabled(Bool)
     case setFadedSkipEnabled(Bool)
     case setEqualizerEnabled(Bool)
@@ -129,6 +131,7 @@ final class CocoaSpiceOptionsControlSurface {
             frontendInterface: model.frontendPreferences.value,
             longPlayEnabled: model.longPlayEnabled,
             manualPreFadeSeconds: model.manualPreFadeSeconds,
+            unknownDurationSeconds: model.unknownDurationSeconds,
             endFadeEnabled: model.endFadeEnabled,
             fadedSkipEnabled: model.fadedSkipEnabled,
             equalizerEnabled: model.equalizerEnabled,
@@ -177,6 +180,8 @@ final class CocoaSpiceOptionsControlSurface {
         case .setManualPreFadeSeconds(let seconds):
             model.manualPreFadeSeconds = max(30, seconds)
             model.handleManualPlaySecondsChanged()
+        case .setUnknownDurationSeconds(let seconds):
+            model.setUnknownDurationSeconds(seconds)
         case .setEndFadeEnabled(let enabled):
             model.setEndFadeEnabled(enabled)
         case .setFadedSkipEnabled(let enabled):
