@@ -24,7 +24,7 @@ enum ZipArchiveSupport {
         label: "com.cocoaspice.archive-cache-maintenance",
         qos: .utility
     )
-    private static let playbackLease = PlaybackLease()
+    private static let playbackLease = ArchivePlaybackLease()
 
     private enum ArchiveKind {
         case zip
@@ -671,29 +671,6 @@ enum ZipArchiveSupport {
 
     private static func activatePlaybackLease(for archiveURL: URL) {
         playbackLease.replace(with: archiveCacheURL(for: archiveURL).standardizedFileURL.path)
-    }
-
-    private final class PlaybackLease: @unchecked Sendable {
-        private let lock = NSLock()
-        private var storedPath: String?
-
-        var path: String? {
-            lock.lock()
-            defer { lock.unlock() }
-            return storedPath
-        }
-
-        func replace(with path: String) {
-            lock.lock()
-            storedPath = path
-            lock.unlock()
-        }
-
-        func clear() {
-            lock.lock()
-            storedPath = nil
-            lock.unlock()
-        }
     }
 
     private struct ArchiveListing {
