@@ -17,7 +17,7 @@
   the new track begins. The bundled audio endpoint stays ready between tracks, so CocoaSpice does
   not reopen the macOS device for each selection or pause.
 - Archives: supported game-music files can play from ZIP, 7z, RSN, and TAR+Zstandard (`.tar.zst`/`.tzst`) containers; the selected member is materialized into the cache.
-- Database playlists: choosing an item in the sidebar immediately publishes its stored source, archive-member, subtrack, and cached metadata rows. CocoaSpice does not rescan, inspect, extract, or write the catalog while hydrating that playlist.
+- Database playlists: choosing an item in the sidebar immediately publishes its stored source, archive-member, subtrack, and cached metadata rows. The shared CatalogReader performs the exact Games, source, folder, and path SQLite projections; CocoaSpice does not rescan, inspect, extract, or write the catalog while hydrating that playlist.
 - Format-specific decoding, dependency handling, subtrack behavior, and timing are owned by VGMBoyKit. CocoaSpice passes a materialized playable path and catalog subtrack index; it does not inspect decoder headers or tags.
 - Seeking: supports forward and backward movement.
 - Audio output: resumes at the current position after an output-device change when playback was active.

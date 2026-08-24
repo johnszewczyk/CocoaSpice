@@ -392,95 +392,16 @@ extension LibraryDatabase {
             return ([], [:], PlaylistColumnWidthHints(indexText: "1", fileText: "", titleText: "", gameText: "", authorText: "", systemText: "", lengthText: "—"))
         }
 
-        var handle: OpaquePointer?
-        if sqlite3_open_v2(databaseURL.path, &handle, SQLITE_OPEN_READONLY, nil) != SQLITE_OK {
-            let message = Self.databaseError(handle: handle).localizedDescription
-            sqlite3_close(handle)
-            throw NSError(domain: "LibraryDatabase", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+        let catalog = try ReadOnlyCatalog(databaseURL: databaseURL)
+        let selections = normalizedItems.map {
+            CatalogSourceSelection(rootID: $0.rootID, path: $0.path)
         }
-        defer { sqlite3_close(handle) }
-
-        let sourcePredicate = Array(
-            repeating: "(t.root_id = ? AND t.path = ?)",
-            count: normalizedItems.count
-        ).joined(separator: " OR ")
-        // A Path-sidebar activation identifies exact scanned sources. Force
-        // the root/path lookup index so SQLite does not scan a complete root
-        // merely to satisfy the folder-oriented sort order.
-        let sql = """
-        SELECT
-            t.path,
-            t.archive_path,
-            t.archive_entry,
-            t.track_index,
-            t.track_count,
-            COALESCE(m.title, ''),
-            COALESCE(m.game, ''),
-            COALESCE(m.author, ''),
-            COALESCE(m.system, ''),
-            COALESCE(m.comment, ''),
-            COALESCE(m.intro_length_ms, 0),
-            COALESCE(m.loop_length_ms, 0),
-            COALESCE(m.play_length_ms, 0),
-            COALESCE(m.fade_length_ms, 0)
-        FROM tracks t INDEXED BY tracks_source_lookup_index
-        INNER JOIN library_roots r ON r.id = t.root_id
-        LEFT JOIN track_metadata m ON m.track_id = t.id
-        WHERE r.is_enabled = 1
-          AND NOT EXISTS (SELECT 1 FROM dead_sources d WHERE d.root_id = t.root_id AND d.path = t.path)
-          AND (\(sourcePredicate))
-        ORDER BY t.folder_path ASC, t.filename ASC, t.track_index ASC;
-        """
-
-        let bindings = normalizedItems.flatMap { [SQLiteValue.int($0.rootID), SQLiteValue.text($0.path)] }
-        return try readTracksAndMetadata(handle: handle, sql: sql, bindings: bindings)
+        return playlistProjection(from: try catalog.tracks(sourceSelections: selections))
     }
 
     static func tracksAndMetadataForFolder(databaseURL: URL, rootPath: String, folderPath: String) throws -> (tracks: [TrackItem], metadata: [String: TrackMetadata], widthHints: PlaylistColumnWidthHints) {
-        var handle: OpaquePointer?
-        if sqlite3_open_v2(databaseURL.path, &handle, SQLITE_OPEN_READONLY, nil) != SQLITE_OK {
-            let message = Self.databaseError(handle: handle).localizedDescription
-            sqlite3_close(handle)
-            throw NSError(domain: "LibraryDatabase", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
-        }
-        defer { sqlite3_close(handle) }
-
-        let normalizedRootPath = URL(fileURLWithPath: rootPath, isDirectory: true).standardizedFileURL.path
-        let normalizedFolderPath = URL(fileURLWithPath: folderPath, isDirectory: true).standardizedFileURL.path
-        let folderPrefix = normalizedFolderPath.hasSuffix("/")
-            ? normalizedFolderPath
-            : normalizedFolderPath + "/"
-        let sql = """
-        SELECT
-            t.path,
-            t.archive_path,
-            t.archive_entry,
-            t.track_index,
-            t.track_count,
-            COALESCE(m.title, ''),
-            COALESCE(m.game, ''),
-            COALESCE(m.author, ''),
-            COALESCE(m.system, ''),
-            COALESCE(m.comment, ''),
-            COALESCE(m.intro_length_ms, 0),
-            COALESCE(m.loop_length_ms, 0),
-            COALESCE(m.play_length_ms, 0),
-            COALESCE(m.fade_length_ms, 0)
-        FROM tracks t
-        INNER JOIN library_roots r ON r.id = t.root_id
-        LEFT JOIN track_metadata m ON m.track_id = t.id
-        WHERE r.is_enabled = 1
-          AND NOT EXISTS (SELECT 1 FROM dead_sources d WHERE d.root_id = t.root_id AND d.path = t.path)
-          AND r.path = ?
-          AND (t.folder_path = ? OR t.folder_path LIKE ?)
-        ORDER BY t.filename ASC, t.track_index ASC;
-        """
-
-        return try readTracksAndMetadata(
-            handle: handle,
-            sql: sql,
-            bindings: [.text(normalizedRootPath), .text(normalizedFolderPath), .text(folderPrefix + "%")]
-        )
+        let catalog = try ReadOnlyCatalog(databaseURL: databaseURL)
+        return playlistProjection(from: try catalog.tracks(rootPath: rootPath, folderPath: folderPath))
     }
 
     static func tracksAndMetadataForPaths(databaseURL: URL, paths: [String]) throws -> (tracks: [TrackItem], metadata: [String: TrackMetadata], widthHints: PlaylistColumnWidthHints) {
@@ -491,45 +412,8 @@ extension LibraryDatabase {
             return ([], [:], PlaylistColumnWidthHints(indexText: "1", fileText: "", titleText: "", gameText: "", authorText: "", systemText: "", lengthText: "—"))
         }
 
-        var handle: OpaquePointer?
-        if sqlite3_open_v2(databaseURL.path, &handle, SQLITE_OPEN_READONLY, nil) != SQLITE_OK {
-            let message = Self.databaseError(handle: handle).localizedDescription
-            sqlite3_close(handle)
-            throw NSError(domain: "LibraryDatabase", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
-        }
-        defer { sqlite3_close(handle) }
-
-        let placeholders = Array(repeating: "?", count: normalizedPaths.count).joined(separator: ", ")
-        let sql = """
-        SELECT
-            t.path,
-            t.archive_path,
-            t.archive_entry,
-            t.track_index,
-            t.track_count,
-            COALESCE(m.title, ''),
-            COALESCE(m.game, ''),
-            COALESCE(m.author, ''),
-            COALESCE(m.system, ''),
-            COALESCE(m.comment, ''),
-            COALESCE(m.intro_length_ms, 0),
-            COALESCE(m.loop_length_ms, 0),
-            COALESCE(m.play_length_ms, 0),
-            COALESCE(m.fade_length_ms, 0)
-        FROM tracks t
-        INNER JOIN library_roots r ON r.id = t.root_id
-        LEFT JOIN track_metadata m ON m.track_id = t.id
-        WHERE r.is_enabled = 1
-          AND NOT EXISTS (SELECT 1 FROM dead_sources d WHERE d.root_id = t.root_id AND d.path = t.path)
-          AND t.path IN (\(placeholders))
-        ORDER BY t.filename ASC, t.track_index ASC;
-        """
-
-        return try readTracksAndMetadata(
-            handle: handle,
-            sql: sql,
-            bindings: normalizedPaths.map(SQLiteValue.text)
-        )
+        let catalog = try ReadOnlyCatalog(databaseURL: databaseURL)
+        return playlistProjection(from: try catalog.tracks(paths: normalizedPaths))
     }
 
     static func searchFolderPaths(databaseURL: URL, query: String, limit: Int = 500) throws -> Set<String> {
@@ -794,6 +678,60 @@ extension LibraryDatabase {
 
         return items
     }
+
+    /// Adapts the shared catalog projection into CocoaSpice's queue and
+    /// presentation models. The database reader owns selection and metadata
+    /// retrieval; CocoaSpice retains only frontend-specific row sizing.
+    private static func playlistProjection(
+        from catalogTracks: [CatalogTrack]
+    ) -> (tracks: [TrackItem], metadata: [String: TrackMetadata], widthHints: PlaylistColumnWidthHints) {
+        var tracks: [TrackItem] = []
+        var metadata: [String: TrackMetadata] = [:]
+        var widestFileText = ""
+        var widestTitleText = ""
+        var widestGameText = ""
+        var widestAuthorText = ""
+        var widestSystemText = ""
+        var widestLengthText = "—"
+
+        for catalogTrack in catalogTracks {
+            let track = track(from: catalogTrack)
+            tracks.append(track)
+            metadata[track.id] = TrackMetadata(
+                game: catalogTrack.game,
+                song: catalogTrack.title,
+                system: catalogTrack.system,
+                author: catalogTrack.author,
+                comment: catalogTrack.comment,
+                introLengthMs: catalogTrack.introLengthMilliseconds,
+                loopLengthMs: catalogTrack.loopLengthMilliseconds,
+                playLengthMs: catalogTrack.lengthMilliseconds,
+                fadeLengthMs: catalogTrack.fadeLengthMilliseconds
+            )
+
+            widestFileText = widerText(widestFileText, track.filename)
+            widestTitleText = widerText(widestTitleText, catalogTrack.title.isEmpty ? track.displayName : catalogTrack.title)
+            widestGameText = widerText(widestGameText, catalogTrack.game.isEmpty ? track.url.deletingLastPathComponent().lastPathComponent : catalogTrack.game)
+            widestAuthorText = widerText(widestAuthorText, catalogTrack.author.isEmpty ? "—" : catalogTrack.author)
+            widestSystemText = widerText(widestSystemText, catalogTrack.system.isEmpty ? "SNES" : catalogTrack.system)
+            widestLengthText = widerText(widestLengthText, formatLengthText(playLengthMs: catalogTrack.lengthMilliseconds))
+        }
+
+        return (
+            tracks,
+            metadata,
+            PlaylistColumnWidthHints(
+                indexText: String(max(1, tracks.count)),
+                fileText: widestFileText,
+                titleText: widestTitleText,
+                gameText: widestGameText,
+                authorText: widestAuthorText,
+                systemText: widestSystemText,
+                lengthText: widestLengthText
+            )
+        )
+    }
+
     private static func readTracksAndMetadata(
         handle: OpaquePointer?,
         sql: String,
@@ -897,6 +835,25 @@ extension LibraryDatabase {
     }
 
     private static func track(from catalogTrack: CatalogPlaylistTrack) -> TrackItem {
+        if let archivePath = catalogTrack.archivePath,
+           let archiveEntry = catalogTrack.archiveEntry,
+           !archivePath.isEmpty,
+           !archiveEntry.isEmpty {
+            return TrackItem(
+                archiveURL: URL(fileURLWithPath: archivePath, isDirectory: false),
+                entryPath: archiveEntry,
+                trackIndex: catalogTrack.trackIndex,
+                trackCount: catalogTrack.trackCount
+            )
+        }
+        return TrackItem(
+            url: URL(fileURLWithPath: catalogTrack.sourcePath, isDirectory: false),
+            trackIndex: catalogTrack.trackIndex,
+            trackCount: catalogTrack.trackCount
+        )
+    }
+
+    private static func track(from catalogTrack: CatalogTrack) -> TrackItem {
         if let archivePath = catalogTrack.archivePath,
            let archiveEntry = catalogTrack.archiveEntry,
            !archivePath.isEmpty,

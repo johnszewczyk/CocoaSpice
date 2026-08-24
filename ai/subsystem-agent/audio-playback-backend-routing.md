@@ -23,6 +23,8 @@
   cap.
 - CocoaSpice does not submit a missing-length timed request. The core's bounded safety value is
   for unknown-duration/timed operations, not ordinary FLAC, WAV, or other finite audio.
+- Database playlist hydration is shared CatalogReader work. CocoaSpice adapts the returned catalog
+  rows into native queue models but does not retain duplicate source, folder, or path SQL.
 - CocoaSpice persists separate Long Play and unknown-duration values. The latter is sent through
   the shared typed request and applies only when the decoder provides no natural duration.
 - AAC export passes the playlist display name and the already-effective finite playback timing to
