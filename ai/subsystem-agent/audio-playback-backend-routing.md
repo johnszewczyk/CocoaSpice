@@ -23,6 +23,8 @@
   cap.
 - CocoaSpice does not submit a missing-length timed request. The core's bounded safety value is
   for unknown-duration/timed operations, not ordinary FLAC, WAV, or other finite audio.
+- CocoaSpice's persisted manual duration is the Long Play target. It is not currently sent as a
+  replacement for VGMBoyKit's fixed unknown-duration safety value when Long Play is off.
 - AAC export passes the playlist display name and the already-effective finite playback timing to
   `PlaybackController.exportAAC`. CocoaSpice never gives VGMBoy catalog access or asks it to derive
   a title; VGMBoy performs filename sanitation and no-overwrite collision handling.
