@@ -7,6 +7,8 @@
 ## Ownership
 
 - `CatalogReader` owns schema validation and compact Games/Files sidebar projections.
+- `CatalogSessionCore` owns the shared raw Games/Files sidebar reader and the
+  latest-task generation/cancellation primitive used by frontend loaders.
 - `CatalogPlaylistCore` owns the exact extracted CocoaSpice Games playlist query and projection.
 - `LibraryDatabase+ReadQueries.swift` owns CocoaSpice's typed adapter for shared catalog rows plus its remaining Files/folder/path projections.
 - MediaScanner owns all catalog writes and durable sidebar-projection rebuilds.
@@ -22,7 +24,9 @@
 - Files-source activation binds `root_id + path` and is backed by the direct `tracks_source_lookup_index`; it must not scan every track in a large library root to activate one archive source.
 - Games playlist hydration uses `CatalogPlaylistCore`'s exact shared multi-selection projection, returning the original source and stored metadata columns in one read; CocoaSpice adds only its typed track adapter, metadata map, and width hints. SPCBoyWK uses the same rows. Files/folder/path hydration uses the narrow existing `tracksAndMetadataFor…` projections. Never replace either path with a generic all-track reader or a fallback scan.
 - Queue publication performs no decoder open, archive materialization, filesystem stat, metadata write, or catalog mutation.
-- Query results are value types; UI publication and cancellation remain owned by the caller's task owner.
+- Query results are value types; UI publication remains owned by the caller,
+  while cancellation and stale-result generation ownership use
+  `CatalogSessionCore.LatestTaskOwner`.
 
 ## Files
 
@@ -30,3 +34,4 @@
 - [CatalogRootLoader.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/CatalogRootLoader.swift)
 - [PlaylistQueueLoader.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/PlaylistQueueLoader.swift)
 - [CatalogPlaylistCore.swift](/Users/john/Downloads/Code/VGMMan/CatalogReader/Sources/CatalogPlaylistCore/CatalogPlaylistCore.swift)
+- [CatalogSessionCore.swift](/Users/john/Downloads/Code/VGMMan/CatalogReader/Sources/CatalogSessionCore/CatalogSessionCore.swift)

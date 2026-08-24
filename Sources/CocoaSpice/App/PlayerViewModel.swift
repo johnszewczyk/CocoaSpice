@@ -2,6 +2,7 @@ import AppKit
 import FrontendPreferencesCore
 import CatalogBrowserCore
 import CatalogReader
+import CatalogSessionCore
 import Foundation
 import FavoriteStoreCore
 import FavoriteTrackCore

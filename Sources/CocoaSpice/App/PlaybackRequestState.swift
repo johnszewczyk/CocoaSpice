@@ -1,4 +1,5 @@
 import Foundation
+import CatalogSessionCore
 
 /// Owns the identity and cancellation lifecycle of the pending playback
 /// request. Playback UI and decoder state remain with `PlayerViewModel`.

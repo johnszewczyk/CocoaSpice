@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import CatalogSessionCore
 
 /// Owns database-sidebar cache lifetime and background snapshot reads. It does
 /// not interpret selection, search, playback, or scan policy; those belong to

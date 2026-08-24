@@ -10,8 +10,8 @@
 
 - Playback requests use a dedicated task owner.
 - Playlist presentation refreshes are synchronous from the current queue and catalog metadata snapshot; no decoder-inspection task exists.
-- `LatestTaskOwner` centralizes replacement, cancellation, completion invalidation, and generation checks for independently cancellable UI workflows.
-- Database-sidebar refreshes each use their own `LatestTaskOwner`; stale results cannot overwrite a newer read-only snapshot.
+- `CatalogSessionCore.LatestTaskOwner` centralizes replacement, cancellation, completion invalidation, and generation checks for independently cancellable UI workflows.
+- Database-sidebar refreshes each use their own shared `LatestTaskOwner`; stale results cannot overwrite a newer read-only snapshot.
 - Remote transport receives a value-only `RemoteTransportNowPlaying` snapshot and command closures. It must not read or retain `PlayerViewModel` directly.
 - `PlaybackRequestState` owns the pending playback request, task generation, cancellation, end marker, and auto-advance guard. A stale request may never publish an error or clear the active request's loading state.
 - Folder-selection browsing uses its own `LatestTaskOwner`; selecting another folder, changing the root, or clearing sidebar context invalidates pending folder results.
@@ -30,6 +30,6 @@
 
 ## Files
 
-- [LatestTaskOwner.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/LatestTaskOwner.swift)
+- [CatalogSessionCore.swift](/Users/john/Downloads/Code/VGMMan/CatalogReader/Sources/CatalogSessionCore/CatalogSessionCore.swift)
 - [PlaybackRequestState.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/PlaybackRequestState.swift)
 - [PlayerViewModel.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)

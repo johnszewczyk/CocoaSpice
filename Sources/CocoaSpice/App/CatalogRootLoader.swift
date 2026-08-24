@@ -1,4 +1,5 @@
 import CatalogReader
+import CatalogSessionCore
 import Foundation
 
 /// Narrow read-only adapter for catalog roots and stored sidebar projections.
@@ -20,8 +21,10 @@ enum CatalogBrowser {
         databaseURL: URL,
         preferFoldersOverMetadata: Bool = true
     ) throws -> [DatabaseGameItem] {
-        let catalog = try ReadOnlyCatalog(databaseURL: databaseURL)
-        let items = try catalog.gameBuckets(preferFoldersOverMetadata: preferFoldersOverMetadata).map { bucket in
+        let items = try CatalogSidebarReader.gameBuckets(
+            databaseURL: databaseURL,
+            preferFoldersOverMetadata: preferFoldersOverMetadata
+        ).map { bucket in
             let name = bucket.game.trimmingCharacters(in: .whitespacesAndNewlines)
             return DatabaseGameItem(
                 rootID: bucket.rootID,
@@ -41,8 +44,7 @@ enum CatalogBrowser {
     }
 
     static func fileItems(databaseURL: URL) throws -> [DatabaseFileItem] {
-        let catalog = try ReadOnlyCatalog(databaseURL: databaseURL)
-        return try catalog.fileBuckets().map { bucket in
+        return try CatalogSidebarReader.fileBuckets(databaseURL: databaseURL).map { bucket in
             DatabaseFileItem(
                 rootID: bucket.rootID,
                 rootPath: bucket.rootPath,
