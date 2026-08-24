@@ -75,10 +75,9 @@ enum PlaylistQueueLoader {
                 Self.playlistLoadLogger.info("sidebar database worker began")
                 let queryStartedAt = ContinuousClock.now
                 do {
-                    // This is CocoaSpice's original compact read-only queue
-                    // projection. Keep queue construction on the one proven
-                    // root/game/system query while CatalogReader remains
-                    // limited to sidebar snapshots.
+                    // CatalogReader owns the shared compact root/game/system
+                    // projection. Keep queue construction on that proven
+                    // read-only path and adapt its rows to CocoaSpice types.
                     let result = try LibraryDatabase.tracksAndMetadataForGames(
                         databaseURL: databaseURL,
                         gameItems: gameItems,

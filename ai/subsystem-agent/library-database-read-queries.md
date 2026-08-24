@@ -6,8 +6,9 @@
 
 ## Ownership
 
-- `CatalogReader` owns schema validation plus compact Games/Files sidebar projection reads.
-- `LibraryDatabase+ReadQueries.swift` owns CocoaSpice's proven exact read-only playlist projections.
+- `CatalogReader` owns schema validation and compact Games/Files sidebar projections.
+- `CatalogPlaylistCore` owns the exact extracted CocoaSpice Games playlist query and projection.
+- `LibraryDatabase+ReadQueries.swift` owns CocoaSpice's typed adapter for shared catalog rows plus its remaining Files/folder/path projections.
 - MediaScanner owns all catalog writes and durable sidebar-projection rebuilds.
 
 ## Invariants
@@ -15,11 +16,11 @@
 - Read queries exclude disabled roots and retained unlinked sources.
 - Files-mode rows remain deferred until that sidebar mode is requested; they must not delay the initial Games sidebar.
 - Files-row SQL does not apply a redundant display sort. The background Files-tree index applies the user-visible localized root, folder, and filename order after the read, avoiding SQLite's temporary sort tree.
-- Games rows are loaded through `CatalogReader`'s shared bucket aggregation. Folder-first mode prefers the recognized `browser_system`; metadata-first mode prefers `track_metadata.system`; either mode falls through when its preferred value is empty. The player preference is read-only and never rewrites catalog rows or buckets.
+- Games sidebar rows are loaded through `CatalogReader`'s shared bucket aggregation. Playlist activation is a separate exact query in `CatalogPlaylistCore`; folder-first mode binds `t.browser_system = ?`, while metadata-first mode uses the original metadata expression. The player preference is read-only and never rewrites catalog rows or buckets.
 - Files loads from the published `file_sidebar_buckets` projection and remains proportional to source-file leaves, not playable subtracks.
-- Games rows retain `root_id`. Activation uses the same folder-versus-metadata expression that produced the visible row, so an empty folder tag cannot leave a valid metadata-backed game unselectable. Never merge roots during projection or activation.
+- Games rows retain `root_id`. Activation preserves the original root/game/system bindings and does not merge roots or add a fallback predicate.
 - Files-source activation binds `root_id + path` and is backed by the direct `tracks_source_lookup_index`; it must not scan every track in a large library root to activate one archive source.
-- Playlist hydration uses the narrow existing `tracksAndMetadataFor…` query matching its selected game, source, folder, or path. It returns identity, stored metadata, and width hints in one read; never replace it with a generic all-track reader or a fallback scan.
+- Games playlist hydration uses `CatalogPlaylistCore`'s exact shared multi-selection projection, returning the original source and stored metadata columns in one read; CocoaSpice adds only its typed track adapter, metadata map, and width hints. SPCBoyWK uses the same rows. Files/folder/path hydration uses the narrow existing `tracksAndMetadataFor…` projections. Never replace either path with a generic all-track reader or a fallback scan.
 - Queue publication performs no decoder open, archive materialization, filesystem stat, metadata write, or catalog mutation.
 - Query results are value types; UI publication and cancellation remain owned by the caller's task owner.
 
@@ -28,3 +29,4 @@
 - [LibraryDatabase+ReadQueries.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase+ReadQueries.swift)
 - [CatalogRootLoader.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/CatalogRootLoader.swift)
 - [PlaylistQueueLoader.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/PlaylistQueueLoader.swift)
+- [CatalogPlaylistCore.swift](/Users/john/Downloads/Code/VGMMan/CatalogReader/Sources/CatalogPlaylistCore/CatalogPlaylistCore.swift)

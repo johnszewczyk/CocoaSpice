@@ -1,9 +1,13 @@
 import AppKit
+import FrontendPreferencesCore
+import CatalogBrowserCore
 import CatalogReader
 import Foundation
+import FavoriteStoreCore
 import FavoriteTrackCore
 import OSLog
 import Observation
+import LocalFileBrowserCore
 import UniformTypeIdentifiers
 import VGMBoyKit
 
@@ -11,14 +15,16 @@ enum SidebarBrowserMode: String, CaseIterable, Identifiable {
     case games
     case files
     case favorites
+    case localFiles
 
     var id: String { rawValue }
 
     var title: String {
         switch self {
-        case .games: "Games"
-        case .files: "Files"
+        case .games: "Console View"
+        case .files: "Path View"
         case .favorites: "Favorites"
+        case .localFiles: "Local Files"
         }
     }
 
@@ -27,8 +33,17 @@ enum SidebarBrowserMode: String, CaseIterable, Identifiable {
         case .games: "square.grid.2x2"
         case .files: "folder"
         case .favorites: "star"
+        case .localFiles: "externaldrive"
         }
     }
+}
+
+struct LocalBrowserSidebarRow: Identifiable, Equatable, Sendable {
+    let node: LocalFileBrowserNode
+    let depth: Int
+    let isExpanded: Bool
+
+    var id: String { node.id }
 }
 
 enum SidebarPresentationView: String, Sendable {
@@ -45,12 +60,6 @@ struct SidebarViewResolution: Equatable, Sendable {
     let contentMode: SidebarPresentationView
     let resultSource: String
     let isTemporary: Bool
-}
-
-struct FavoriteTrackRecord: Codable, Equatable, Sendable {
-    let identity: FavoriteTrackIdentity
-    let persistedTrack: String
-    let metadata: TrackMetadata?
 }
 
 @MainActor
@@ -164,6 +173,11 @@ final class PlayerViewModel {
     var interfaceFontSize: CGFloat = 12
     var interfaceTextColor: DatabaseSidebarTextColor = .primary
     var interfaceMonospaceFont = false
+    let frontendPreferences = FrontendPreferencesCoordinator()
+    var autoResizeAnimationMilliseconds: Int { frontendPreferences.value.animations.autoResizeMilliseconds }
+    var selectionAnimationMilliseconds: Int { frontendPreferences.value.animations.selectionMilliseconds }
+    var mainWindowAlwaysOnTop: Bool { frontendPreferences.value.windows.mainAlwaysOnTop }
+    var settingsWindowAlwaysOnTop: Bool { frontendPreferences.value.windows.settingsAlwaysOnTop }
     var databaseSidebarFontSize: CGFloat {
         get { interfaceFontSize }
         set { interfaceFontSize = newValue }
@@ -207,33 +221,51 @@ final class PlayerViewModel {
         storedMode: SidebarBrowserMode,
         searchText: String
     ) -> SidebarBrowserMode {
-        sidebarViewResolution(storedMode: storedMode, searchText: searchText).contentMode == .folders
-            ? .files
-            : .games
+        if storedMode == .localFiles { return .localFiles }
+        if storedMode == .favorites { return .favorites }
+        return sidebarViewResolution(storedMode: storedMode, searchText: searchText).contentMode == .folders
+            ? SidebarBrowserMode.files
+            : SidebarBrowserMode.games
     }
 
     nonisolated static func sidebarViewResolution(
         storedMode: SidebarBrowserMode,
         searchText: String
     ) -> SidebarViewResolution {
-        let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let storedPresentation: SidebarPresentationView = switch storedMode {
-        case .files: .folders
+        let sharedMode: CatalogBrowserMode = switch storedMode {
+        case .files: .paths
+        case .localFiles: .diskPath
         case .favorites: .favorites
-        case .games: .database
+        case .games: .consoles
         }
-        let isSearching = !query.isEmpty
-        let view: SidebarPresentationView = isSearching && storedPresentation != .favorites ? .search : storedPresentation
-        let contentMode: SidebarPresentationView = view == .search ? .database : view
+        let shared = CatalogBrowserState(mode: sharedMode, query: searchText)
+        let presentation: (CatalogBrowserView) -> SidebarPresentationView = { view in
+            switch view {
+            case .paths, .diskPath: .folders
+            case .consoles: .database
+            case .favorites: .favorites
+            case .search: .search
+            }
+        }
+        let content: SidebarPresentationView = switch shared.contentMode {
+        case .tree: .folders
+        case .database: .database
+        case .favorites: .favorites
+        }
+        let storedPresentation: SidebarPresentationView = switch shared.storedMode {
+        case .paths, .diskPath: .folders
+        case .consoles: .database
+        case .favorites: .favorites
+        }
         return SidebarViewResolution(
             storedMode: storedPresentation,
-            query: query,
-            view: view,
-            contentMode: contentMode,
-            resultSource: contentMode == .folders
+            query: shared.query,
+            view: presentation(shared.view),
+            contentMode: content,
+            resultSource: content == .folders
                 ? "folder-tree"
-                : contentMode == .favorites ? "favorite-track-history" : "database-index",
-            isTemporary: isSearching
+                : content == .favorites ? "favorite-track-history" : "database-index",
+            isTemporary: shared.view == .search
         )
     }
     private(set) var expandedDatabaseSystems: Set<String> = []
@@ -262,24 +294,56 @@ final class PlayerViewModel {
         set { databaseSidebar.selectedGameIDs = newValue }
     }
     var browsedFolderTracks: [TrackItem] = []
-    var selectedTrackID: TrackItem.ID?
-    var selectedTrackIDs: Set<TrackItem.ID> = []
-    var playlist: [TrackItem] = [] {
-        didSet {
+    let queue = PlaylistQueueCoordinator()
+    var selectedTrackID: TrackItem.ID? {
+        get { queue.primarySelection }
+        set { queue.primarySelection = newValue }
+    }
+    var selectedTrackIDs: Set<TrackItem.ID> {
+        get { queue.selection }
+        set { queue.selection = newValue }
+    }
+    var playlist: [TrackItem] {
+        get { queue.tracks }
+        set {
+            queue.replaceTracks(with: newValue)
             if !isRestoringPersistedPlaylist {
                 deferredPersistedPlaylistValues = []
             }
-            playlistContentRevision &+= 1
             refreshPlaylistTotalDurationReadout()
         }
     }
-    private(set) var favoriteRecords: [FavoriteTrackRecord] = []
-    private(set) var favoriteRevision = 0
+    let favorites = FavoritesCoordinator()
+    var favoriteRecords: [FavoriteTrackSnapshot] { favorites.records }
+    var favoriteRevision: Int { favorites.presentationRevision }
+    var favoriteSortOrder: FavoriteSortOrder = .historical
+    var displayedFavoriteRecords: [FavoriteTrackSnapshot] {
+        FavoriteListPresentation.ordered(favoriteRecords, by: favoriteSortOrder)
+    }
     var favoriteTracks: [TrackItem] {
-        favoriteRecords.compactMap { TrackItem.fromPersistedValue($0.persistedTrack) }
+        displayedFavoriteRecords.map { snapshot in
+            if let entry = snapshot.identity.archiveEntry {
+                return TrackItem(
+                    archiveURL: URL(fileURLWithPath: snapshot.identity.sourcePath),
+                    entryPath: entry,
+                    trackIndex: snapshot.identity.trackIndex,
+                    trackCount: snapshot.identity.trackCount
+                )
+            }
+            return TrackItem(
+                url: URL(fileURLWithPath: snapshot.identity.sourcePath),
+                trackIndex: snapshot.identity.trackIndex,
+                trackCount: snapshot.identity.trackCount
+            )
+        }
     }
     var isFavoritesSidebar: Bool { sidebarBrowserMode == .favorites }
-    private(set) var playlistContentRevision = 0
+    var localBrowserEnabled = false
+    var localBrowserPath = ""
+    let localBrowser = LocalBrowserCoordinator()
+    var localBrowserRows: [LocalBrowserSidebarRow] { localBrowser.rows }
+    var selectedLocalBrowserPath: String? { localBrowser.selectedPath }
+    var playlistContentRevision: Int { queue.contentRevision }
     private var isRestoringPersistedPlaylist = false
     private var deferredPersistedPlaylistValues: [String] = []
     var metadataCache: [String: TrackMetadata] = [:]
@@ -351,6 +415,8 @@ final class PlayerViewModel {
                 : databaseSidebarLoader.fileLoadingStatus
         case .favorites:
             "Reading Favorites"
+        case .localFiles:
+            "Reading Local Files"
         }
     }
     var databaseSidebarLoadError: String? {
@@ -358,6 +424,7 @@ final class PlayerViewModel {
         case .games: databaseSidebarLoader.gameLoadError
         case .files: databaseSidebarLoader.fileLoadError
         case .favorites: nil
+        case .localFiles: nil
         }
     }
 
@@ -368,6 +435,10 @@ final class PlayerViewModel {
     /// Reloads the externally published catalog snapshot. Playback keeps its
     /// loaded queue; only the Database browser is refreshed.
     func reloadLibrary() {
+        guard !localBrowserEnabled else {
+            libraryDatabaseLocationStatus = "Turn off Local Files before reloading the database library."
+            return
+        }
         guard libraryDatabase != nil else {
             libraryDatabaseLocationStatus = "Library database is unavailable."
             return
@@ -609,6 +680,7 @@ final class PlayerViewModel {
             libraryDatabaseLocationStatus = "Library database unavailable: \(error.localizedDescription)"
         }
         restorePlaybackPreferences(restoredState.playbackPreferences)
+        restoreLocalBrowserPreferences()
         restoreFavorites()
         Task { [weak self] in
             let recovery = await Task.detached(priority: .utility) {
@@ -618,16 +690,180 @@ final class PlayerViewModel {
             self?.statusText = "Recovered \(recovery.rootCount) abandoned CocoaSpice cache items (\(ByteCountFormatter.string(fromByteCount: recovery.byteCount, countStyle: .file)))."
         }
         reloadCatalogRoots()
-        reloadDatabaseSidebar()
+        if localBrowserEnabled {
+            configureLocalBrowser(path: localBrowserPath)
+        } else {
+            reloadDatabaseSidebar()
+        }
         restorePersistedPlaylist(restoredState.sessionState)
         restorePlaylistColumnState(restoredState.playlistColumnState)
         sidebarSearchText = restoredState.sidebarSearchText
         startPlaybackTimer()
-        restoreInitialSidebarMode(
-            lastRootPath: restoredState.lastRootPath,
-            lastLibrarySelectedFolderPath: restoredState.lastLibrarySelectedFolderPath
-        )
+        if !localBrowserEnabled {
+            restoreInitialSidebarMode(
+                lastRootPath: restoredState.lastRootPath,
+                lastLibrarySelectedFolderPath: restoredState.lastLibrarySelectedFolderPath
+            )
+        }
         updateRemoteTransportState()
+    }
+
+    private func restoreLocalBrowserPreferences() {
+        let defaults = UserDefaults.standard
+        favoriteSortOrder = FavoriteSortOrder(
+            rawValue: defaults.string(forKey: AppDefaultsKey.favoriteSortOrder) ?? "historical"
+        ) ?? .historical
+        localBrowserPath = defaults.string(forKey: AppDefaultsKey.localBrowserPath) ?? ""
+        localBrowserEnabled = defaults.bool(forKey: AppDefaultsKey.localBrowserEnabled)
+            && !localBrowserPath.isEmpty
+        if localBrowserEnabled { sidebarBrowserMode = .localFiles }
+    }
+
+    func setAutoResizeAnimationMilliseconds(_ value: Int) {
+        frontendPreferences.setAutoResizeMilliseconds(value)
+    }
+
+    func setSelectionAnimationMilliseconds(_ value: Int) {
+        frontendPreferences.setSelectionMilliseconds(value)
+    }
+
+    func setMainWindowAlwaysOnTop(_ enabled: Bool) {
+        frontendPreferences.setAlwaysOnTop(enabled, role: .main)
+    }
+
+    func setSettingsWindowAlwaysOnTop(_ enabled: Bool) {
+        frontendPreferences.setAlwaysOnTop(enabled, role: .settings)
+    }
+
+    func setFavoriteSortOrder(_ order: FavoriteSortOrder) {
+        guard favoriteSortOrder != order else { return }
+        favoriteSortOrder = order
+        UserDefaults.standard.set(order.rawValue, forKey: AppDefaultsKey.favoriteSortOrder)
+        favorites.presentationChanged()
+        if isFavoritesSidebar {
+            playlist = favoriteTracks
+            applyFavoriteMetadata()
+        }
+    }
+
+    func setLocalBrowserEnabled(_ enabled: Bool) {
+        if enabled && localBrowserPath.isEmpty {
+            chooseLocalBrowserRoot()
+            return
+        }
+        localBrowserEnabled = enabled
+        UserDefaults.standard.set(enabled, forKey: AppDefaultsKey.localBrowserEnabled)
+        if enabled {
+            sidebarBrowserMode = .localFiles
+            configureLocalBrowser(path: localBrowserPath)
+        } else {
+            sidebarBrowserMode = .games
+            localBrowser.clear()
+            loadDatabaseSidebarIfNeeded()
+        }
+        savePreferencesNow()
+    }
+
+    func chooseLocalBrowserRoot() {
+        let panel = NSOpenPanel()
+        panel.title = "Choose Local Files Folder"
+        panel.prompt = "Choose Folder"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        if !localBrowserPath.isEmpty {
+            panel.directoryURL = URL(fileURLWithPath: localBrowserPath, isDirectory: true)
+        }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        openLocalBrowserPath(url)
+    }
+
+    func openLocalBrowserPath() {
+        let panel = NSOpenPanel()
+        panel.title = "Open Local Path"
+        panel.prompt = "Open"
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = false
+        if !localBrowserPath.isEmpty {
+            panel.directoryURL = URL(fileURLWithPath: localBrowserPath, isDirectory: true)
+        }
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        openLocalBrowserPath(url)
+    }
+
+    func openLocalBrowserPath(_ inputURL: URL) {
+        let url = inputURL.standardizedFileURL
+        var isDirectory: ObjCBool = false
+        guard FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory) else {
+            statusText = "Local path does not exist: \(url.path)"
+            return
+        }
+        let root = isDirectory.boolValue ? url : url.deletingLastPathComponent()
+        localBrowserPath = root.path
+        localBrowserEnabled = true
+        sidebarBrowserMode = .localFiles
+        UserDefaults.standard.set(root.path, forKey: AppDefaultsKey.localBrowserPath)
+        UserDefaults.standard.set(true, forKey: AppDefaultsKey.localBrowserEnabled)
+        configureLocalBrowser(path: root.path)
+        if !isDirectory.boolValue { activateLocalBrowserPath(url.path) }
+        savePreferencesNow()
+    }
+
+    func selectLocalBrowserRow(_ row: LocalBrowserSidebarRow) {
+        localBrowser.select(path: row.node.path)
+        statusText = row.node.kind == .folder
+            ? "Browsing \(row.node.name)"
+            : row.node.name
+        if row.node.kind == .folder, playlistFollowsCursor {
+            queueFolder(URL(fileURLWithPath: row.node.path), replace: true)
+        }
+    }
+
+    func toggleLocalBrowserFolder(_ path: String) {
+        do { try localBrowser.toggleFolder(path: path) }
+        catch { statusText = error.localizedDescription }
+    }
+
+    func activateLocalBrowserPath(_ path: String, enqueue: Bool = false) {
+        guard let url = try? localBrowser.resolve(path: path) else { return }
+        var isDirectory: ObjCBool = false
+        FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+        if isDirectory.boolValue {
+            queueFolder(url, replace: !enqueue, preservePlayback: !enqueue)
+            return
+        }
+        let generation = queueBuildTaskOwner.begin()
+        statusText = "Loading \(url.lastPathComponent)…"
+        let task = Task { [weak self] in
+            guard let self else { return }
+            let loaded = await PlaylistQueueLoader.loadDroppedTracks(from: [url])
+            guard self.queueBuildTaskOwner.isCurrent(generation) else { return }
+            self.applyQueuedTracks(
+                loaded.tracks,
+                from: url.deletingLastPathComponent(),
+                replace: !enqueue,
+                preservePlayback: !enqueue,
+                seedMetadataCache: loaded.metadata,
+                widthHints: loaded.widthHints,
+                autoplay: !enqueue
+            )
+            self.queueBuildTaskOwner.finish(generation: generation)
+        }
+        queueBuildTaskOwner.install(task, generation: generation)
+    }
+
+    private func configureLocalBrowser(path: String) {
+        guard !path.isEmpty else { return }
+        do {
+            let root = try localBrowser.configure(path: path) {
+                PlaybackFormatRegistry.admits(fileURL: $0) || ZipArchiveSupport.canHandle($0)
+            }
+            statusText = "Browsing local files in \(root.name)"
+        } catch {
+            localBrowser.clear()
+            statusText = error.localizedDescription
+        }
     }
 
     private func loadRoot(url: URL) {
@@ -1368,18 +1604,42 @@ final class PlayerViewModel {
     }
 
     func setSidebarBrowserMode(_ mode: SidebarBrowserMode) {
+        if localBrowserEnabled, mode != .localFiles {
+            statusText = "Turn off Local Files in Options to use the database library."
+            return
+        }
         sidebarBrowserMode = mode
         if mode == .favorites {
             playlist = favoriteTracks
-            metadataCache = Dictionary(uniqueKeysWithValues: favoriteRecords.compactMap { record in
-                guard let metadata = record.metadata else { return nil }
-                return (record.identity.id, metadata)
-            })
-            statusText = favoriteTracks.isEmpty ? "No favorites yet." : "Showing (favoriteTracks.count) favorite tracks."
+            applyFavoriteMetadata()
+            statusText = favoriteTracks.isEmpty ? "No favorites yet." : "Showing \(favoriteTracks.count) favorite tracks."
         }
         applySidebarSearch()
-        if mode != .favorites { loadDatabaseSidebarIfNeeded() }
+        if mode != .favorites && mode != .localFiles { loadDatabaseSidebarIfNeeded() }
         savePreferencesNow()
+    }
+
+    func cycleLibrarySidebarMode() {
+        guard !localBrowserEnabled else { return }
+        let modes: [SidebarBrowserMode] = [.games, .files, .favorites]
+        let index = modes.firstIndex(of: sidebarBrowserMode) ?? -1
+        setSidebarBrowserMode(modes[(index + 1) % modes.count])
+    }
+
+    private func applyFavoriteMetadata() {
+        metadataCache = Dictionary(uniqueKeysWithValues: zip(favoriteTracks, displayedFavoriteRecords).map { track, record in
+            (track.id, TrackMetadata(
+                game: record.game,
+                song: record.title,
+                system: record.system,
+                author: record.author,
+                comment: "",
+                introLengthMs: 0,
+                loopLengthMs: 0,
+                playLengthMs: record.playLengthMilliseconds,
+                fadeLengthMs: 0
+            ))
+        })
     }
 
     func isFavorite(_ track: TrackItem) -> Bool {
@@ -1430,24 +1690,28 @@ final class PlayerViewModel {
     }
 
     private func toggleFavorites(for tracks: [TrackItem], metadata: [String: TrackMetadata]) {
-        let identities = tracks.map(favoriteIdentity(for:))
-        var collection = FavoriteTrackCollection(entries: favoriteRecords.map(\.identity))
-        _ = collection.toggleGroup(identities)
-        let snapshots = Dictionary(uniqueKeysWithValues: favoriteRecords.map { ($0.identity.id, $0) })
-        let additions = Dictionary(uniqueKeysWithValues: zip(tracks, identities).map { track, identity in
-            (identity.id, FavoriteTrackRecord(
+        let snapshots = tracks.map { track in
+            let trackMetadata = metadata[track.id] ?? self.metadataCache[track.id]
+            let identity = favoriteIdentity(for: track)
+            return FavoriteTrackSnapshot(
                 identity: identity,
-                persistedTrack: track.persistedValue,
-                metadata: metadata[track.id] ?? self.metadataCache[track.id]
-            ))
-        })
-        favoriteRecords = collection.entries.compactMap { identity in
-            additions[identity.id] ?? snapshots[identity.id]
+                filename: track.filename,
+                title: trackMetadata?.song ?? track.displayName,
+                game: trackMetadata?.game ?? track.groupDisplayName,
+                author: trackMetadata?.author ?? "",
+                system: trackMetadata?.system ?? "",
+                playLengthMilliseconds: trackMetadata?.playLengthMs ?? 0
+            )
         }
-        favoriteRevision &+= 1
-        persistFavorites()
-        if isFavoritesSidebar { playlist = favoriteTracks }
-        statusText = tracks.count == 1 ? (isFavorite(tracks[0]) ? "Added to Favorites." : "Removed from Favorites.") : "Updated Favorites for (tracks.count) tracks."
+        do {
+            let mutation = try favorites.toggle(snapshots)
+            if isFavoritesSidebar { playlist = favoriteTracks }
+            statusText = tracks.count == 1
+                ? (mutation.added ? "Added to Favorites." : "Removed from Favorites.")
+                : "Updated Favorites for \(tracks.count) tracks."
+        } catch {
+            statusText = "Could not update shared Favorites: \(error.localizedDescription)"
+        }
     }
 
     private func favoriteIdentity(for track: TrackItem) -> FavoriteTrackIdentity {
@@ -1460,14 +1724,20 @@ final class PlayerViewModel {
     }
 
     private func restoreFavorites() {
-        guard let data = UserDefaults.standard.data(forKey: AppDefaultsKey.favorites),
-              let records = try? JSONDecoder().decode([FavoriteTrackRecord].self, from: data) else { return }
-        favoriteRecords = records
+        do {
+            try favorites.restore()
+        } catch {
+            statusText = "Shared Favorites unavailable: \(error.localizedDescription)"
+        }
     }
 
-    private func persistFavorites() {
-        guard let data = try? JSONEncoder().encode(favoriteRecords) else { return }
-        UserDefaults.standard.set(data, forKey: AppDefaultsKey.favorites)
+    func refreshSharedFavorites() {
+        do {
+            guard try favorites.refreshIfChanged() else { return }
+            if isFavoritesSidebar { playlist = favoriteTracks }
+        } catch {
+            statusText = "Could not refresh shared Favorites: \(error.localizedDescription)"
+        }
     }
 
     func refreshArchiveCacheSummary() {
@@ -2738,6 +3008,11 @@ final class PlayerViewModel {
     }
 
     private func applySidebarSearch() {
+        if sidebarBrowserMode == .localFiles {
+            databaseSidebar.searchText = ""
+            databaseFileSidebarSearchTaskOwner.cancel()
+            return
+        }
         if sidebarBrowserMode == .favorites {
             databaseSidebar.searchText = ""
             databaseFileSidebarSearchTaskOwner.cancel()

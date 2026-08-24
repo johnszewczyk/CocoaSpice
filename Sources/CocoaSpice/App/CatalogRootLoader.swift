@@ -2,8 +2,8 @@ import CatalogReader
 import Foundation
 
 /// Narrow read-only adapter for catalog roots and stored sidebar projections.
-/// Playlist activation deliberately uses the exact SQLite projections in
-/// `LibraryDatabase+ReadQueries`, never a general catalog track traversal.
+/// Playlist activation uses the shared CatalogReader projection so the native
+/// and WebKit frontends consume the same root/game/system selection semantics.
 enum CatalogBrowser {
     static func roots(databaseURL: URL) throws -> [CatalogRoot] {
         try ReadOnlyCatalog(databaseURL: databaseURL).roots().map {

@@ -3,9 +3,10 @@
 ## Display
 
 - Database: scanned game-music library in the left pane.
-- Favorites: the star sidebar view lists individual favorited tracks in the order they were added. Command-D toggles the selected track or selected game/group; the playlist in this view is the same historical favorite list.
+- Favorites: the star sidebar view lists path-free `GAME-NN-SONG` rows. Command-D toggles the selected track or selected game/group. Options > Database > Favorites chooses Historical (added order) or Alphabetical display.
+- Local Files: Options > Database can choose one folder and enable direct disk browsing. This disables the database library until Local Files is turned off. Command-O opens a file or folder into this browser.
 - Rows: dense list of scanned games by default.
-- Files: the standalone icon immediately left of the transport controls switches to a folder tree built only from scanned database records. It uses the same dense native row style as Games, with `▾`/`▸` disclosure glyphs and nested text indentation. Its own toolbar grouping distinguishes browser navigation from playback. It loads only when opened and starts with library roots collapsed, so a very large collection does not delay launch. It shows enabled library roots, scanned subfolders, and source files without live filesystem browsing.
+- Path View: the sidebar mode button switches to a folder tree built only from scanned database records. It uses the same dense native row style as Console View, with `▾`/`▸` disclosure glyphs and nested text indentation. It loads only when opened and starts with library roots collapsed, so a very large collection does not delay launch.
 - Files: selecting a source file queues its stored tracks; archive files remain one source-file leaf and queue their indexed members.
 - Files: source-file leaves are stored with the scan database. Opening or revisiting Files reads that stored tree; it does not regroup every indexed track.
 - Group by Console: Options can group games under expandable console headings. `Prefer Folders over Metadatas` uses the catalog's recognized parent console folder (including the parent of a `.tar.zst` game archive) before embedded console metadata; when that folder tag is empty, the embedded metadata fills the gap. Disabling it reverses that source priority. Changing it reloads the read-only sidebar without rewriting the catalog.

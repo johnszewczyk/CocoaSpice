@@ -1,5 +1,6 @@
 import AppKit
 import FrontendCommandCore
+import FrontendPreferencesCore
 import SwiftUI
 
 extension Notification.Name {
@@ -20,7 +21,7 @@ private enum CocoaSpiceWindowActivation {
             guard let notifiedWindow = notification.object as? NSWindow else { return }
             Task { @MainActor [weak notifiedWindow] in
                 guard let window = notifiedWindow,
-                      window.title == "CocoaSpice" else { return }
+                      window.cocoaSpiceRole == .main else { return }
                 NSApp.activate(ignoringOtherApps: true)
                 for appWindow in NSApp.windows where appWindow.isVisible {
                     appWindow.orderFrontRegardless()
@@ -33,13 +34,14 @@ private enum CocoaSpiceWindowActivation {
 @MainActor
 private enum CocoaSpiceWindowDefaults {
     static func resetAll() {
-        let defaults: [(String, NSSize)] = [
-            ("CocoaSpice", NSSize(width: 1100, height: 720)),
-            ("Options", NSSize(width: 800, height: 600)),
-            ("About CocoaSpice", NSSize(width: 560, height: 620))
+        let defaults: [(FrontendWindowRole, NSSize)] = [
+            (.main, NSSize(width: 1100, height: 720)),
+            (.settings, NSSize(width: 800, height: 600)),
+            (.about, NSSize(width: 560, height: 620))
         ]
         for window in NSApplication.shared.windows {
-            guard let match = defaults.first(where: { window.title == $0.0 }) else { continue }
+            guard let role = window.cocoaSpiceRole,
+                  let match = defaults.first(where: { role == $0.0 }) else { continue }
             window.setFrame(centeredFrame(size: match.1, on: window.screen), display: true, animate: false)
             window.setFrameAutosaveName("")
         }
@@ -103,6 +105,7 @@ struct CocoaSpiceApp: App {
 
         Window("About CocoaSpice", id: "about") {
             AboutView()
+                .background(WindowRoleConfigurator(role: .about))
         }
         .windowStyle(.titleBar)
         .windowToolbarStyle(.unified)
@@ -119,6 +122,10 @@ private final class CocoaSpiceAppDelegate: NSObject, NSApplicationDelegate {
         model?.saveSessionStateNow()
         return .terminateNow
     }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        model?.refreshSharedFavorites()
+    }
 }
 
 private struct CocoaSpiceCommands: Commands {
@@ -133,6 +140,11 @@ private struct CocoaSpiceCommands: Commands {
         }
 
         CommandGroup(after: .newItem) {
+            Button("Open Path...") {
+                model.openLocalBrowserPath()
+            }
+            .keyboardShortcut("o", modifiers: .command)
+
             Button("Open Playlist...") {
                 model.loadPlaylistM3U()
             }
@@ -187,22 +199,36 @@ private struct CocoaSpiceCommands: Commands {
                 model.setSidebarBrowserMode(.games)
             }
             .keyboardShortcut("2", modifiers: .command)
+            .disabled(model.localBrowserEnabled)
 
             Button(FrontendSidebarView.paths.title) {
                 model.setSidebarBrowserMode(.files)
             }
             .keyboardShortcut("1", modifiers: .command)
+            .disabled(model.localBrowserEnabled)
 
             Button(FrontendSidebarView.favorites.title) {
                 model.setSidebarBrowserMode(.favorites)
             }
             .keyboardShortcut("4", modifiers: .command)
+            .disabled(model.localBrowserEnabled)
+
+            Divider()
+
+            Button("Local Files") {
+                if model.localBrowserEnabled {
+                    model.setSidebarBrowserMode(.localFiles)
+                } else {
+                    model.openLocalBrowserPath()
+                }
+            }
+            .keyboardShortcut("3", modifiers: .command)
         }
 
         CommandGroup(replacing: .appSettings) {
             Button("Options...") {
                 if let optionsWindow = NSApp.windows.first(where: {
-                    $0.isVisible && $0.title == "Options"
+                    $0.isVisible && $0.cocoaSpiceRole == .settings
                 }) {
                     optionsWindow.close()
                 } else {
@@ -211,5 +237,13 @@ private struct CocoaSpiceCommands: Commands {
             }
             .keyboardShortcut(",", modifiers: .command)
         }
+    }
+}
+
+private struct WindowRoleConfigurator: NSViewRepresentable {
+    let role: FrontendWindowRole
+    func makeNSView(context: Context) -> NSView { NSView() }
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async { nsView.window?.cocoaSpiceRole = role }
     }
 }

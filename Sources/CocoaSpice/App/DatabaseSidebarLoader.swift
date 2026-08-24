@@ -76,7 +76,7 @@ final class DatabaseSidebarLoader {
             )
         case .files:
             loadFilesIfNeeded(databaseURL: databaseURL, didLoad: didLoadFiles, didFail: didFail)
-        case .favorites:
+        case .favorites, .localFiles:
             return
         }
     }

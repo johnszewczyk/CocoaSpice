@@ -8,7 +8,8 @@
 
 ## Current State
 
-- `PlayerViewModel` is the shared app model.
+- `PlayerViewModel` is the app orchestrator; focused observable coordinators own
+  interface preferences, favorites, local-browser state, and queue state.
 - User-defaults serialization now lives in a dedicated persistence helper rather than inline throughout the view model.
 - Playback timing persistence is now unified to one `Long Play` toggle and one manual duration key.
 - Playlist state is separate from sidebar state.
@@ -23,6 +24,9 @@
 - `RestoredAppStartupState` gathers playback preferences, playlist state, column state, sidebar search, and root context in one typed read. Launch applies that snapshot after library roots load, preserving playback preferences, persisted playlist state, then sidebar mode and root context.
 - Launch activates CocoaSpice so its first window is brought to the front.
 - Options close writes the current preference bundle explicitly.
+- Animation timing and per-window always-on-top values are typed by
+  `FrontendPreferencesCore`; AppKit windows are matched by explicit main,
+  settings, and about roles instead of title strings.
 - Session playlist and sidebar selection context are saved on app termination or main-window close rather than being rewritten on ordinary selection movement.
 
 ## Rules
@@ -37,4 +41,6 @@
 
 - [AppSessionPersistence.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/AppSessionPersistence.swift)
 - [PlayerViewModel.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
+- [FrontendPreferencesCoordinator.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/FrontendPreferencesCoordinator.swift)
+- [PlaylistQueueCoordinator.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/PlaylistQueueCoordinator.swift)
 - [LibraryDatabase.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/LibraryDatabase.swift)

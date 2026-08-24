@@ -12,8 +12,9 @@ knowledge.
 - `CocoaSpiceOptionsControlSurface` owns the Options query/command boundary.
 - `CocoaSpiceMainPlaybackControlSurface` owns the main transport and
   playback-policy query/command boundary.
-- `PlayerViewModel` remains the authoritative implementation of playlist,
-  playback-policy, catalog-browser, cache, and persisted-settings behavior.
+- `PlayerViewModel` orchestrates playback and catalog behavior. Typed
+  coordinators own frontend preferences, favorites, local browsing, and queue
+  state so those domains no longer live as undifferentiated model storage.
 - The native `OptionsView` owns `NSOpenPanel` presentation only. It passes the
   chosen URL to `PlayerViewModel.selectLibraryDatabase(at:)`, the same
   path-taking action exposed by the control surface.
@@ -27,7 +28,8 @@ knowledge.
 - `CocoaSpiceFrontendSurface.v1` declares the available `options` and
   `main_playback` features and carries the canonical `VGMBoyEndpointSurface`
   from `VGMBoyEndpointCore`.
-- `CocoaSpiceOptionsSnapshot` includes every current Options preference,
+- `CocoaSpiceOptionsSnapshot` includes the shared `FrontendOptionsManifest`,
+  typed interface/window preferences, every current CocoaSpice preference,
   catalog/cache presentation value, and read-only playback diagnostic value.
 - `CocoaSpiceOptionsCommand` changes those options and performs each
   non-window-specific Options action. It does not accept catalog rows,
@@ -43,6 +45,8 @@ knowledge.
 - CocoaSpice and SPCBoy WK consume the same VGMBoy endpoint capability map;
   app-specific control surfaces may expose fewer UI features, but they must
   not rename or reinterpret the shared endpoint operations.
+- AppKit windows carry explicit `FrontendWindowRole` identifiers. Window-level
+  policy never depends on localized titles.
 
 ## Deliberate Boundary
 
@@ -58,3 +62,7 @@ knowledge.
 
 - [CocoaSpiceFrontendControlSurface.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/CocoaSpiceFrontendControlSurface.swift)
 - [PlayerViewModel.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/PlayerViewModel.swift)
+- [FrontendPreferencesCoordinator.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/FrontendPreferencesCoordinator.swift)
+- [FavoritesCoordinator.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/FavoritesCoordinator.swift)
+- [LocalBrowserCoordinator.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/LocalBrowserCoordinator.swift)
+- [PlaylistQueueCoordinator.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/PlaylistQueueCoordinator.swift)

@@ -3,7 +3,7 @@
 ## Display
 
 - Display: file metadata in a headed table.
-- Columns: transport, favorite, index, file, title, game, author, system, path, and length. The favorite glyph is immediately before # and lights for favorited tracks.
+- Columns: transport, favorite, index, file, title, game, author, system, path, and length. The favorite glyph is immediately before #; its filled state uses the configured playlist text color.
 - Columns: missing metadata falls back to useful file or folder text.
 - Columns: includes a user-configurable Size column for direct files; archive entries show an unavailable marker until archive-entry sizing is modeled separately.
 - Metadata: catalog-backed queues display only the fields published in the selected catalog; incomplete fields remain incomplete until MediaScanner republishes them.
@@ -19,7 +19,7 @@
 
 - Selection: standard Shift and Command multi-selection.
 - Selection: selected rows can be dragged together.
-- Selection: moving a single selected row glides its background to the next row over 100 ms; multi-selection remains immediate.
+- Selection: moving a single selected row glides its background using the Interface animation duration (200 ms by default); multi-selection remains immediate.
 
 ## Activation
 

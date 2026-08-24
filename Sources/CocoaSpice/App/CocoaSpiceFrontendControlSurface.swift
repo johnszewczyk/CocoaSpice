@@ -1,4 +1,5 @@
 import Foundation
+import FrontendPreferencesCore
 import VGMBoyEndpointCore
 import VGMBoyKit
 
@@ -35,6 +36,8 @@ struct CocoaSpiceFrontendSurface: Codable, Equatable, Sendable {
 /// rows, scanner state, decoder metadata, or a playback path.
 struct CocoaSpiceOptionsSnapshot: Codable, Equatable, Sendable {
     let version: Int
+    let manifest: FrontendOptionsManifest
+    let frontendInterface: FrontendInterfacePreferences
     let longPlayEnabled: Bool
     let manualPreFadeSeconds: Int
     let endFadeEnabled: Bool
@@ -71,6 +74,9 @@ struct CocoaSpiceOptionsSnapshot: Codable, Equatable, Sendable {
 /// path for catalog selection; only the native CocoaSpice shell decides how a
 /// user chooses that path (currently `NSOpenPanel`).
 enum CocoaSpiceOptionsCommand: Codable, Equatable, Sendable {
+    case setAutoResizeAnimationMilliseconds(Int)
+    case setSelectionAnimationMilliseconds(Int)
+    case setWindowAlwaysOnTop(role: FrontendWindowRole, enabled: Bool)
     case setLongPlayEnabled(Bool)
     case setManualPreFadeSeconds(Int)
     case setEndFadeEnabled(Bool)
@@ -119,6 +125,8 @@ final class CocoaSpiceOptionsControlSurface {
     func snapshot() -> CocoaSpiceOptionsSnapshot {
         CocoaSpiceOptionsSnapshot(
             version: surface.version,
+            manifest: .v1,
+            frontendInterface: model.frontendPreferences.value,
             longPlayEnabled: model.longPlayEnabled,
             manualPreFadeSeconds: model.manualPreFadeSeconds,
             endFadeEnabled: model.endFadeEnabled,
@@ -154,6 +162,16 @@ final class CocoaSpiceOptionsControlSurface {
 
     func perform(_ command: CocoaSpiceOptionsCommand) {
         switch command {
+        case .setAutoResizeAnimationMilliseconds(let milliseconds):
+            model.setAutoResizeAnimationMilliseconds(milliseconds)
+        case .setSelectionAnimationMilliseconds(let milliseconds):
+            model.setSelectionAnimationMilliseconds(milliseconds)
+        case .setWindowAlwaysOnTop(let role, let enabled):
+            switch role {
+            case .main: model.setMainWindowAlwaysOnTop(enabled)
+            case .settings: model.setSettingsWindowAlwaysOnTop(enabled)
+            case .about: break
+            }
         case .setLongPlayEnabled(let enabled):
             if model.longPlayEnabled != enabled { model.toggleLongPlayEnabled() }
         case .setManualPreFadeSeconds(let seconds):

@@ -1,4 +1,5 @@
 import AppKit
+import FrontendPreferencesCore
 import OSLog
 import SwiftUI
 
@@ -73,8 +74,7 @@ struct PlaylistTableView: NSViewRepresentable {
             subsystem: "com.local.cocoaspice",
             category: "playlist-load"
         )
-        private let columnResizeAnimationSteps = 5
-        private let columnResizeIntervalNanoseconds: UInt64 = 20_000_000
+        private let columnResizeAnimationSteps = 10
         private let autoSizeSampleLimit = 200
         private let autoSizeDebounceNanoseconds: UInt64 = 120_000_000
 
@@ -229,6 +229,7 @@ struct PlaylistTableView: NSViewRepresentable {
 
         func reload() {
             guard let tableView else { return }
+            selectionHighlightView?.animationDuration = Double(model.selectionAnimationMilliseconds) / 1_000
 
             applyVisibility(to: tableView)
             refreshSortIndicators()
@@ -420,7 +421,11 @@ struct PlaylistTableView: NSViewRepresentable {
                         systemSymbolName: model.isFavorite(track) ? "star.fill" : "star",
                         accessibilityDescription: "Favorite"
                     )
-                    favoriteButton(in: cell)?.contentTintColor = model.isFavorite(track) ? NSColor.systemYellow : NSColor.secondaryLabelColor
+                    favoriteButton(in: cell)?.contentTintColor = switch model.playlistTextColor {
+                    case .primary: NSColor.labelColor
+                    case .secondary: NSColor.secondaryLabelColor
+                    case .tertiary: NSColor.tertiaryLabelColor
+                    }
                     return cell
                 case .index:
                     return configuredTextCell(in: tableView, row: row, identifier: column.rawValue, text: model.indexText(for: track), isCurrentTrack: model.currentTrack?.id == track.id, monospace: true)
@@ -861,12 +866,21 @@ struct PlaylistTableView: NSViewRepresentable {
             columnResizeTask?.cancel()
             let startWidths = targets.map { $0.0.width }
             let steps = columnResizeAnimationSteps
+            let duration = model.autoResizeAnimationMilliseconds
             suppressWidthPersistence = true
+
+            if duration == 0 {
+                for (tableColumn, finalWidth) in targets { tableColumn.width = finalWidth }
+                suppressWidthPersistence = false
+                persistWidths()
+                return
+            }
+            let intervalNanoseconds = UInt64(duration) * 1_000_000 / UInt64(steps)
 
             columnResizeTask = Task { @MainActor [weak self] in
                 guard let self else { return }
                 for step in 1...steps {
-                    try? await Task.sleep(nanoseconds: self.columnResizeIntervalNanoseconds)
+                    try? await Task.sleep(nanoseconds: intervalNanoseconds)
                     guard !Task.isCancelled else { return }
                     let linearProgress = CGFloat(step) / CGFloat(steps)
                     let progress = linearProgress < 0.5
@@ -1163,6 +1177,7 @@ final class AnimatedCapsuleSelectionHighlightView: NSView {
     private let primarySelectionLayer = CAShapeLayer()
     private let multipleSelectionLayer = CAShapeLayer()
     private let horizontalInset: CGFloat = 4
+    var animationDuration: TimeInterval = 0.2
 
     override var isFlipped: Bool { true }
 
@@ -1221,7 +1236,7 @@ final class AnimatedCapsuleSelectionHighlightView: NSView {
         let movement = CABasicAnimation(keyPath: "position")
         movement.fromValue = startPosition
         movement.toValue = targetPosition
-        movement.duration = 0.333
+        movement.duration = animationDuration
         movement.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
         primarySelectionLayer.add(movement, forKey: "playlistSelectionMovement")
     }

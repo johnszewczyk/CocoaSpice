@@ -177,7 +177,10 @@ final class PlaybackEngine: @unchecked Sendable {
             trackIndex: track.trackIndex,
             tempo: tempo.multiplier,
             playbackMode: mode,
-            playMilliseconds: plan.preFadeSeconds * 1_000,
+            // File-default timing belongs to VGMBoyKit's decoder metadata,
+            // not the catalog row. Only an explicit Long Play window sends a
+            // manual play length across the boundary.
+            playMilliseconds: plan.isLongPlay ? plan.preFadeSeconds * 1_000 : nil,
             fadeMilliseconds: plan.fadeSeconds * 1_000
         ))))
         if resumeAt > 0 {

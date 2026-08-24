@@ -1,4 +1,6 @@
 import AppKit
+import FavoriteStoreCore
+import FrontendPreferencesCore
 import SwiftUI
 import VGMBoyKit
 
@@ -16,6 +18,7 @@ struct OptionsView: View {
         case diagnostics = "Diagnostics"
         case interface = "Interface"
         case playback = "Playback"
+        case windows = "Windows"
 
         var id: Self { self }
 
@@ -26,11 +29,14 @@ struct OptionsView: View {
             case .diagnostics: "waveform.path.ecg"
             case .interface: "paintbrush"
             case .playback: "waveform"
+            case .windows: "macwindow.on.rectangle"
             }
         }
     }
 
-    private static let appSections: [OptionsSection] = [.data, .interface]
+    private static let appSections: [OptionsSection] = FrontendOptionsManifest.v1.appSections.compactMap {
+        OptionsSection(rawValue: $0.title)
+    }
     private static let remoteSections: [OptionsSection] = [.audio, .diagnostics, .playback]
 
     private let windowBackground = Color(red: 30 / 255, green: 30 / 255, blue: 30 / 255)
@@ -75,6 +81,7 @@ struct OptionsView: View {
                         case .diagnostics: diagnosticsPage
                         case .interface: interfacePage
                         case .playback: playbackPage
+                        case .windows: CocoaSpiceWindowsOptionsPage(model: model)
                         }
                     }
                     .padding(20)
@@ -83,13 +90,13 @@ struct OptionsView: View {
             }
         }
         .frame(minWidth: 320, minHeight: 240)
-        .background(OptionsWindowConfigurator())
+        .background(OptionsWindowConfigurator(alwaysOnTop: model.settingsWindowAlwaysOnTop))
         .onAppear {
             longPlayTimeText = Self.formatTime(model.manualPreFadeSeconds)
             libGmeTempoText = model.libgmeTempo.displayString
             libVgmTempoText = model.libvgmTempo.displayString
             DispatchQueue.main.async {
-                NSApp.windows.first(where: { $0.title == "Options" })?.makeFirstResponder(nil)
+                NSApp.windows.first(where: { $0.cocoaSpiceRole == .settings })?.makeFirstResponder(nil)
             }
             guard !hasInitializedPresentation else { return }
             hasInitializedPresentation = true
@@ -107,14 +114,16 @@ struct OptionsView: View {
     }
 
     private struct OptionsWindowConfigurator: NSViewRepresentable {
+        let alwaysOnTop: Bool
         func makeNSView(context: Context) -> NSView {
             NSView()
         }
 
         func updateNSView(_ nsView: NSView, context: Context) {
             guard let window = nsView.window else { return }
+            window.cocoaSpiceRole = .settings
             window.minSize = NSSize(width: 320, height: 240)
-            window.level = .floating
+            window.level = alwaysOnTop ? .floating : .normal
             window.setFrameAutosaveName("CocoaSpice.Options")
         }
     }
@@ -359,6 +368,8 @@ struct OptionsView: View {
         VStack(alignment: .leading, spacing: 16) {
             interfaceAppearanceCard
 
+            CocoaSpiceAnimationOptionsCard(model: model)
+
             sectionCard(title: "Sidebar Options") {
                 Toggle(isOn: Binding(
                         get: { model.sidebarSystemMode },
@@ -440,19 +451,6 @@ struct OptionsView: View {
                 }
             }
 
-            sectionCard(title: "Windows") {
-                Text("Restore the default size and centered position for CocoaSpice windows.")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.secondary)
-                HStack {
-                    Spacer()
-                    Button("Reset") {
-                        NotificationCenter.default.post(name: .cocoaSpiceResetWindows, object: nil)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .trailing)
-            }
-
             libraryBehaviorCard
         }
     }
@@ -520,6 +518,49 @@ struct OptionsView: View {
 
     private var dataPage: some View {
         VStack(alignment: .leading, spacing: 16) {
+            sectionCard(title: "Local Files") {
+                Toggle(isOn: Binding(
+                    get: { model.localBrowserEnabled },
+                    set: { model.setLocalBrowserEnabled($0) }
+                )) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Use Local Files")
+                        Text("Browse one folder directly. The database library is disabled while this is on.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .toggleStyle(.checkbox)
+
+                pathBar(
+                    path: model.localBrowserPath.isEmpty ? "No local folder selected" : model.localBrowserPath,
+                    browse: model.chooseLocalBrowserRoot
+                )
+            }
+
+            sectionCard(title: "Favorites") {
+                HStack {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Order")
+                        Text("Historical preserves the order favorites were added. Alphabetical changes display only.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 16)
+                    Picker("Order", selection: Binding(
+                        get: { model.favoriteSortOrder },
+                        set: { model.setFavoriteSortOrder($0) }
+                    )) {
+                        ForEach(FavoriteSortOrder.allCases) { order in
+                            Text(order.title).tag(order)
+                        }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.menu)
+                    .frame(width: 140)
+                }
+            }
+
             sectionCard(title: "Database") {
                 pathBar(path: model.configuredLibraryDatabasePath, browse: model.chooseLibraryDatabase)
 
@@ -542,6 +583,8 @@ struct OptionsView: View {
                 .controlSize(.regular)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .disabled(model.localBrowserEnabled)
+            .opacity(model.localBrowserEnabled ? 0.55 : 1)
 
             sectionCard(title: "Cache") {
                 pathBar(path: ZipArchiveSupport.cacheDirectoryURL.path, browse: model.showArchiveCacheInFinder)
@@ -794,4 +837,64 @@ struct OptionsView: View {
 
         return nil
     }
+}
+
+private struct CocoaSpiceAnimationOptionsCard: View {
+    @Bindable var model: PlayerViewModel
+
+    var body: some View {
+        optionsCard(title: "Animations") {
+            timingRow(title: "Auto-Resize", detail: "Duration for automatic playlist column resizing.", value: Binding(
+                get: { model.autoResizeAnimationMilliseconds },
+                set: { model.setAutoResizeAnimationMilliseconds($0) }
+            ))
+            timingRow(title: "Selection Bar", detail: "Duration for playlist and sidebar selection movement.", value: Binding(
+                get: { model.selectionAnimationMilliseconds },
+                set: { model.setSelectionAnimationMilliseconds($0) }
+            ))
+        }
+    }
+
+    private func timingRow(title: String, detail: String, value: Binding<Int>) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                Text(detail).font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 16)
+            TextField("200", value: value, format: .number).multilineTextAlignment(.trailing).frame(width: 58)
+            Text("ms").foregroundStyle(.secondary)
+        }
+    }
+}
+
+private struct CocoaSpiceWindowsOptionsPage: View {
+    @Bindable var model: PlayerViewModel
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            optionsCard(title: "Always on Top") {
+                Toggle("Main Window", isOn: Binding(get: { model.mainWindowAlwaysOnTop }, set: { model.setMainWindowAlwaysOnTop($0) }))
+                    .toggleStyle(.checkbox)
+                Toggle("Settings Window", isOn: Binding(get: { model.settingsWindowAlwaysOnTop }, set: { model.setSettingsWindowAlwaysOnTop($0) }))
+                    .toggleStyle(.checkbox)
+            }
+            optionsCard(title: "Window Layout") {
+                Text("Restore the default size and centered position for CocoaSpice windows.")
+                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                HStack { Spacer(); Button("Reset") { NotificationCenter.default.post(name: .cocoaSpiceResetWindows, object: nil) } }
+            }
+        }
+    }
+}
+
+private func optionsCard<Content: View>(title: String, @ViewBuilder content: () -> Content) -> some View {
+    VStack(alignment: .leading, spacing: 14) {
+        Text(title).font(.headline).foregroundStyle(.white)
+        Divider()
+        content()
+    }
+    .padding(16)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(RoundedRectangle(cornerRadius: 10).fill(Color(red: 40 / 255, green: 40 / 255, blue: 40 / 255)))
 }

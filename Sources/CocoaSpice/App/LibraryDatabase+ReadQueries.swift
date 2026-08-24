@@ -1,4 +1,6 @@
 import Foundation
+import CatalogReader
+import CatalogPlaylistCore
 import SQLite3
 
 extension LibraryDatabase {
@@ -282,17 +284,6 @@ extension LibraryDatabase {
         return handle
     }
 
-    func tracksForGame(
-        _ gameItem: DatabaseGameItem,
-        preferFoldersOverMetadata: Bool = true
-    ) throws -> [TrackItem] {
-        try Self.tracksForGame(
-            databaseURL: databaseURL,
-            gameItem: gameItem,
-            preferFoldersOverMetadata: preferFoldersOverMetadata
-        )
-    }
-
     func tracksAndMetadataForGames(
         _ gameItems: [DatabaseGameItem],
         preferFoldersOverMetadata: Bool = true
@@ -316,52 +307,6 @@ extension LibraryDatabase {
         try Self.tracksAndMetadataForPaths(databaseURL: databaseURL, paths: paths)
     }
 
-    static func tracksForGame(
-        databaseURL: URL,
-        gameItem: DatabaseGameItem,
-        preferFoldersOverMetadata: Bool = true
-    ) throws -> [TrackItem] {
-        var handle: OpaquePointer?
-        if sqlite3_open_v2(databaseURL.path, &handle, SQLITE_OPEN_READONLY, nil) != SQLITE_OK {
-            let message = Self.databaseError(handle: handle).localizedDescription
-            sqlite3_close(handle)
-            throw NSError(domain: "LibraryDatabase", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
-        }
-        defer { sqlite3_close(handle) }
-
-        let systemPredicate = consoleSystemPredicate(preferFoldersOverMetadata: preferFoldersOverMetadata)
-        let sql = """
-        SELECT t.path, t.archive_path, t.archive_entry, t.track_index, t.track_count
-        FROM tracks t
-        INNER JOIN library_roots r ON r.id = t.root_id
-        LEFT JOIN track_metadata m ON m.track_id = t.id
-        WHERE r.is_enabled = 1
-          AND NOT EXISTS (SELECT 1 FROM dead_sources d WHERE d.root_id = t.root_id AND d.path = t.path)
-          AND t.root_id = ?
-          AND t.browser_game = ?
-          AND \(systemPredicate)
-        ORDER BY t.folder_path ASC, t.filename ASC, t.track_index ASC;
-        """
-
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw databaseError(handle: handle)
-        }
-        defer { sqlite3_finalize(statement) }
-
-        sqliteBind(.int(gameItem.rootID), to: statement, at: 1)
-        sqliteBind(.text(gameItem.name), to: statement, at: 2)
-        sqliteBind(.text(gameItem.systemName), to: statement, at: 3)
-
-        var tracks: [TrackItem] = []
-        while sqlite3_step(statement) == SQLITE_ROW {
-            tracks.append(
-                track(from: statement, pathIndex: 0, archivePathIndex: 1, archiveEntryIndex: 2, trackIndex: 3, trackCount: 4)
-            )
-        }
-        return tracks
-    }
-
     static func tracksAndMetadataForGames(
         databaseURL: URL,
         gameItems: [DatabaseGameItem],
@@ -372,56 +317,14 @@ extension LibraryDatabase {
             return ([], [:], PlaylistColumnWidthHints(indexText: "1", fileText: "", titleText: "", gameText: "", authorText: "", systemText: "", lengthText: "—"))
         }
 
-        var handle: OpaquePointer?
-        if sqlite3_open_v2(databaseURL.path, &handle, SQLITE_OPEN_READONLY, nil) != SQLITE_OK {
-            let message = Self.databaseError(handle: handle).localizedDescription
-            sqlite3_close(handle)
-            throw NSError(domain: "LibraryDatabase", code: 1, userInfo: [NSLocalizedDescriptionKey: message])
+        let selections = normalizedItems.map {
+            CatalogPlaylistGameSelection(rootID: $0.rootID, game: $0.name, system: $0.systemName)
         }
-        defer { sqlite3_close(handle) }
-
-        let systemPredicate = consoleSystemPredicate(preferFoldersOverMetadata: preferFoldersOverMetadata)
-        let bucketPredicate = Array(
-            repeating: "(t.root_id = ? AND t.browser_game = ? AND \(systemPredicate))",
-            count: normalizedItems.count
-        ).joined(separator: " OR ")
-        let sql = """
-        SELECT
-            t.path,
-            t.archive_path,
-            t.archive_entry,
-            t.track_index,
-            t.track_count,
-            COALESCE(m.title, ''),
-            COALESCE(m.game, ''),
-            COALESCE(m.author, ''),
-            COALESCE(m.system, ''),
-            COALESCE(m.comment, ''),
-            COALESCE(m.intro_length_ms, 0),
-            COALESCE(m.loop_length_ms, 0),
-            COALESCE(m.play_length_ms, 0),
-            COALESCE(m.fade_length_ms, 0)
-        FROM tracks t
-        INNER JOIN library_roots r ON r.id = t.root_id
-        LEFT JOIN track_metadata m ON m.track_id = t.id
-        WHERE r.is_enabled = 1
-          AND NOT EXISTS (SELECT 1 FROM dead_sources d WHERE d.root_id = t.root_id AND d.path = t.path)
-          AND (\(bucketPredicate))
-        ORDER BY t.browser_game ASC, lower(COALESCE(m.title, '')) ASC, t.folder_path ASC, t.filename ASC, t.track_index ASC;
-        """
-
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw databaseError(handle: handle)
-        }
-        defer { sqlite3_finalize(statement) }
-
-        for (index, gameItem) in normalizedItems.enumerated() {
-            let baseIndex = index * 3
-            sqliteBind(.int(gameItem.rootID), to: statement, at: Int32(baseIndex + 1))
-            sqliteBind(.text(gameItem.name), to: statement, at: Int32(baseIndex + 2))
-            sqliteBind(.text(gameItem.systemName), to: statement, at: Int32(baseIndex + 3))
-        }
+        let catalogTracks = try CatalogPlaylistReader.tracksForGames(
+            databaseURL: databaseURL,
+            selections: selections,
+            preferFoldersOverMetadata: preferFoldersOverMetadata
+        )
 
         var tracks: [TrackItem] = []
         var metadata: [String: TrackMetadata] = [:]
@@ -431,17 +334,17 @@ extension LibraryDatabase {
         var widestAuthorText = ""
         var widestSystemText = ""
         var widestLengthText = "—"
-        while sqlite3_step(statement) == SQLITE_ROW {
-            let track = track(from: statement, pathIndex: 0, archivePathIndex: 1, archiveEntryIndex: 2, trackIndex: 3, trackCount: 4)
-            let title = sqliteString(statement, index: 5)
-            let game = sqliteString(statement, index: 6)
-            let author = sqliteString(statement, index: 7)
-            let system = sqliteString(statement, index: 8)
-            let comment = sqliteString(statement, index: 9)
-            let introLengthMs = Int(sqlite3_column_int(statement, 10))
-            let loopLengthMs = Int(sqlite3_column_int(statement, 11))
-            let playLengthMs = Int(sqlite3_column_int(statement, 12))
-            let fadeLengthMs = Int(sqlite3_column_int(statement, 13))
+        for catalogTrack in catalogTracks {
+            let track = track(from: catalogTrack)
+            let title = catalogTrack.title
+            let game = catalogTrack.game
+            let author = catalogTrack.author
+            let system = catalogTrack.system
+            let comment = catalogTrack.comment
+            let introLengthMs = catalogTrack.introLengthMilliseconds
+            let loopLengthMs = catalogTrack.loopLengthMilliseconds
+            let playLengthMs = catalogTrack.lengthMilliseconds
+            let fadeLengthMs = catalogTrack.fadeLengthMilliseconds
             tracks.append(track)
             metadata[track.id] = TrackMetadata(
                 game: game,
@@ -481,12 +384,6 @@ extension LibraryDatabase {
         preferFoldersOverMetadata
             ? "COALESCE(NULLIF(t.browser_system, ''), NULLIF(m.system, ''), '')"
             : "COALESCE(NULLIF(m.system, ''), NULLIF(t.browser_system, ''), '')"
-    }
-
-    private static func consoleSystemPredicate(preferFoldersOverMetadata: Bool) -> String {
-        preferFoldersOverMetadata
-            ? "t.browser_system = ?"
-            : "\(consoleSystemExpression(preferFoldersOverMetadata: false)) = ?"
     }
 
     static func tracksAndMetadataForFiles(databaseURL: URL, fileItems: [DatabaseFileItem]) throws -> (tracks: [TrackItem], metadata: [String: TrackMetadata], widthHints: PlaylistColumnWidthHints) {
@@ -996,6 +893,25 @@ extension LibraryDatabase {
             url: URL(fileURLWithPath: path, isDirectory: false),
             trackIndex: index,
             trackCount: count
+        )
+    }
+
+    private static func track(from catalogTrack: CatalogPlaylistTrack) -> TrackItem {
+        if let archivePath = catalogTrack.archivePath,
+           let archiveEntry = catalogTrack.archiveEntry,
+           !archivePath.isEmpty,
+           !archiveEntry.isEmpty {
+            return TrackItem(
+                archiveURL: URL(fileURLWithPath: archivePath, isDirectory: false),
+                entryPath: archiveEntry,
+                trackIndex: catalogTrack.trackIndex,
+                trackCount: catalogTrack.trackCount
+            )
+        }
+        return TrackItem(
+            url: URL(fileURLWithPath: catalogTrack.sourcePath, isDirectory: false),
+            trackIndex: catalogTrack.trackIndex,
+            trackCount: catalogTrack.trackCount
         )
     }
 }

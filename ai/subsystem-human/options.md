@@ -1,6 +1,6 @@
 # Options
 
-- The Options window stays above CocoaSpice while it is open.
+- Windows has independent Always on Top switches for the main and Settings windows; both default off.
 
 ## Database
 
@@ -48,7 +48,8 @@
 - Options opens in a native titled macOS window.
 - The window initially opens at 800pt wide and 600pt tall, can be freely resized down to 320pt by 240pt, and remembers its last size and position.
 - Windows Reset restores the default size and centered position for the main, Options, and About windows.
-- The Options sidebar is alphabetized within two groups: CocoaSpice contains Database and Interface; VGMBoy contains Audio and Playback.
+- Interface > Animations exposes the auto-resize and playlist/sidebar selection-bar durations. Both default to 200 ms and accept 0–1000 ms.
+- The Options sidebar is alphabetized within two groups: CocoaSpice contains Database, Interface, and Windows; VGMBoy contains Audio, Diagnostics, and Playback.
 - The former Plugins inventory page is not part of Options. Component ownership and licenses remain documented in VGMBoy.
 
 ## Files

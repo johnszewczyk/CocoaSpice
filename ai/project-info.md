@@ -14,6 +14,7 @@
 - Local-folder queue enumeration through shared `LocalFileBrowserCore`.
 - VGMBoy playback controls, transport, timing, and equalizer presentation.
 - Persistence and async task ownership.
+- Focused preferences, favorites, local-browser, and playlist-queue state coordinators.
 - Build and runtime packaging.
 
 ## Task Routing

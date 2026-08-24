@@ -1,4 +1,6 @@
 import AppKit
+import CatalogBrowserCore
+import FavoriteStoreCore
 import FrontendCommandCore
 import SwiftUI
 
@@ -10,84 +12,42 @@ struct MainView: View {
     var body: some View {
         liveMainView
         .frame(minWidth: 320, minHeight: 240)
+        .background(MainWindowLevelConfigurator(alwaysOnTop: model.mainWindowAlwaysOnTop))
         .toolbar {
             ToolbarItem(placement: .navigation) {
                 Menu {
-                    Button(FrontendSidebarView.consoles.title) {
-                        model.setSidebarBrowserMode(.games)
-                    }
-                    Button(FrontendSidebarView.paths.title) {
-                        model.setSidebarBrowserMode(.files)
-                    }
-                    Button(FrontendSidebarView.favorites.title) {
-                        model.setSidebarBrowserMode(.favorites)
-                    }
-                } label: {
-                    Image(systemName: "sidebar.left")
-                }
+                    Button(FrontendSidebarView.consoles.title) { model.setSidebarBrowserMode(.games) }
+                    Button(FrontendSidebarView.paths.title) { model.setSidebarBrowserMode(.files) }
+                    Button(FrontendSidebarView.favorites.title) { model.setSidebarBrowserMode(.favorites) }
+                } label: { Image(systemName: "sidebar.left") }
                 .help("Library View")
                 .accessibilityLabel("Library View")
             }
             ToolbarItemGroup(placement: .navigation) {
-                Button {
-                    model.playPrevious()
-                } label: {
-                    Image(systemName: "backward.fill")
-                }
-                .disabled(model.playlist.isEmpty)
-
-                Button {
-                    model.togglePlayback()
-                } label: {
-                    Image(systemName: model.isPlaying ? "pause.fill" : "play.fill")
-                }
-                .disabled(model.currentTrack == nil || model.isLoading)
-
-                Button {
-                    model.playNext()
-                } label: {
-                    Image(systemName: "forward.fill")
-                }
-                .disabled(model.playlist.isEmpty)
-
+                Button(action: model.playPrevious) { Image(systemName: "backward.fill") }
+                    .disabled(model.playlist.isEmpty)
+                Button(action: model.togglePlayback) { Image(systemName: model.isPlaying ? "pause.fill" : "play.fill") }
+                    .disabled(model.currentTrack == nil || model.isLoading)
+                Button(action: model.playNext) { Image(systemName: "forward.fill") }
+                    .disabled(model.playlist.isEmpty)
             }
             ToolbarItemGroup(placement: .primaryAction) {
                 Button {
                     model.longPlayEnabled.toggle()
                     model.toggleLongPlayEnabled()
-                } label: {
-                    Image(systemName: "infinity")
-                        .foregroundStyle(model.longPlayEnabled ? .primary : .secondary)
-                }
+                } label: { Image(systemName: "infinity").foregroundStyle(model.longPlayEnabled ? .primary : .secondary) }
                 .help(model.longPlayEnabled ? "Long Play: On" : "Long Play: Off")
-                .accessibilityLabel(model.longPlayEnabled ? "Turn Long Play Off" : "Turn Long Play On")
-
-                Button {
-                    model.cycleRepeatMode()
-                } label: {
-                    Image(systemName: model.repeatMode.iconName)
-                        .foregroundStyle(model.repeatMode == .off ? .secondary : .primary)
+                Button(action: model.cycleRepeatMode) {
+                    Image(systemName: model.repeatMode.iconName).foregroundStyle(model.repeatMode == .off ? .secondary : .primary)
                 }
                 .help(model.repeatMode.title)
-                .accessibilityLabel(model.repeatMode.title)
-
-                Button {
-                    model.cycleRandomPlaybackScope()
-                } label: {
-                    Image(systemName: model.randomPlaybackScope.iconName)
-                }
-                .help(model.randomPlaybackScope.title)
-                .accessibilityLabel(model.randomPlaybackScope.title)
-                .disabled(model.playlist.isEmpty && model.databaseGameItems.isEmpty)
-
-                Button {
-                    model.toggleEqualizerEnabled()
-                } label: {
-                    Image(systemName: "slider.horizontal.3")
-                        .foregroundStyle(model.equalizerEnabled ? .primary : .secondary)
+                Button(action: model.cycleRandomPlaybackScope) { Image(systemName: model.randomPlaybackScope.iconName) }
+                    .disabled(model.playlist.isEmpty && model.databaseGameItems.isEmpty)
+                    .help(model.randomPlaybackScope.title)
+                Button(action: model.toggleEqualizerEnabled) {
+                    Image(systemName: "slider.horizontal.3").foregroundStyle(model.equalizerEnabled ? .primary : .secondary)
                 }
                 .help(model.equalizerEnabled ? "Equalizer: On" : "Equalizer: Off")
-                .accessibilityLabel(model.equalizerEnabled ? "Turn Equalizer Off" : "Turn Equalizer On")
             }
         }
     }
@@ -97,7 +57,7 @@ struct MainView: View {
             VStack(spacing: 0) {
                 NativeSearchField(
                     text: $model.sidebarSearchText,
-                    placeholder: "Search Library",
+                    placeholder: model.localBrowserEnabled ? "Search Local Files" : "Search Library",
                     debounceInterval: 0.1,
                     initialDebounceInterval: 0.25
                 )
@@ -105,7 +65,7 @@ struct MainView: View {
                 .padding(.top, 0)
                 .padding(.bottom, 2)
 
-                if let error = model.databaseSidebarLoadError {
+                if !model.localBrowserEnabled, let error = model.databaseSidebarLoadError {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(.orange)
@@ -123,8 +83,18 @@ struct MainView: View {
                 }
 
                 Group {
-                    if model.isFavoritesSidebar {
-                        FavoritesSidebarListView(model: model)
+                    if model.sidebarBrowserMode == .localFiles {
+                        LocalBrowserSidebarListView(model: model)
+                    } else if model.isFavoritesSidebar {
+                        if model.favoriteTracks.isEmpty {
+                            ContentUnavailableView(
+                                "No Favorites",
+                                systemImage: "star",
+                                description: Text("Select a track or album and press Command-D.")
+                            )
+                        } else {
+                            FavoritesSidebarListView(model: model)
+                        }
                     } else if model.effectiveSidebarBrowserMode == .games
                         ? model.isLoadingDatabaseSidebar
                         : model.isLoadingDatabaseFileSidebar {
@@ -234,47 +204,171 @@ struct MainView: View {
     }
 }
 
-private struct FavoritesSidebarListView: View {
+private struct MainWindowLevelConfigurator: NSViewRepresentable {
+    let alwaysOnTop: Bool
+    func makeNSView(context: Context) -> NSView { NSView() }
+    func updateNSView(_ nsView: NSView, context: Context) {
+        DispatchQueue.main.async {
+            nsView.window?.cocoaSpiceRole = .main
+            nsView.window?.level = alwaysOnTop ? .floating : .normal
+        }
+    }
+}
+
+private struct FavoritesSidebarListView: NSViewRepresentable {
     @Bindable var model: PlayerViewModel
 
-    private var visibleTracks: [TrackItem] {
-        let query = model.sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty else { return model.favoriteTracks }
-        return model.favoriteTracks.filter {
-            $0.filename.lowercased().contains(query)
-                || $0.fullPathText.lowercased().contains(query)
+    func makeCoordinator() -> Coordinator { Coordinator(model: model) }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let chrome = DatabaseSidebarTableChrome.makeTableView(
+            rowHeight: model.databaseSidebarFontSize + 5,
+            columnIdentifier: "Favorite",
+            coordinator: context.coordinator,
+            doubleAction: #selector(Coordinator.handleDoubleAction(_:)),
+            activationHandler: { [weak coordinator = context.coordinator] in coordinator?.activateSelection() },
+            rowMenuProvider: { [weak coordinator = context.coordinator] row in coordinator?.makeRowMenu(row: row) }
+        )
+        context.coordinator.attach(tableView: chrome.tableView)
+        return chrome.scrollView
+    }
+
+    func updateNSView(_ nsView: NSScrollView, context: Context) {
+        context.coordinator.model = model
+        context.coordinator.reload()
+    }
+
+    @MainActor
+    final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
+        struct Row { let track: TrackItem; let snapshot: FavoriteTrackSnapshot }
+
+        @Bindable var model: PlayerViewModel
+        private weak var tableView: NSTableView?
+        private var rows: [Row] = []
+
+        init(model: PlayerViewModel) { self.model = model }
+
+        func attach(tableView: NSTableView) {
+            self.tableView = tableView
+            reload()
         }
+
+        func reload() {
+            let query = model.sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            rows = zip(model.favoriteTracks, model.displayedFavoriteRecords).compactMap { track, snapshot in
+                let label = FavoriteListPresentation.displayName(for: snapshot)
+                guard query.isEmpty || "\(label) \(snapshot.filename) \(snapshot.title) \(snapshot.game)".lowercased().contains(query) else { return nil }
+                return Row(track: track, snapshot: snapshot)
+            }
+            tableView?.rowHeight = model.databaseSidebarFontSize + 5
+            tableView?.reloadData()
+            if let selected = model.selectedTrackID,
+               let row = rows.firstIndex(where: { $0.track.id == selected }) {
+                tableView?.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
+            }
+            if let tableView { DatabaseSidebarTableChrome.updateSelectionHighlight(in: tableView, animated: false) }
+        }
+
+        func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+
+        func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+            guard rows.indices.contains(row) else { return nil }
+            let cell = DatabaseSidebarTableChrome.textCell(in: tableView, identifier: .init("FavoriteCell"))
+            cell.textField?.stringValue = FavoriteListPresentation.displayName(for: rows[row].snapshot)
+            cell.textField?.font = model.databaseSidebarMonospaceFont
+                ? .monospacedSystemFont(ofSize: model.databaseSidebarFontSize, weight: .regular)
+                : .systemFont(ofSize: model.databaseSidebarFontSize)
+            cell.textField?.textColor = DatabaseSidebarTableChrome.textColor(model.databaseSidebarTextColor)
+            return cell
+        }
+
+        func tableViewSelectionDidChange(_ notification: Notification) {
+            guard let tableView, rows.indices.contains(tableView.selectedRow) else { return }
+            let track = rows[tableView.selectedRow].track
+            model.selectedTrackID = track.id
+            model.selectedTrackIDs = [track.id]
+            DatabaseSidebarTableChrome.updateSelectionHighlight(in: tableView, animated: true)
+        }
+
+        @objc func handleDoubleAction(_ sender: Any?) { activateSelection() }
+
+        func activateSelection() {
+            guard let tableView, rows.indices.contains(tableView.selectedRow) else { return }
+            model.playNowTrack(rows[tableView.selectedRow].track)
+        }
+
+        func makeRowMenu(row: Int) -> NSMenu? {
+            guard rows.indices.contains(row) else { return nil }
+            let menu = NSMenu(title: "Favorite")
+            let play = NSMenuItem(title: "Play", action: #selector(playFavorite(_:)), keyEquivalent: "")
+            play.representedObject = rows[row].track.id
+            play.target = self
+            menu.addItem(play)
+            let remove = NSMenuItem(title: "Remove from Favorites", action: #selector(removeFavorite(_:)), keyEquivalent: "")
+            remove.representedObject = rows[row].track.id
+            remove.target = self
+            menu.addItem(remove)
+            return menu
+        }
+
+        @objc private func playFavorite(_ sender: NSMenuItem) {
+            guard let id = sender.representedObject as? String,
+                  let row = rows.first(where: { $0.track.id == id }) else { return }
+            model.playNowTrack(row.track)
+        }
+
+        @objc private func removeFavorite(_ sender: NSMenuItem) {
+            guard let id = sender.representedObject as? String,
+                  let row = rows.first(where: { $0.track.id == id }) else { return }
+            model.toggleFavorites(for: row.track)
+        }
+    }
+}
+
+private struct LocalBrowserSidebarListView: View {
+    @Bindable var model: PlayerViewModel
+
+    private var rows: [LocalBrowserSidebarRow] {
+        let query = model.sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return query.isEmpty ? model.localBrowserRows : model.localBrowserRows.filter { $0.node.name.lowercased().contains(query) }
     }
 
     var body: some View {
-        if visibleTracks.isEmpty {
+        if rows.isEmpty {
             ContentUnavailableView(
-                model.favoriteTracks.isEmpty ? "No Favorites" : "No Matches",
-                systemImage: "star",
-                description: Text(model.favoriteTracks.isEmpty ? "Select a track or album and press Command-D." : "No favorites match the current sidebar search.")
+                model.localBrowserPath.isEmpty ? "No Local Folder" : "No Local Files",
+                systemImage: "externaldrive",
+                description: Text("Choose a readable folder on the Database page in Options.")
             )
         } else {
-            List(visibleTracks) { track in
-                Button {
-                    model.selectedTrackID = track.id
-                    model.selectedTrackIDs = [track.id]
-                } label: {
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(track.displayName)
-                            .lineLimit(1)
-                        Text(track.fullPathText)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
+            List(rows) { row in
+                HStack(spacing: model.databaseSidebarDisclosureGapPoints) {
+                    if row.node.kind == .folder {
+                        Button { model.toggleLocalBrowserFolder(row.node.path) } label: {
+                            Image(systemName: row.isExpanded ? "chevron.down" : "chevron.right")
+                                .font(.system(size: 9, weight: .semibold))
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        Color.clear.frame(width: 9, height: 9)
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(row.node.name)
+                        .font(.system(size: model.databaseSidebarFontSize, design: model.databaseSidebarMonospaceFont ? .monospaced : .default))
+                        .foregroundStyle(Color(nsColor: DatabaseSidebarTableChrome.textColor(model.databaseSidebarTextColor)))
+                        .lineLimit(1)
+                    Spacer(minLength: 0)
                 }
-                .buttonStyle(.plain)
+                .padding(.leading, CGFloat(row.depth) * model.databaseSidebarChildIndentPoints)
+                .contentShape(Rectangle())
+                .onTapGesture { model.selectLocalBrowserRow(row) }
+                .onTapGesture(count: 2) { model.activateLocalBrowserPath(row.node.path) }
                 .contextMenu {
-                    Button("Play") { model.playNowTrack(track) }
-                    Button("Remove from Favorites") { model.toggleFavorites(for: track) }
+                    Button("Set as Playlist") { model.activateLocalBrowserPath(row.node.path) }
+                    Button("Add to Playlist") { model.activateLocalBrowserPath(row.node.path, enqueue: true) }
+                    Button("Show in Finder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: row.node.path)])
+                    }
                 }
-                .onTapGesture(count: 2) { model.playNowTrack(track) }
             }
             .listStyle(.plain)
         }
@@ -380,7 +474,10 @@ private enum DatabaseSidebarTableChrome {
             $0 >= 0 && $0 < tableView.numberOfRows
         }
         let rowRects = selectedRows.map(tableView.rect(ofRow:))
-        (tableView as? DatabaseSidebarNativeTableView)?.selectionHighlightView?.update(
+        let highlight = (tableView as? DatabaseSidebarNativeTableView)?.selectionHighlightView
+        let stored = UserDefaults.standard.object(forKey: AppDefaultsKey.selectionAnimationMilliseconds) as? NSNumber
+        highlight?.animationDuration = Double(stored?.intValue ?? 200) / 1_000
+        highlight?.update(
             selectionRects: rowRects,
             primaryRect: selectedRows.count == 1 ? rowRects.first : nil,
             animated: animated
@@ -1030,7 +1127,10 @@ private struct DatabaseFileListView: NSViewRepresentable {
                 gap: sidebarDisclosureGap,
                 childIndent: sidebarChildIndent
             )
-            guard clickedDisclosure || wasSelected else { return false }
+            let gesture: SidebarRowGesture = clickedDisclosure ? .disclosureClick : .primaryClick
+            guard SidebarRowInteraction.intent(kind: .folder, gesture: gesture, wasSelected: wasSelected) == .toggleExpansion else {
+                return false
+            }
             model.toggleDatabaseFileFolder(id)
             reload()
             return true

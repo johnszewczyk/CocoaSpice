@@ -6,7 +6,7 @@
 - Left pane: database browser.
 - Right pane: editable playlist.
 - Toolbar: previous, play-pause, and next transport controls, plus Long Play, repeat, random playback, and Equalizer on/off. The infinity button turns Long Play on or off.
-- Sidebar toolbar: switches between scanned Games and Files views beside the standard sidebar control.
+- The native top toolbar owns the Library View menu, transport, Long Play, Repeat, Random, and Equalizer controls. The sidebar begins with search and list content.
 - Sidebar: shows a loading indicator while its current database view loads, keeping the main window interactive at launch. Games load first; the potentially large Files tree loads only after Files is opened.
 - Status bar: elapsed time / current-track total / playlist total duration. A plus suffix means some queued tracks do not yet have a known duration.
 
