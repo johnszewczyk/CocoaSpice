@@ -28,6 +28,7 @@ let package = Package(
                 .product(name: "FavoriteTrackCore", package: "FrontendCore"),
                 .product(name: "FavoriteStoreCore", package: "FrontendCore"),
                 .product(name: "FrontendPreferencesCore", package: "FrontendCore"),
+                .product(name: "ArchiveCacheCore", package: "FrontendCore"),
                 .product(name: "VGMBoyKit", package: "VGMBoy"),
                 .product(name: "VGMBoyEndpointCore", package: "VGMBoy")
             ],

@@ -1,6 +1,7 @@
 import CryptoKit
 import Darwin
 import Dispatch
+import ArchiveCacheCore
 import Foundation
 
 enum ZipArchiveSupport {
