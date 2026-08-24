@@ -16,9 +16,13 @@
 - `VGMBoyPlaybackEngine` is the only CocoaSpice playback façade and submits typed `PlaybackControlRequest` values to `PlaybackController`.
 - `PlaybackControlSurface` is read once from the bundled controller and is the capability gate for CocoaSpice Audio-panel mappings. Volume and Mono submit their core requests through that one mapping point; no CocoaSpice audio DSP or alternative output path exists.
 - CocoaSpice passes a materialized naked playable file path and its subtrack index to VGMBoy. Archive policy remains CocoaSpice-owned.
-- File-default timing sends only the mode and fade request; VGMBoy derives the natural window from
-  decoder metadata. A catalog duration remains a display/queue fact and is not authoritative for
-  the core's finite playback cap.
+- `VGMBoyPlaybackEngine` builds the shared `PlaybackTimingRequest` from the selected path and
+  Long Play state. Ordinary file-default timing sends no play length, so VGMBoy derives the
+  natural window from decoder metadata. Long Play alone supplies the manual duration; a catalog
+  duration remains a display/queue fact and is not authoritative for the core's finite playback
+  cap.
+- CocoaSpice does not submit a missing-length timed request. The core's bounded safety value is
+  for unknown-duration/timed operations, not ordinary FLAC, WAV, or other finite audio.
 - AAC export passes the playlist display name and the already-effective finite playback timing to
   `PlaybackController.exportAAC`. CocoaSpice never gives VGMBoy catalog access or asks it to derive
   a title; VGMBoy performs filename sanitation and no-overwrite collision handling.

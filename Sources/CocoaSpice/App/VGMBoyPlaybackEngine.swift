@@ -167,7 +167,12 @@ final class PlaybackEngine: @unchecked Sendable {
 
     private func load(track: TrackItem, plan: PlaybackPlan, tempo: PlaybackTempo, resumeAt: TimeInterval, autoplay: Bool) throws {
         let url = try ZipArchiveSupport.materializePlayableFile(for: track)
-        let mode: VGMBoyKit.PlaybackMode = plan.isLongPlay ? .longPlay : (plan.usesNativeEnding ? .fileDefault : .timed)
+        let timing = try PlaybackTimingRequest.standard(
+            path: url.path,
+            longPlayEnabled: plan.isLongPlay,
+            manualPlayMilliseconds: plan.preFadeSeconds * 1_000,
+            fadeMilliseconds: plan.fadeSeconds * 1_000
+        )
         // A mode command normally reconfigures the currently loaded track.
         // Supplying it atomically with the new load avoids briefly resuming
         // that old decoder, then tearing it back down before the selected
@@ -176,12 +181,9 @@ final class PlaybackEngine: @unchecked Sendable {
             path: url.path,
             trackIndex: track.trackIndex,
             tempo: tempo.multiplier,
-            playbackMode: mode,
-            // File-default timing belongs to VGMBoyKit's decoder metadata,
-            // not the catalog row. Only an explicit Long Play window sends a
-            // manual play length across the boundary.
-            playMilliseconds: plan.isLongPlay ? plan.preFadeSeconds * 1_000 : nil,
-            fadeMilliseconds: plan.fadeSeconds * 1_000
+            playbackMode: timing.playbackMode,
+            playMilliseconds: timing.playMilliseconds,
+            fadeMilliseconds: timing.fadeMilliseconds
         ))))
         if resumeAt > 0 {
             try requireSuccess(controller.perform(.init(command: .seek, payload: .init(positionMilliseconds: Int(resumeAt * 1_000)))))
