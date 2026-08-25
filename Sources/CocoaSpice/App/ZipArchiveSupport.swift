@@ -2,6 +2,7 @@ import CryptoKit
 import Darwin
 import Dispatch
 import ArchiveCacheCore
+import ArchiveMaterializationCore
 import Foundation
 
 enum ZipArchiveSupport {
@@ -19,7 +20,15 @@ enum ZipArchiveSupport {
     // are running. Eight simultaneous archive jobs on this host deadlock;
     // seven complete concurrently.
     static let archiveProcessConcurrency = max(1, ProcessInfo.processInfo.activeProcessorCount - 1)
-    private static let processGate = DispatchSemaphore(value: archiveProcessConcurrency)
+    private static let processRunner = ArchiveProcessRunner(configuration: .init(
+        environment: archiveProcessEnvironment(),
+        temporaryDirectory: FileManager.default.temporaryDirectory,
+        temporaryFilePrefix: "CocoaSpice-process",
+        maxConcurrency: archiveProcessConcurrency,
+        listingTimeout: archiveListingTimeout,
+        extractionTimeout: archiveExtractionTimeout,
+        capturedOutputMaximumBytes: Int64(archiveListingMaximumBytes)
+    ))
     private static let cacheMaintenanceQueue = DispatchQueue(
         label: "com.cocoaspice.archive-cache-maintenance",
         qos: .utility
@@ -942,10 +951,8 @@ enum ZipArchiveSupport {
     /// BSD tar's automatic Zstandard helper exits spuriously when many archive
     /// listings run at once. Use the reliable `zstd` binary explicitly.
     private static func runTarZstandardListing(_ archiveURL: URL) throws -> Data {
-        while processGate.wait(timeout: .now() + .milliseconds(100)) != .success {
-            if Task.isCancelled { throw CancellationError() }
-        }
-        defer { processGate.signal() }
+        try acquireProcessPermit()
+        defer { processRunner.releasePermit() }
 
         let outputURL = try processOutputURL()
         FileManager.default.createFile(atPath: outputURL.path, contents: nil)
@@ -995,8 +1002,8 @@ enum ZipArchiveSupport {
         try? decompressorError.fileHandleForWriting.close()
         try? listerError.fileHandleForWriting.close()
 
-        let decompressorErrors = ProcessOutputCollector()
-        let listerErrors = ProcessOutputCollector()
+        let decompressorErrors = ArchiveProcessOutputCollector()
+        let listerErrors = ArchiveProcessOutputCollector()
         let readers = DispatchGroup()
         for (handle, collector) in [
             (decompressorError.fileHandleForReading, decompressorErrors),
@@ -1121,13 +1128,6 @@ enum ZipArchiveSupport {
         executable: String,
         arguments: [String]
     ) throws -> Data {
-        while processGate.wait(timeout: .now() + .milliseconds(100)) != .success {
-            if Task.isCancelled {
-                throw CancellationError()
-            }
-        }
-        defer { processGate.signal() }
-
         // Listing is bounded tightly, but a valid extraction must be allowed
         // to decompress a large solid TAR+Zstandard source. The scan pipeline
         // uses the same 10-minute extraction boundary.
@@ -1135,69 +1135,15 @@ enum ZipArchiveSupport {
         let isExtraction = executableName == "unar"
             || arguments.first == "x"
             || arguments.contains("-xf")
-        let processTimeout = isExtraction ? archiveExtractionTimeout : archiveListingTimeout
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.environment = archiveProcessEnvironment()
-
-        let outputURL = try processOutputURL()
-        FileManager.default.createFile(atPath: outputURL.path, contents: nil)
-        let outputHandle = try FileHandle(forWritingTo: outputURL)
-        defer {
-            try? outputHandle.close()
-            try? FileManager.default.removeItem(at: outputURL)
-        }
-        let stderr = Pipe()
-        process.standardOutput = outputHandle
-        process.standardError = stderr
-
-        let completion = DispatchSemaphore(value: 0)
-        process.terminationHandler = { _ in completion.signal() }
-        try process.run()
-        defer { process.terminationHandler = nil }
-        let errorReadHandle = stderr.fileHandleForReading
-        try stderr.fileHandleForWriting.close()
-
-        let errorCollector = ProcessOutputCollector()
-        let readers = DispatchGroup()
-        readers.enter()
-        DispatchQueue.global(qos: .utility).async {
-            let data = errorReadHandle.readDataToEndOfFile()
-            try? errorReadHandle.close()
-            errorCollector.set(data)
-            readers.leave()
-        }
-
         do {
-            try waitForProcess(
-                process,
-                completion: completion,
+            return try processRunner.run(
                 executable: executable,
-                timeout: processTimeout
+                arguments: arguments,
+                operation: isExtraction ? .extraction : .listing
             )
         } catch {
-            readers.wait()
-            throw error
+            throw mapProcessRunnerError(error)
         }
-        readers.wait()
-        try outputHandle.close()
-
-        let errorData = errorCollector.value
-        guard process.terminationStatus == 0 else {
-            let errorText = String(decoding: errorData, as: UTF8.self)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            throw ArchiveError.processFailed(
-                executable: URL(fileURLWithPath: executable).lastPathComponent,
-                message: errorText.isEmpty ? "exit code \(process.terminationStatus)" : errorText
-            )
-        }
-
-        let outputBytes = Int64((try? outputURL.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0)
-        guard outputBytes <= Int64(archiveListingMaximumBytes) else {
-            throw ArchiveError.listingLimitExceeded("more than 64 MiB of tool output")
-        }
-        return try Data(contentsOf: outputURL, options: .mappedIfSafe)
     }
 
     private static func runZstandardTarPipeline(
@@ -1236,10 +1182,8 @@ enum ZipArchiveSupport {
         outputURL: URL?,
         allowEarlyConsumerExit: Bool = false
     ) throws {
-        while processGate.wait(timeout: .now() + .milliseconds(100)) != .success {
-            if Task.isCancelled { throw CancellationError() }
-        }
-        defer { processGate.signal() }
+        try acquireProcessPermit()
+        defer { processRunner.releasePermit() }
 
         let zstdExecutable = try executable(named: "zstd")
         let tarExecutable = try executable(named: "tar")
@@ -1281,8 +1225,8 @@ enum ZipArchiveSupport {
 
         let zstdErrorHandle = zstdError.fileHandleForReading
         let tarErrorHandle = tarError.fileHandleForReading
-        let zstdCollector = ProcessOutputCollector()
-        let tarCollector = ProcessOutputCollector()
+        let zstdCollector = ArchiveProcessOutputCollector()
+        let tarCollector = ArchiveProcessOutputCollector()
         let readers = DispatchGroup()
         for (handle, collector) in [(zstdErrorHandle, zstdCollector), (tarErrorHandle, tarCollector)] {
             readers.enter()
@@ -1353,61 +1297,15 @@ enum ZipArchiveSupport {
         arguments: [String],
         outputURL: URL
     ) throws {
-        while processGate.wait(timeout: .now() + .milliseconds(100)) != .success {
-            if Task.isCancelled { throw CancellationError() }
-        }
-        defer { processGate.signal() }
-
-        FileManager.default.createFile(atPath: outputURL.path, contents: nil)
-        let outputHandle = try FileHandle(forWritingTo: outputURL)
-        defer { try? outputHandle.close() }
-
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: executable)
-        process.arguments = arguments
-        process.environment = archiveProcessEnvironment()
-        process.standardOutput = outputHandle
-
-        let stderr = Pipe()
-        process.standardError = stderr
-        let completion = DispatchSemaphore(value: 0)
-        process.terminationHandler = { _ in completion.signal() }
-        try process.run()
-        defer { process.terminationHandler = nil }
-        let errorReadHandle = stderr.fileHandleForReading
-        try stderr.fileHandleForWriting.close()
-
-        let errorCollector = ProcessOutputCollector()
-        let readers = DispatchGroup()
-        readers.enter()
-        DispatchQueue.global(qos: .utility).async {
-            let data = errorReadHandle.readDataToEndOfFile()
-            try? errorReadHandle.close()
-            errorCollector.set(data)
-            readers.leave()
-        }
-
         do {
-            try waitForProcess(
-                process,
-                completion: completion,
+            try processRunner.runWritingOutput(
                 executable: executable,
-                timeout: archiveExtractionTimeout
+                arguments: arguments,
+                outputURL: outputURL,
+                operation: .extraction
             )
         } catch {
-            readers.wait()
-            throw error
-        }
-        readers.wait()
-        try outputHandle.close()
-
-        guard process.terminationStatus == 0 else {
-            let errorText = String(decoding: errorCollector.value, as: UTF8.self)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            throw ArchiveError.processFailed(
-                executable: URL(fileURLWithPath: executable).lastPathComponent,
-                message: errorText.isEmpty ? "exit code \(process.terminationStatus)" : errorText
-            )
+            throw mapProcessRunnerError(error)
         }
     }
 
@@ -1421,6 +1319,35 @@ enum ZipArchiveSupport {
         )
     }
 
+    private static func acquireProcessPermit() throws {
+        do {
+            try processRunner.acquirePermit()
+        } catch {
+            throw mapProcessRunnerError(error)
+        }
+    }
+
+    private static func mapProcessRunnerError(_ error: Error) -> Error {
+        switch error {
+        case is CancellationError:
+            return CancellationError()
+        case let error as ArchiveProcessRunnerError:
+            switch error {
+            case let .timedOut(executable, seconds):
+                return ArchiveError.processFailed(
+                    executable: executable,
+                    message: "timed out after \(seconds) seconds"
+                )
+            case let .failed(executable, _, message):
+                return ArchiveError.processFailed(executable: executable, message: message)
+            case .outputLimitExceeded:
+                return ArchiveError.listingLimitExceeded("more than 64 MiB of tool output")
+            }
+        default:
+            return error
+        }
+    }
+
     /// Process completion wakes immediately through the termination handler.
     /// The bounded wait exists only to observe task cancellation and timeout;
     /// it no longer imposes a polling delay on successful tiny archive jobs.
@@ -1430,38 +1357,15 @@ enum ZipArchiveSupport {
         executable: String,
         timeout: TimeInterval
     ) throws {
-        let deadline = Date().addingTimeInterval(timeout)
-        while completion.wait(timeout: .now() + .milliseconds(100)) != .success {
-            if Task.isCancelled {
-                process.terminate()
-                process.waitUntilExit()
-                throw CancellationError()
-            }
-            if Date() >= deadline {
-                process.terminate()
-                process.waitUntilExit()
-                throw ArchiveError.processFailed(
-                    executable: URL(fileURLWithPath: executable).lastPathComponent,
-                    message: "timed out after \(Int(timeout)) seconds"
-                )
-            }
+        do {
+            try processRunner.waitForProcess(
+                process,
+                completion: completion,
+                executable: executable,
+                timeout: timeout
+            )
+        } catch {
+            throw mapProcessRunnerError(error)
         }
-    }
-}
-
-private final class ProcessOutputCollector: @unchecked Sendable {
-    private let lock = NSLock()
-    private var data = Data()
-
-    var value: Data {
-        lock.lock()
-        defer { lock.unlock() }
-        return data
-    }
-
-    func set(_ data: Data) {
-        lock.lock()
-        self.data = data
-        lock.unlock()
     }
 }

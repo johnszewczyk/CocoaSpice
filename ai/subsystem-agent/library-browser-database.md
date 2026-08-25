@@ -23,6 +23,10 @@
 - `ArchiveMaterializationCore.ArchiveMaterializationPlan` owns the shared
   selected-entry versus complete-set contract. CocoaSpice still owns its
   format-specific extractor and dependency preparation.
+- `ArchiveMaterializationCore.ArchiveProcessRunner` owns bounded archive
+  process permits, cancellation/timeout observation, captured stdout limits,
+  and stderr collection. CocoaSpice retains the format-specific executable
+  topology, arguments, and connected zstd/tar pipeline.
 - `PlaylistQueueLoader` converts stored game/file identities into playlist rows
   without rescanning source media.
 
@@ -64,6 +68,7 @@
 - [CatalogSessionCore.swift](/Users/john/Downloads/Code/VGMMan/CatalogReader/Sources/CatalogSessionCore/CatalogSessionCore.swift)
 - [ArchiveCacheLifecycle.swift](/Users/john/Downloads/Code/VGMMan/FrontendCore/Sources/ArchiveCacheCore/ArchiveCacheLifecycle.swift)
 - [ArchivePlaybackLease.swift](/Users/john/Downloads/Code/VGMMan/FrontendCore/Sources/ArchiveCacheCore/ArchivePlaybackLease.swift)
+- [ArchiveProcessRunner.swift](/Users/john/Downloads/Code/VGMMan/FrontendCore/Sources/ArchiveMaterializationCore/ArchiveProcessRunner.swift)
 - [DatabaseSidebarPresentation.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarPresentation.swift)
 - [PlaylistQueueLoader.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/PlaylistQueueLoader.swift)
 - [DatabaseFileSidebarSelectionTests.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Tests/CocoaSpiceTests/DatabaseFileSidebarSelectionTests.swift)
