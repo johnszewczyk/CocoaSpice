@@ -1,14 +1,9 @@
 import Foundation
+import ArchiveMaterializationCore
 import VGMBoyKit
 
 /// CocoaSpice asks VGMBoyKit which files it can play. The only local policy is
 /// how an archive is materialized before a playable file path is handed over.
-enum ArchiveMaterializationPolicy: Equatable, Sendable {
-    case selectedEntry
-    case completeSet
-    case completeSetWithLazyUSFAliases
-}
-
 enum PlaybackFormatRegistry {
     static let supportedExtensions: Set<String> =
         FormatRegistry.libgmeExtensions
@@ -39,9 +34,9 @@ enum PlaybackFormatRegistry {
         FormatRegistry.family(for: "source.\(normalize(pathExtension))")?.supportsLongPlay ?? false
     }
 
-    static func archiveMaterialization(for entryPaths: [String]) -> ArchiveMaterializationPolicy? {
+    static func archiveMaterialization(for entryPaths: [String]) -> ArchiveMaterializationPlan? {
         guard !entryPaths.isEmpty else { return nil }
-        var resolved: ArchiveMaterializationPolicy = .selectedEntry
+        var resolved: ArchiveMaterializationPlan = .selectedEntry
         for entryPath in entryPaths {
             let extensionName = normalize(URL(fileURLWithPath: entryPath).pathExtension)
             guard admits(pathExtension: extensionName) else { return nil }

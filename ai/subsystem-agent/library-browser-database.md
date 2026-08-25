@@ -20,6 +20,9 @@
 - `ArchiveCacheCore` owns cache-root cleanup and LRU eviction mechanics;
   its playback lease, and the policy value model; CocoaSpice retains archive
   format/tool selection, preference keys, and Options presentation.
+- `ArchiveMaterializationCore.ArchiveMaterializationPlan` owns the shared
+  selected-entry versus complete-set contract. CocoaSpice still owns its
+  format-specific extractor and dependency preparation.
 - `PlaylistQueueLoader` converts stored game/file identities into playlist rows
   without rescanning source media.
 
