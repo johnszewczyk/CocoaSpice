@@ -1,4 +1,5 @@
 import AppKit
+import ArchiveCacheCore
 import FrontendPreferencesCore
 import CatalogBrowserCore
 import CatalogReader

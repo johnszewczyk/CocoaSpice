@@ -1,4 +1,5 @@
 import AppKit
+import ArchiveCacheCore
 import FavoriteStoreCore
 import FrontendPreferencesCore
 import SwiftUI

@@ -18,8 +18,8 @@
 - `CatalogSessionCore` supplies the read-only Games/Files bucket reader and
   the generation-guarded task owner used by the native loader.
 - `ArchiveCacheCore` owns cache-root cleanup and LRU eviction mechanics;
-  its playback lease; CocoaSpice retains archive format/tool selection and
-  user preference keys.
+  its playback lease, and the policy value model; CocoaSpice retains archive
+  format/tool selection, preference keys, and Options presentation.
 - `PlaylistQueueLoader` converts stored game/file identities into playlist rows
   without rescanning source media.
 
