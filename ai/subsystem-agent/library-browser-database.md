@@ -32,6 +32,10 @@
   tar octal-display preservation. CocoaSpice delegates its existing local
   adapters to this contract; SPCBoyWK receives the same behavior through
   `ArchiveMaterializer`.
+- `ArchiveMaterializationCore.ArchiveContainerKind` and `ArchiveToolRouting`
+  own exact archive-container detection and extraction command specifications.
+  CocoaSpice retains executable discovery, process execution, error mapping,
+  and the specialized TAR+Zstandard raw-name pipeline.
 - `PlaylistQueueLoader` converts stored game/file identities into playlist rows
   without rescanning source media.
 
@@ -75,6 +79,7 @@
 - [ArchivePlaybackLease.swift](/Users/john/Downloads/Code/VGMMan/FrontendCore/Sources/ArchiveCacheCore/ArchivePlaybackLease.swift)
 - [ArchiveProcessRunner.swift](/Users/john/Downloads/Code/VGMMan/FrontendCore/Sources/ArchiveMaterializationCore/ArchiveProcessRunner.swift)
 - [ArchiveEntryPath.swift](/Users/john/Downloads/Code/VGMMan/FrontendCore/Sources/ArchiveMaterializationCore/ArchiveEntryPath.swift)
+- [ArchiveToolRouting.swift](/Users/john/Downloads/Code/VGMMan/FrontendCore/Sources/ArchiveMaterializationCore/ArchiveToolRouting.swift)
 - [DatabaseSidebarPresentation.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarPresentation.swift)
 - [PlaylistQueueLoader.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/PlaylistQueueLoader.swift)
 - [DatabaseFileSidebarSelectionTests.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Tests/CocoaSpiceTests/DatabaseFileSidebarSelectionTests.swift)

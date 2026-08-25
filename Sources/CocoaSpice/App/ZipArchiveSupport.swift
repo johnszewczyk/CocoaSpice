@@ -35,13 +35,6 @@ enum ZipArchiveSupport {
     )
     private static let playbackLease = ArchivePlaybackLease()
 
-    private enum ArchiveKind {
-        case zip
-        case sevenZip
-        case rsn
-        case tarZstandard
-    }
-
     struct ArchiveEntry: Hashable, Sendable {
         let archiveURL: URL
         let entryPath: String
@@ -210,6 +203,8 @@ enum ZipArchiveSupport {
         switch archiveKind(for: archiveURL) {
         case .zip, .sevenZip:
             return try listEntries(in: archiveURL).scanSignature
+        case .tar:
+            return nil
         case .tarZstandard:
             let data = try runProcess(
                 executable: try executable(named: "zstd"),
@@ -295,22 +290,14 @@ enum ZipArchiveSupport {
             .appendingPathComponent(".\(UUID().uuidString).partial", isDirectory: false)
         defer { try? fileManager.removeItem(at: temporaryURL) }
 
-        switch archiveKind(for: archiveURL) {
-        case .rsn:
-            try runProcessWritingOutput(
-                executable: try executable(named: "unar"),
-                arguments: ["-q", "-f", "-o", "-", archiveURL.path, normalizedEntryPath],
-                outputURL: temporaryURL
-            )
-        case .zip, .sevenZip:
-            try runProcessWritingOutput(
-                executable: try executable(named: "7zz"),
-                arguments: ["x", "-mmt=1", "-so", archiveURL.path, normalizedEntryPath],
-                outputURL: temporaryURL
-            )
-        case .tarZstandard:
-            fatalError("TAR+Zstandard entries are materialized as complete archives above")
-        }
+        try runArchiveTool(
+            ArchiveToolRouting.selectedEntryToStdout(
+                kind: archiveKind(for: archiveURL),
+                archiveURL: archiveURL,
+                entryPath: normalizedEntryPath
+            ),
+            outputURL: temporaryURL
+        )
 
         if fileManager.fileExists(atPath: destinationURL.path) {
             return destinationURL
@@ -336,20 +323,7 @@ enum ZipArchiveSupport {
         defer { try? FileManager.default.removeItem(at: rootURL) }
 
         let outputURL = rootURL.appendingPathComponent("entry")
-        switch archiveKind(for: archiveURL) {
-        case .rsn:
-            try runProcessWritingOutput(
-                executable: try executable(named: "unar"),
-                arguments: ["-q", "-f", "-o", "-", archiveURL.path, normalizedEntryPath],
-                outputURL: outputURL
-            )
-        case .zip, .sevenZip:
-            try runProcessWritingOutput(
-                executable: try executable(named: "7zz"),
-                arguments: ["x", "-mmt=1", "-so", archiveURL.path, normalizedEntryPath],
-                outputURL: outputURL
-            )
-        case .tarZstandard:
+        if archiveKind(for: archiveURL) == .tarZstandard {
             try extractTarZstandardEntries(
                 from: archiveURL,
                 entryPaths: [normalizedEntryPath],
@@ -357,6 +331,14 @@ enum ZipArchiveSupport {
             )
             return try Data(contentsOf: archiveMemberURL(in: rootURL, entryPath: normalizedEntryPath))
         }
+        try runArchiveTool(
+            ArchiveToolRouting.selectedEntryToStdout(
+                kind: archiveKind(for: archiveURL),
+                archiveURL: archiveURL,
+                entryPath: normalizedEntryPath
+            ),
+            outputURL: outputURL
+        )
         return try Data(contentsOf: outputURL)
     }
 
@@ -375,14 +357,13 @@ enum ZipArchiveSupport {
         let stagingURL = rootURL.deletingLastPathComponent().appendingPathComponent(".set-\(UUID().uuidString)", isDirectory: true)
         defer { try? FileManager.default.removeItem(at: stagingURL) }
         try FileManager.default.createDirectory(at: stagingURL, withIntermediateDirectories: true)
-        switch archiveKind(for: archiveURL) {
-        case .rsn:
-            _ = try runProcess(executable: try executable(named: "unar"), arguments: ["-q", "-f", "-D", "-o", stagingURL.path, archiveURL.path])
-        case .zip, .sevenZip:
-            _ = try runProcess(executable: try executable(named: "7zz"), arguments: ["x", "-mmt=1", "-y", "-o\(stagingURL.path)", archiveURL.path])
-        case .tarZstandard:
-            try materializeTarZstandardArchive(archiveURL, into: stagingURL)
-        }
+        try runArchiveTool(
+            ArchiveToolRouting.completeSet(
+                kind: archiveKind(for: archiveURL),
+                archiveURL: archiveURL,
+                destinationURL: stagingURL
+            )
+        )
         try Data().write(to: stagingURL.appendingPathComponent(".complete"))
         try FileManager.default.createDirectory(at: rootURL.deletingLastPathComponent(), withIntermediateDirectories: true)
         if !FileManager.default.fileExists(atPath: rootURL.path) {
@@ -425,22 +406,20 @@ enum ZipArchiveSupport {
         defer { try? FileManager.default.removeItem(at: stagingURL) }
         try FileManager.default.createDirectory(at: stagingURL, withIntermediateDirectories: true)
 
-        switch archiveKind(for: archiveURL) {
-        case .rsn:
-            _ = try runProcess(
-                executable: try executable(named: "unar"),
-                arguments: ["-q", "-f", "-D", "-o", stagingURL.path, archiveURL.path] + normalizedPaths
-            )
-        case .zip, .sevenZip:
-            _ = try runProcess(
-                executable: try executable(named: "7zz"),
-                arguments: ["x", "-mmt=1", "-y", "-o\(stagingURL.path)", archiveURL.path] + normalizedPaths
-            )
-        case .tarZstandard:
+        if archiveKind(for: archiveURL) == .tarZstandard {
             try extractTarZstandardEntries(
                 from: archiveURL,
                 entryPaths: normalizedPaths,
                 into: stagingURL
+            )
+        } else {
+            try runArchiveTool(
+                ArchiveToolRouting.selectedEntries(
+                    kind: archiveKind(for: archiveURL),
+                    archiveURL: archiveURL,
+                    entryPaths: normalizedPaths,
+                    destinationURL: stagingURL
+                )
             )
         }
 
@@ -570,22 +549,20 @@ enum ZipArchiveSupport {
         entryPaths: [String],
         into destinationURL: URL
     ) throws {
-        switch archiveKind(for: archiveURL) {
-        case .rsn:
-            _ = try runProcess(
-                executable: try executable(named: "unar"),
-                arguments: ["-q", "-f", "-D", "-o", destinationURL.path, archiveURL.path] + entryPaths
-            )
-        case .zip, .sevenZip:
-            _ = try runProcess(
-                executable: try executable(named: "7zz"),
-                arguments: ["x", "-mmt=1", "-y", "-o\(destinationURL.path)", archiveURL.path] + entryPaths
-            )
-        case .tarZstandard:
+        if archiveKind(for: archiveURL) == .tarZstandard {
             try extractTarZstandardEntries(
                 from: archiveURL,
                 entryPaths: entryPaths,
                 into: destinationURL
+            )
+        } else {
+            try runArchiveTool(
+                ArchiveToolRouting.selectedEntries(
+                    kind: archiveKind(for: archiveURL),
+                    archiveURL: archiveURL,
+                    entryPaths: entryPaths,
+                    destinationURL: destinationURL
+                )
             )
         }
     }
@@ -739,6 +716,16 @@ enum ZipArchiveSupport {
                 entries: contents.compactMap { $0["XADFileName"] as? String },
                 scanSignature: nil
             )
+        case .tar:
+            let data = try runProcess(
+                executable: try executable(named: "tar"),
+                arguments: ["-tf", archiveURL.path]
+            )
+            try validateListingData(data)
+            return try validatedListing(
+                entries: tarListingEntryPaths(from: data),
+                scanSignature: nil
+            )
         case .tarZstandard:
             let data = try runTarZstandardListing(archiveURL)
             try validateListingData(data)
@@ -770,18 +757,8 @@ enum ZipArchiveSupport {
         return ArchiveListing(entries: entries, scanSignature: scanSignature)
     }
 
-    private static func archiveKind(for archiveURL: URL) -> ArchiveKind {
-        let archiveURL = archiveURL.standardizedFileURL
-        if archiveURL.pathExtension.lowercased() == "zst",
-           archiveURL.deletingPathExtension().pathExtension.lowercased() == "tar" {
-            return .tarZstandard
-        }
-        switch archiveURL.pathExtension.lowercased() {
-        case "zip": return .zip
-        case "7z": return .sevenZip
-        case "tzst": return .tarZstandard
-        default: return .rsn
-        }
+    private static func archiveKind(for archiveURL: URL) -> ArchiveContainerKind {
+        ArchiveContainerKind(archiveURL: archiveURL) ?? .rsn
     }
 
     private static func executable(named name: String) throws -> String {
@@ -939,13 +916,7 @@ enum ZipArchiveSupport {
     /// BSD tar treats selected member arguments as patterns. Quote its pattern
     /// metacharacters so a scanned archive path is always an exact member name.
     private static func tarMemberSelectionPatterns(_ entryPaths: [String]) -> [String] {
-        entryPaths.map { entryPath in
-            entryPath
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "*", with: "\\*")
-                .replacingOccurrences(of: "?", with: "\\?")
-                .replacingOccurrences(of: "[", with: "\\[")
-        }
+        ArchiveEntryPath.tarMemberSelectionPatterns(entryPaths)
     }
 
     /// BSD tar's automatic Zstandard helper exits spuriously when many archive
@@ -1133,13 +1104,49 @@ enum ZipArchiveSupport {
         }
     }
 
+    private static func runArchiveTool(
+        _ invocation: ArchiveToolInvocation,
+        outputURL: URL? = nil
+    ) throws {
+        switch invocation {
+        case let .process(executableName, arguments):
+            let executable = try executable(named: executableName)
+            if let outputURL {
+                try runProcessWritingOutput(
+                    executable: executable,
+                    arguments: arguments,
+                    outputURL: outputURL
+                )
+            } else {
+                _ = try runProcess(executable: executable, arguments: arguments)
+            }
+        case let .zstandardTar(
+            zstdExecutableName,
+            zstdArguments,
+            tarExecutableName,
+            tarArguments,
+            allowEarlyConsumerExit
+        ):
+            try runZstandardTarPipeline(
+                zstdExecutable: try executable(named: zstdExecutableName),
+                zstdArguments: zstdArguments,
+                tarExecutable: try executable(named: tarExecutableName),
+                tarArguments: tarArguments,
+                outputURL: outputURL,
+                allowEarlyConsumerExit: allowEarlyConsumerExit
+            )
+        }
+    }
+
     private static func runZstandardTarPipeline(
         archiveURL: URL,
         tarArguments: [String],
         allowEarlyConsumerExit: Bool = false
     ) throws {
         try runZstandardTarPipeline(
-            archiveURL: archiveURL,
+            zstdExecutable: try executable(named: "zstd"),
+            zstdArguments: ["-d", "-q", "-c", archiveURL.path],
+            tarExecutable: try executable(named: "tar"),
             tarArguments: tarArguments,
             outputURL: nil,
             allowEarlyConsumerExit: allowEarlyConsumerExit
@@ -1153,7 +1160,9 @@ enum ZipArchiveSupport {
         allowEarlyConsumerExit: Bool = false
     ) throws {
         try runZstandardTarPipeline(
-            archiveURL: archiveURL,
+            zstdExecutable: try executable(named: "zstd"),
+            zstdArguments: ["-d", "-q", "-c", archiveURL.path],
+            tarExecutable: try executable(named: "tar"),
             tarArguments: tarArguments,
             outputURL: outputURL,
             allowEarlyConsumerExit: allowEarlyConsumerExit
@@ -1164,7 +1173,9 @@ enum ZipArchiveSupport {
     /// sequential, but it does not need a second full disk pass through a
     /// temporary TAR before playback can begin.
     private static func runZstandardTarPipeline(
-        archiveURL: URL,
+        zstdExecutable: String,
+        zstdArguments: [String],
+        tarExecutable: String,
         tarArguments: [String],
         outputURL: URL?,
         allowEarlyConsumerExit: Bool = false
@@ -1172,12 +1183,10 @@ enum ZipArchiveSupport {
         try acquireProcessPermit()
         defer { processRunner.releasePermit() }
 
-        let zstdExecutable = try executable(named: "zstd")
-        let tarExecutable = try executable(named: "tar")
         let transport = Pipe()
         let zstd = Process()
         zstd.executableURL = URL(fileURLWithPath: zstdExecutable)
-        zstd.arguments = ["-d", "-q", "-c", archiveURL.path]
+        zstd.arguments = zstdArguments
         zstd.environment = archiveProcessEnvironment()
         zstd.standardOutput = transport
 
