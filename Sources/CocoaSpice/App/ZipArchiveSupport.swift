@@ -460,7 +460,7 @@ enum ZipArchiveSupport {
     }
 
     static func archiveMemberURL(in materializedArchiveURL: URL, entryPath: String) -> URL {
-        sanitizedEntryPathComponents(entryPath).reduce(materializedArchiveURL) { partial, component in
+        ArchiveEntryPath.components(entryPath).reduce(materializedArchiveURL) { partial, component in
             partial.appendingPathComponent(component, isDirectory: false)
         }
     }
@@ -1095,28 +1095,15 @@ enum ZipArchiveSupport {
     }
 
     private static func sanitizedEntryPathComponents(_ entryPath: String) -> [String] {
-        normalizeEntryPath(entryPath)
-            .split(separator: "/")
-            .map(String.init)
-            .filter { !$0.isEmpty && $0 != "." && $0 != ".." }
+        ArchiveEntryPath.components(entryPath)
     }
 
     private static func isSafeEntryPath(_ entryPath: String) -> Bool {
-        !normalizeEntryPath(entryPath)
-            .split(separator: "/")
-            .contains("..")
+        ArchiveEntryPath.isSafe(entryPath)
     }
 
     private static func normalizeEntryPath(_ entryPath: String) -> String {
-        entryPath
-            // BSD tar represents an otherwise non-UTF-8 member byte as an
-            // octal escape (for example `\\255`). That backslash is part of
-            // its reversible listing syntax, not a Windows path separator.
-            .replacingOccurrences(of: "\\", with: containsTarOctalEscape(entryPath) ? "\\" : "/")
-            .split(separator: "/")
-            .map(String.init)
-            .filter { !$0.isEmpty }
-            .joined(separator: "/")
+        ArchiveEntryPath.normalized(entryPath)
     }
 
     private static func sha256Hex(_ string: String) -> String {

@@ -27,6 +27,11 @@
   process permits, cancellation/timeout observation, captured stdout limits,
   and stderr collection. CocoaSpice retains the format-specific executable
   topology, arguments, and connected zstd/tar pipeline.
+- `ArchiveMaterializationCore.ArchiveEntryPath` owns archive-member path
+  normalization, traversal rejection, safe destination components, and BSD
+  tar octal-display preservation. CocoaSpice delegates its existing local
+  adapters to this contract; SPCBoyWK receives the same behavior through
+  `ArchiveMaterializer`.
 - `PlaylistQueueLoader` converts stored game/file identities into playlist rows
   without rescanning source media.
 
@@ -69,6 +74,7 @@
 - [ArchiveCacheLifecycle.swift](/Users/john/Downloads/Code/VGMMan/FrontendCore/Sources/ArchiveCacheCore/ArchiveCacheLifecycle.swift)
 - [ArchivePlaybackLease.swift](/Users/john/Downloads/Code/VGMMan/FrontendCore/Sources/ArchiveCacheCore/ArchivePlaybackLease.swift)
 - [ArchiveProcessRunner.swift](/Users/john/Downloads/Code/VGMMan/FrontendCore/Sources/ArchiveMaterializationCore/ArchiveProcessRunner.swift)
+- [ArchiveEntryPath.swift](/Users/john/Downloads/Code/VGMMan/FrontendCore/Sources/ArchiveMaterializationCore/ArchiveEntryPath.swift)
 - [DatabaseSidebarPresentation.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarPresentation.swift)
 - [PlaylistQueueLoader.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/PlaylistQueueLoader.swift)
 - [DatabaseFileSidebarSelectionTests.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Tests/CocoaSpiceTests/DatabaseFileSidebarSelectionTests.swift)
