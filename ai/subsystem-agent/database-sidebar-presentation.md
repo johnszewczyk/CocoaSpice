@@ -35,6 +35,12 @@
 - The candidate-index algorithm is shared through `CatalogBrowserCore.CatalogSearchIndex`; CocoaSpice adapts projected searchable fields to its native `DatabaseGameItem` rows and does not own a second matching policy.
 - File roots begin collapsed after a Files refresh. This keeps flattened native-table construction proportional to the folders the user opens instead of eagerly building every source-file row.
 - The Files sidebar builds its reusable folder graph alongside the background SQLite read. Once published, a disclosure reload walks only expanded branches; it must never rebuild the full graph on the main actor.
+- The reusable folder graph, stable IDs, ordering, row flattening, and
+  cancellable source-path search now live in
+  `CatalogBrowserCore.CatalogFileTreeIndex` and
+  `CatalogBrowserCore.CatalogFileSearchIndex`, extracted from this native
+  implementation. CocoaSpice retains only the `DatabaseFileItem`/native-row
+  adapter and its AppKit disclosure, selection, scroll, and drag/menu state.
 
 ## Rules
 

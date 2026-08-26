@@ -1,5 +1,7 @@
 import Foundation
 import Observation
+import CatalogBrowserCore
+import CatalogReader
 
 @MainActor
 @Observable
@@ -156,11 +158,11 @@ enum DatabaseFileSidebarTree {
     }
 
     static func rootFolderIDs(for items: [DatabaseFileItem]) -> [String] {
-        Array(Set(items.map { folderID(rootID: $0.rootID, path: $0.rootPath) }))
+        CatalogFileTreeIndex.rootFolderIDs(for: items.map { catalogBucket($0) })
     }
 
     static func folderID(rootID: Int64, path: String) -> String {
-        "\(rootID)|\(path)"
+        CatalogFileTreeIndex.folderID(rootID: rootID, path: path)
     }
 
     static func filter(_ items: [DatabaseFileItem], query: String) -> [DatabaseFileItem] {
@@ -172,247 +174,89 @@ enum DatabaseFileSidebarTree {
         query: String,
         isCancelled: @Sendable () -> Bool
     ) -> [DatabaseFileItem]? {
-        let terms = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
-        guard !terms.isEmpty else { return items }
-        var matches: [DatabaseFileItem] = []
-        matches.reserveCapacity(min(items.count, 256))
-        for (index, item) in items.enumerated() {
-            if index.isMultiple(of: 256), isCancelled() {
-                return nil
-            }
-            let haystack = "\(item.filename) \(item.folderPath) \(item.path)".lowercased()
-            if terms.allSatisfy(haystack.contains) {
-                matches.append(item)
-            }
-        }
-        return isCancelled() ? nil : matches
+        let result = CatalogFileSearchIndex(files: items.map { catalogBucket($0) })
+            .matchingFiles(query: query, isCancelled: isCancelled)
+        return result?.map(Self.databaseItem)
     }
 
-    /// A compact, normalized view of source paths. It is made once with the
-    /// background Files-sidebar load, keeping query-time work to string
-    /// containment checks rather than URL parsing and case folding.
+    /// Compatibility adapter for the native sidebar model. The searchable
+    /// values and cancellation policy belong to CatalogBrowserCore; this
+    /// wrapper only converts shared source buckets back into CS rows.
     struct SearchIndex: Sendable {
-        private struct Entry: Sendable {
-            let item: DatabaseFileItem
-            let searchableText: String
-        }
-
-        private let entries: [Entry]
+        private let sharedIndex: CatalogFileSearchIndex
 
         init(items: [DatabaseFileItem]) {
-            entries = items.map { item in
-                Entry(
-                    item: item,
-                    searchableText: "\(DatabaseFileSidebarTree.filename(in: item.path)) \(item.folderPath) \(item.path)".lowercased()
-                )
-            }
+            sharedIndex = CatalogFileSearchIndex(files: items.map { DatabaseFileSidebarTree.catalogBucket($0) })
         }
 
         func filter(query: String, isCancelled: @Sendable () -> Bool) -> [DatabaseFileItem]? {
-            let terms = query.lowercased().split(whereSeparator: \.isWhitespace).map(String.init)
-            guard !terms.isEmpty else { return entries.map(\.item) }
-            var matches: [DatabaseFileItem] = []
-            matches.reserveCapacity(min(entries.count, 256))
-            for (index, entry) in entries.enumerated() {
-                if index.isMultiple(of: 256), isCancelled() {
-                    return nil
-                }
-                if terms.allSatisfy(entry.searchableText.contains) {
-                    matches.append(entry.item)
-                }
-            }
-            return isCancelled() ? nil : matches
+            sharedIndex.matchingFiles(query: query, isCancelled: isCancelled)?.map(DatabaseFileSidebarTree.databaseItem)
         }
     }
 
-    /// Built once with the database read result, off the main actor. Folder
-    /// disclosure then walks only the visible branch instead of rebuilding a
-    /// complete path graph from every stored source file on each reload.
+    /// Compatibility adapter for the native row enum. Graph construction,
+    /// stable folder identity, ordering, and row flattening are shared.
     struct Index: Sendable {
-        private struct Folder: Sendable {
-            let title: String
-            let childFolderIDs: [String]
-            let directFiles: [DatabaseFileItem]
-        }
-
-        private struct FolderBuilder {
-            let rootID: Int64
-            let path: String
-            let title: String
-            var childFolderIDs: Set<String> = []
-            var directFiles: [DatabaseFileItem] = []
-        }
-
-        private let rootFolderIDs: [String]
-        private let folders: [String: Folder]
-
-        var allFolderIDs: Set<String> { Set(folders.keys) }
+        private let sharedIndex: CatalogFileTreeIndex
+        private let itemsByID: [String: DatabaseFileItem]
 
         init(items: [DatabaseFileItem]) {
             self.init(items: items, isCancelled: { false })!
         }
 
         init?(items: [DatabaseFileItem], isCancelled: @Sendable () -> Bool) {
-            var builders: [String: FolderBuilder] = [:]
-            var rootIDs: Set<String> = []
+            guard let sharedIndex = CatalogFileTreeIndex(
+                files: items.map { DatabaseFileSidebarTree.catalogBucket($0) },
+                isCancelled: isCancelled
+            ) else { return nil }
+            self.sharedIndex = sharedIndex
+            self.itemsByID = Dictionary(uniqueKeysWithValues: items.map { (DatabaseFileSidebarTree.itemID(rootID: $0.rootID, path: $0.path), $0) })
+        }
 
-            func title(for path: String) -> String {
-                let title = URL(fileURLWithPath: path, isDirectory: true).lastPathComponent
-                return title.isEmpty ? path : title
-            }
-
-            func ensureFolder(rootID: Int64, path: String) {
-                let id = DatabaseFileSidebarTree.folderID(rootID: rootID, path: path)
-                guard builders[id] == nil else { return }
-                builders[id] = FolderBuilder(rootID: rootID, path: path, title: title(for: path))
-            }
-
-            for (index, item) in items.enumerated() {
-                if index.isMultiple(of: 256), isCancelled() {
-                    return nil
-                }
-                let rootID = item.rootID
-                ensureFolder(rootID: rootID, path: item.rootPath)
-                rootIDs.insert(DatabaseFileSidebarTree.folderID(rootID: rootID, path: item.rootPath))
-
-                var folderPath = item.folderPath
-                ensureFolder(rootID: rootID, path: folderPath)
-                while folderPath != item.rootPath,
-                      folderPath.hasPrefix(item.rootPath + "/") {
-                    let parentPath = URL(fileURLWithPath: folderPath, isDirectory: true)
-                        .deletingLastPathComponent()
-                        .path
-                    ensureFolder(rootID: rootID, path: parentPath)
-                    let parentID = DatabaseFileSidebarTree.folderID(rootID: rootID, path: parentPath)
-                    let childID = DatabaseFileSidebarTree.folderID(rootID: rootID, path: folderPath)
-                    builders[parentID]?.childFolderIDs.insert(childID)
-                    folderPath = parentPath
-                }
-
-                let folderID = DatabaseFileSidebarTree.folderID(rootID: rootID, path: item.folderPath)
-                builders[folderID]?.directFiles.append(item)
-            }
-
-            var folders: [String: Folder] = [:]
-            folders.reserveCapacity(builders.count)
-            for (index, entry) in builders.enumerated() {
-                if index.isMultiple(of: 64), isCancelled() {
-                    return nil
-                }
-                let (id, builder) = entry
-                let sortedFiles = builder.directFiles
-                    .map { (item: $0, filename: DatabaseFileSidebarTree.filename(in: $0.path)) }
-                    .sorted {
-                        $0.filename.localizedCaseInsensitiveCompare($1.filename) == .orderedAscending
-                    }
-                    .map(\.item)
-                folders[id] = Folder(
-                    title: builder.title,
-                    childFolderIDs: builder.childFolderIDs.sorted { lhs, rhs in
-                        let lhsTitle = builders[lhs]?.title ?? lhs
-                        let rhsTitle = builders[rhs]?.title ?? rhs
-                        return lhsTitle.localizedCaseInsensitiveCompare(rhsTitle) == .orderedAscending
-                    },
-                    directFiles: sortedFiles
-                )
-            }
-            guard !isCancelled() else { return nil }
-            self.folders = folders
-            self.rootFolderIDs = rootIDs.sorted { lhs, rhs in
-                let lhsPath = builders[lhs]?.path ?? lhs
-                let rhsPath = builders[rhs]?.path ?? rhs
-                return lhsPath.localizedCaseInsensitiveCompare(rhsPath) == .orderedAscending
-            }
+        var allFolderIDs: Set<String> {
+            sharedIndex.allFolderIDs
         }
 
         func rows(expandedFolderIDs: Set<String>) -> [Row] {
-            var rows: [Row] = []
-
-            func appendFolder(_ id: String, depth: Int) {
-                guard let folder = folders[id] else { return }
-                let isExpanded = expandedFolderIDs.contains(id)
-                rows.append(.folder(id: id, title: folder.title, depth: depth, isExpanded: isExpanded))
-                guard isExpanded else { return }
-
-                for childID in folder.childFolderIDs {
-                    appendFolder(childID, depth: depth + 1)
-                }
-                for file in folder.directFiles {
-                    rows.append(.file(file, depth: depth + 1))
+            sharedIndex.rows(expandedFolderIDs: expandedFolderIDs).compactMap { row in
+                switch row {
+                case .folder(let id, let title, let depth, let isExpanded):
+                    return .folder(id: id, title: title, depth: depth, isExpanded: isExpanded)
+                case .file(let file, let depth):
+                    guard let item = itemsByID[DatabaseFileSidebarTree.itemID(rootID: file.rootID, path: file.path)] else { return nil }
+                    return .file(item, depth: depth)
                 }
             }
-
-            for rootID in rootFolderIDs {
-                appendFolder(rootID, depth: 0)
-            }
-            return rows
         }
     }
 
     static func rows(items: [DatabaseFileItem], expandedFolderIDs: Set<String>) -> [Row] {
-        let groupedByRoot = Dictionary(grouping: items, by: \.rootID)
-        return groupedByRoot.values
-            .sorted { $0[0].rootPath.localizedCaseInsensitiveCompare($1[0].rootPath) == .orderedAscending }
-            .flatMap { rootItems in
-                rowsForRoot(items: rootItems, expandedFolderIDs: expandedFolderIDs)
-            }
+        Index(items: items).rows(expandedFolderIDs: expandedFolderIDs)
     }
 
-    private static func rowsForRoot(
-        items: [DatabaseFileItem],
-        expandedFolderIDs: Set<String>
-    ) -> [Row] {
-        guard let first = items.first else { return [] }
-        let rootID = first.rootID
-        let rootPath = first.rootPath
-        var directFiles: [String: [DatabaseFileItem]] = [:]
-        var children: [String: Set<String>] = [:]
-
-        for item in items {
-            directFiles[item.folderPath, default: []].append(item)
-            var childPath = item.folderPath
-            while childPath != rootPath, childPath.hasPrefix(rootPath + "/") {
-                let parentPath = URL(fileURLWithPath: childPath, isDirectory: true)
-                    .deletingLastPathComponent()
-                    .path
-                children[parentPath, default: []].insert(childPath)
-                childPath = parentPath
-            }
-        }
-
-        func appendFolder(_ path: String, depth: Int, into rows: inout [Row]) {
-            let id = folderID(rootID: rootID, path: path)
-            let isExpanded = expandedFolderIDs.contains(id)
-            let title = path == rootPath
-                ? URL(fileURLWithPath: rootPath, isDirectory: true).lastPathComponent
-                : URL(fileURLWithPath: path, isDirectory: true).lastPathComponent
-            rows.append(.folder(id: id, title: title.isEmpty ? path : title, depth: depth, isExpanded: isExpanded))
-            guard isExpanded else { return }
-
-            for childPath in (children[path] ?? []).sorted(by: localizedPathOrder) {
-                appendFolder(childPath, depth: depth + 1, into: &rows)
-            }
-            for file in (directFiles[path] ?? []).sorted(by: fileOrder) {
-                rows.append(.file(file, depth: depth + 1))
-            }
-        }
-
-        var rows: [Row] = []
-        appendFolder(rootPath, depth: 0, into: &rows)
-        return rows
+    private static func catalogBucket(_ item: DatabaseFileItem) -> CatalogFileBucket {
+        CatalogFileBucket(
+            rootID: item.rootID,
+            rootPath: item.rootPath,
+            folderPath: item.folderPath,
+            path: item.path,
+            isArchive: item.isArchive,
+            trackCount: item.trackCount
+        )
     }
 
-    private static func localizedPathOrder(_ lhs: String, _ rhs: String) -> Bool {
-        URL(fileURLWithPath: lhs, isDirectory: true).lastPathComponent
-            .localizedCaseInsensitiveCompare(URL(fileURLWithPath: rhs, isDirectory: true).lastPathComponent) == .orderedAscending
+    private static func itemID(rootID: Int64, path: String) -> String {
+        "\(rootID)|\(path)"
     }
 
-    private static func fileOrder(_ lhs: DatabaseFileItem, _ rhs: DatabaseFileItem) -> Bool {
-        lhs.filename.localizedCaseInsensitiveCompare(rhs.filename) == .orderedAscending
-    }
-
-    private static func filename(in path: String) -> String {
-        guard let separator = path.lastIndex(of: "/") else { return path }
-        return String(path[path.index(after: separator)...])
+    private static func databaseItem(_ file: CatalogFileBucket) -> DatabaseFileItem {
+        DatabaseFileItem(
+            rootID: file.rootID,
+            rootPath: file.rootPath,
+            folderPath: file.folderPath,
+            path: file.path,
+            isArchive: file.isArchive,
+            trackCount: file.trackCount
+        )
     }
 }
