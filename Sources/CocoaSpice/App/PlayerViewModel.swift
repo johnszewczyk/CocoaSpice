@@ -1343,8 +1343,7 @@ final class PlayerViewModel {
             playlist = Self.deduplicatedTracks(tracks)
             syncManualPlaylistOrder()
             reapplyPlaylistSortIfNeeded()
-            let replacementState = PlaybackQueueNavigation.replacementState(
-                currentTrackID: currentTrack?.id,
+            let replacementState = playbackQueueState.replacing(
                 playlistIDs: playlist.map(\.id),
                 preservePlayback: preservePlayback
             )
@@ -2101,12 +2100,11 @@ final class PlayerViewModel {
             requestPlayback(for: randomTrack)
             return
         }
-        guard let nextTrack = QueueTransportNavigation.adjacentTrack(
-            from: transportNavigationAnchor,
-            in: playlist,
+        guard let nextTrackID = playbackQueueState.adjacentTargetID(
+            playlistIDs: playlist.map(\.id),
             direction: .next,
             wraps: true
-        ) else { return }
+        ), let nextTrack = playlist.first(where: { $0.id == nextTrackID }) else { return }
         requestAdjacentPlayback(nextTrack)
     }
 
@@ -2225,12 +2223,11 @@ final class PlayerViewModel {
     }
 
     func playPrevious() {
-        guard let previousTrack = QueueTransportNavigation.adjacentTrack(
-            from: transportNavigationAnchor,
-            in: playlist,
+        guard let previousTrackID = playbackQueueState.adjacentTargetID(
+            playlistIDs: playlist.map(\.id),
             direction: .previous,
             wraps: true
-        ) else { return }
+        ), let previousTrack = playlist.first(where: { $0.id == previousTrackID }) else { return }
         requestAdjacentPlayback(previousTrack)
     }
 
@@ -2624,16 +2621,19 @@ final class PlayerViewModel {
         max(1, Double(totalPlaybackSeconds))
     }
 
-    private var transportPlaybackTarget: TrackItem? {
-        QueueTransportNavigation.transportPlaybackTarget(
-            currentTrack: currentTrack,
+    private var playbackQueueState: PlaybackQueueState {
+        PlaybackQueueState(
+            currentTrackID: currentTrack?.id,
             selectedTrackID: selectedTrackID,
-            playlist: playlist
+            pendingTrackID: pendingPlaybackTrack?.id
         )
     }
 
-    private var transportNavigationAnchor: TrackItem? {
-        pendingPlaybackTrack ?? currentTrack ?? transportPlaybackTarget
+    private var transportPlaybackTarget: TrackItem? {
+        guard let targetID = playbackQueueState.transportTargetID(
+            playlistIDs: playlist.map(\.id)
+        ) else { return nil }
+        return playlist.first(where: { $0.id == targetID })
     }
 
     private func playbackPlan(for metadata: TrackMetadata?, trackPathExtension: String? = nil) -> PlaybackPlan {
@@ -2681,7 +2681,7 @@ final class PlayerViewModel {
               fadedSkipToken == nil,
               !isPlaying,
               !didAutoAdvanceForCurrentTrack,
-              let currentTrack,
+              currentTrack != nil,
               !playlist.isEmpty else {
             return
         }
@@ -2700,8 +2700,7 @@ final class PlayerViewModel {
             return
         }
         guard let sharedRepeatMode = PlaybackRepeatMode(rawValue: repeatMode.rawValue),
-              let nextTrackID = PlaybackQueueNavigation.completionTargetID(
-                  currentTrackID: currentTrack.id,
+              let nextTrackID = playbackQueueState.completionTargetID(
                   playlistIDs: playlist.map(\.id),
                   repeatMode: sharedRepeatMode
               ),

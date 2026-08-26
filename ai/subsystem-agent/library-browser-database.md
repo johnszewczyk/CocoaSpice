@@ -53,9 +53,10 @@
   the `tracks_game_sidebar_index` can be used; CocoaSpice may adapt the shared
   rows to `TrackItem`, but must not recreate the query or inspect source files.
 - `PlaybackQueueCore` is the extracted source of truth for queue target,
-  adjacency, completion, and replacement-state transitions. CocoaSpice keeps
-  only TrackItem adapters around those ID-based rules; SPCBoyWK consumes the
-  same module through its native bridge.
+  adjacency, completion, and replacement-state transitions. Its
+  `PlaybackQueueState` value contract also carries current/selected/pending
+  identity. CocoaSpice keeps only TrackItem adapters around those ID-based
+  rules; SPCBoyWK consumes the same module through its native bridge.
 
 ## Invariants
 
