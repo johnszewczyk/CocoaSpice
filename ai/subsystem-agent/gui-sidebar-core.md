@@ -15,12 +15,18 @@
 - The primary sidebar view is a dense native list of database game rows. Options can enable `Group by Console`, stored internally as `sidebarSystemMode`, which renders expandable console rows with game leaves underneath.
 - Sidebar search filters the database list instead of switching to a separate legacy result view.
 - Right-clicking a sidebar row opens its context menu without changing sidebar selection.
-- Favorites is a third stored library mode. Its path-free native rows use `GAME-NN-SONG`; Options chooses Historical or Alphabetical display without rewriting shared history.
-- The original CocoaSpice toolbar owns playback and library-mode controls. The
-  sidebar header retains only the sidebar disclosure control and search field.
-  The library-mode control cycles exactly `Console View`, `Path View`, and
-  `Favorites`; it is not a dropdown.
-- The View menu exposes those exact three library commands plus the separate `Local Files` command through `FrontendCommandCore`. Command-O opens a file or folder as the local-browser context.
+- Favorites is not a sidebar mode. Command-Shift-D replaces the playlist with a
+  snapshot of shared Favorites while leaving the current catalog/sidebar view
+  and its selection context unchanged.
+- Individual native navigation-toolbar items own the library-mode and
+  fold/unfold controls beside the native sidebar disclosure button. They use
+  the same regular toolbar-item sizing and borderless treatment as the native
+  disclosure control; they must not be regrouped into a SwiftUI capsule.
+  Playback controls remain in the separate main transport toolbar; do not
+  place library controls in the sidebar column toolbar or transport group.
+  The library-mode control cycles exactly `Console View` and `Path View`; it is
+  not a dropdown.
+- The View menu exposes those exact two library commands plus the separate `Local Files` command through `FrontendCommandCore`. The Favorites Playlist command uses Command-Shift-D and does not change the sidebar. Command-O opens a file or folder as the local-browser context.
 
 ## Rules
 
@@ -33,8 +39,9 @@
   runtime state.
 - Folder/leaf click, disclosure, repeated-click, and activation intent comes
   from `CatalogBrowserCore.SidebarRowInteraction`; SwiftUI still owns visuals.
-- Keep the three-view command vocabulary shared while keeping SwiftUI row rendering and favorite
-  storage native to this skin.
+- Keep the two-view catalog command vocabulary shared while keeping SwiftUI row
+  rendering and favorite storage native to this skin. Favorites playlist
+  projection is a queue action, not a sidebar action.
 
 ## Files
 

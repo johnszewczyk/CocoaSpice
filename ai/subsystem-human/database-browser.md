@@ -3,7 +3,10 @@
 ## Display
 
 - Database: scanned game-music library in the left pane.
-- Favorites: the star sidebar view lists path-free `GAME-NN-SONG` rows. Command-D toggles the selected track or selected game/group. Options > Database > Favorites chooses Historical (added order) or Alphabetical display.
+- Favorites: Command-Shift-D replaces the playlist with a snapshot of shared
+  Favorites without changing the current sidebar view. Command-D toggles the
+  selected track or selected game/group. Options > Database > Favorites chooses
+  Historical (added order) or Alphabetical display for the next snapshot.
 - Local Files: Options > Database can choose one folder and enable direct disk browsing. This disables the database library until Local Files is turned off. Command-O opens a file or folder into this browser.
 - Rows: dense list of scanned games by default.
 - Path View: the sidebar mode button switches to a folder tree built only from scanned database records. It uses the same dense native row style as Console View, with `▾`/`▸` disclosure glyphs and nested text indentation. It loads only when opened and starts with library roots collapsed, so a very large collection does not delay launch.

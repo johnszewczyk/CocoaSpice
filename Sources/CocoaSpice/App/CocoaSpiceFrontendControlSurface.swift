@@ -42,6 +42,7 @@ struct CocoaSpiceOptionsSnapshot: Codable, Equatable, Sendable {
     let manualPreFadeSeconds: Int
     let unknownDurationSeconds: Int
     let endFadeEnabled: Bool
+    let fadeSeconds: Int
     let fadedSkipEnabled: Bool
     let equalizerEnabled: Bool
     let equalizerBandGains: [Float]
@@ -69,19 +70,24 @@ struct CocoaSpiceOptionsSnapshot: Codable, Equatable, Sendable {
     let libgmeTempoEnabled: Bool
     let libvgmTempo: PlaybackTempo
     let libvgmTempoEnabled: Bool
+    let columnAutoSize: Bool
 }
 
 /// Typed mutations accepted by the Options contract. A skin supplies a file
 /// path for catalog selection; only the native CocoaSpice shell decides how a
 /// user chooses that path (currently `NSOpenPanel`).
 enum CocoaSpiceOptionsCommand: Codable, Equatable, Sendable {
+    case setAutoResizeAnimationEnabled(Bool)
     case setAutoResizeAnimationMilliseconds(Int)
+    case setSelectionAnimationEnabled(Bool)
     case setSelectionAnimationMilliseconds(Int)
+    case setColumnAutoSize(Bool)
     case setWindowAlwaysOnTop(role: FrontendWindowRole, enabled: Bool)
     case setLongPlayEnabled(Bool)
     case setManualPreFadeSeconds(Int)
     case setUnknownDurationSeconds(Int)
     case setEndFadeEnabled(Bool)
+    case setFadeSeconds(Int)
     case setFadedSkipEnabled(Bool)
     case setEqualizerEnabled(Bool)
     case setEqualizerBand(index: Int, gain: Float)
@@ -133,6 +139,7 @@ final class CocoaSpiceOptionsControlSurface {
             manualPreFadeSeconds: model.manualPreFadeSeconds,
             unknownDurationSeconds: model.unknownDurationSeconds,
             endFadeEnabled: model.endFadeEnabled,
+            fadeSeconds: model.configuredFadeSeconds,
             fadedSkipEnabled: model.fadedSkipEnabled,
             equalizerEnabled: model.equalizerEnabled,
             equalizerBandGains: model.equalizerBandGains,
@@ -159,16 +166,23 @@ final class CocoaSpiceOptionsControlSurface {
             libgmeTempo: model.libgmeTempo,
             libgmeTempoEnabled: model.libgmeTempoEnabled,
             libvgmTempo: model.libvgmTempo,
-            libvgmTempoEnabled: model.libvgmTempoEnabled
+            libvgmTempoEnabled: model.libvgmTempoEnabled,
+            columnAutoSize: model.columnAutoSizeEnabled
         )
     }
 
     func perform(_ command: CocoaSpiceOptionsCommand) {
         switch command {
+        case .setAutoResizeAnimationEnabled(let enabled):
+            model.setAutoResizeAnimationEnabled(enabled)
         case .setAutoResizeAnimationMilliseconds(let milliseconds):
             model.setAutoResizeAnimationMilliseconds(milliseconds)
+        case .setSelectionAnimationEnabled(let enabled):
+            model.setSelectionAnimationEnabled(enabled)
         case .setSelectionAnimationMilliseconds(let milliseconds):
             model.setSelectionAnimationMilliseconds(milliseconds)
+        case .setColumnAutoSize(let enabled):
+            model.setColumnAutoSizeEnabled(enabled)
         case .setWindowAlwaysOnTop(let role, let enabled):
             switch role {
             case .main: model.setMainWindowAlwaysOnTop(enabled)
@@ -184,6 +198,8 @@ final class CocoaSpiceOptionsControlSurface {
             model.setUnknownDurationSeconds(seconds)
         case .setEndFadeEnabled(let enabled):
             model.setEndFadeEnabled(enabled)
+        case .setFadeSeconds(let seconds):
+            model.setFadeSeconds(seconds)
         case .setFadedSkipEnabled(let enabled):
             model.setFadedSkipEnabled(enabled)
         case .setEqualizerEnabled(let enabled):

@@ -1,6 +1,6 @@
 # Options
 
-- Windows has independent Always on Top switches for the main and Settings windows; both default off.
+- Windows has independent Always on Top switches for the main and Options windows; both default off. Main keeps CocoaSpice above other apps; Options keeps the Options window above the main window.
 
 ## Database
 
@@ -20,8 +20,8 @@
 - Long Play: enable shared extended playback.
 - Play Speed: independently enable and set tempo for libgme (SPC, NSF/NSFE, GBS, HES, KSS, AY, SAP) and libvgm (GYM, S98, VGM, VGZ, DRO). Decimal and fractional input is accepted and snapped to musical 1/32 increments before it is persisted through the shared VGMBoy tempo control.
 - Duration: set a manual playback target.
-- End Fade: enable or disable the standard six-second fade. With it off, metadata-timed tracks use their native ending.
-- Faded Skip: optionally uses that same six-second duration for Next and Previous while the live source continues playing; press again to advance immediately.
+- End Fade: enable or disable the fade and configure its duration (default six seconds). With it off, metadata-timed tracks use their native ending.
+- End Fade: Faded Skip is appended to this panel and optionally uses that same configured duration for Next and Previous while the live source continues playing; press again to advance immediately. It is not a separate options page.
 - Library Behavior: Playlist Follows Cursor applies to the Games browser; the Files browser queues only on double-click or Return. Double-Click Enqueues remains a playback control for Games.
 - Diagnostics: reports current PCM buffer headroom and per-track underruns from the bundled VGMBoy output. These counters cannot detect amplifier or speaker distortion.
 
@@ -36,21 +36,26 @@
 - Random playback: the main toolbar cycles between Off, Library random, and current Playlist-view random modes.
 - About: the macOS application menu opens the external-component inventory with source and license links.
 - Interface Style: one font size, color, and monospace setting applies consistently to both the database sidebar and playlist.
-- Database sidebar: set 6–18pt font size, primary/secondary/tertiary color, and system fixed-width text.
-- Playlist: set 6–18pt font size, primary/secondary/tertiary color, and system fixed-width text for every track-table text column.
 - Each appearance card Reset restores its own default primary 12pt appearance.
 - Sidebar Options: Group by Console sorts the Database game list into consoles. Prefer Folders over Metadatas chooses the scanned archive or file's parent console folder before embedded console metadata; disabling it reverses that preference. It is a read-only sidebar reload, not a scan or database rewrite. Files Disclosure Gap sets 0–16 pt spacing between folder triangles and names in Files view. Files Child Indent is a numeric 0–32 pt field that offsets every Files-view child level; its default 8 pt is about one character at the default font size. Hide File Extensions changes only Files-view labels, never filenames stored by the database or passed to playback.
 - Library Behavior belongs to Interface: Playlist Follows Cursor applies to the Games browser; the Files browser queues only on double-click or Return. Double-Click Enqueues remains a browser behavior control for Games.
 - Every Options panel places a horizontal rule below its heading. Checkbox options use a leading checkbox with any explanatory text aligned beneath its label.
+- Playlist Options: Enable Column Auto-size defaults on and automatically resizes columns for content width on selection.
+- Animations: Auto-Resize and Selection Bar are independently checkbox-enabled (both default on) and retain their configured 0–1000 ms values when disabled; disabling one makes its effective duration 0 ms.
+- Shared ownership: preference persistence and cache policy come from FrontendCore; playback timing and AAC conversion come from VGMBoyKit. CocoaSpice supplies only its native controls, destination-folder choice, and archive materialization adapter.
 
 ## Window
 
 - Options opens in a native titled macOS window.
 - The window initially opens at 800pt wide and 600pt tall, can be freely resized down to 320pt by 240pt, and remembers its last size and position.
 - Windows Reset restores the default size and centered position for the main, Options, and About windows.
-- Interface > Animations exposes the auto-resize and playlist/sidebar selection-bar durations. Both default to 200 ms and accept 0–1000 ms.
+- Interface > Animations exposes checkbox-enabled auto-resize and playlist/sidebar selection-bar durations. Both default on at 200 ms and accept 0–1000 ms.
 - The Options sidebar is alphabetized within two groups: CocoaSpice contains Database, Interface, and Windows; VGMBoy contains Audio, Diagnostics, and Playback.
 - The former Plugins inventory page is not part of Options. Component ownership and licenses remain documented in VGMBoy.
+
+## Playback controls
+
+- CocoaSpice's main window uses a native SwiftUI macOS toolbar for transport, Long Play, Repeat, Random, and Equalizer. SPCBoy WK exposes equivalent commands in its WKWebView toolbar; the command/state boundary is shared, but the SwiftUI toolbar view itself is not reusable by the HTML renderer.
 
 ## Files
 

@@ -14,16 +14,26 @@ struct MainView: View {
         .frame(minWidth: 320, minHeight: 240)
         .background(MainWindowLevelConfigurator(alwaysOnTop: model.mainWindowAlwaysOnTop))
         .toolbar {
-            ToolbarItem(placement: .navigation) {
-                Menu {
-                    Button(FrontendSidebarView.consoles.title) { model.setSidebarBrowserMode(.games) }
-                    Button(FrontendSidebarView.paths.title) { model.setSidebarBrowserMode(.files) }
-                    Button(FrontendSidebarView.favorites.title) { model.setSidebarBrowserMode(.favorites) }
-                } label: { Image(systemName: "sidebar.left") }
-                .help("Library View")
-                .accessibilityLabel("Library View")
+            ToolbarItem(placement: .navigation) { sidebarToolbarButton(.games) }
+            ToolbarItem(placement: .navigation) { sidebarToolbarButton(.files) }
+            if model.localBrowserEnabled {
+                ToolbarItem(placement: .navigation) { sidebarToolbarButton(.localFiles) }
             }
-            ToolbarItemGroup(placement: .navigation) {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    model.toggleSidebarDisclosureAll()
+                } label: {
+                    Image(systemName: model.sidebarDisclosureControlIconName)
+                }
+                .help(model.sidebarDisclosureControlTitle)
+                .accessibilityLabel(model.sidebarDisclosureControlTitle)
+                .disabled(!model.sidebarDisclosureControlEnabled)
+            }
+            // Keep playback transport out of the navigation slot. The
+            // navigation slot is reserved for the sidebar disclosure and its
+            // adjacent view/fold controls; sharing it makes AppKit merge the
+            // two toolbars visually.
+            ToolbarItemGroup(placement: .secondaryAction) {
                 Button(action: model.playPrevious) { Image(systemName: "backward.fill") }
                     .disabled(model.playlist.isEmpty)
                 Button(action: model.togglePlayback) { Image(systemName: model.isPlaying ? "pause.fill" : "play.fill") }
@@ -50,6 +60,16 @@ struct MainView: View {
                 .help(model.equalizerEnabled ? "Equalizer: On" : "Equalizer: Off")
             }
         }
+    }
+
+    private func sidebarToolbarButton(_ mode: SidebarBrowserMode) -> some View {
+        Button {
+            model.setSidebarBrowserMode(mode)
+        } label: {
+            Image(systemName: mode.iconName)
+        }
+        .help(mode.title)
+        .accessibilityLabel(mode.title)
     }
 
     private var liveMainView: some View {
@@ -85,16 +105,6 @@ struct MainView: View {
                 Group {
                     if model.sidebarBrowserMode == .localFiles {
                         LocalBrowserSidebarListView(model: model)
-                    } else if model.isFavoritesSidebar {
-                        if model.favoriteTracks.isEmpty {
-                            ContentUnavailableView(
-                                "No Favorites",
-                                systemImage: "star",
-                                description: Text("Select a track or album and press Command-D.")
-                            )
-                        } else {
-                            FavoritesSidebarListView(model: model)
-                        }
                     } else if model.effectiveSidebarBrowserMode == .games
                         ? model.isLoadingDatabaseSidebar
                         : model.isLoadingDatabaseFileSidebar {
@@ -211,125 +221,6 @@ private struct MainWindowLevelConfigurator: NSViewRepresentable {
         DispatchQueue.main.async {
             nsView.window?.cocoaSpiceRole = .main
             nsView.window?.level = alwaysOnTop ? .floating : .normal
-        }
-    }
-}
-
-private struct FavoritesSidebarListView: NSViewRepresentable {
-    @Bindable var model: PlayerViewModel
-
-    func makeCoordinator() -> Coordinator { Coordinator(model: model) }
-
-    func makeNSView(context: Context) -> NSScrollView {
-        let chrome = DatabaseSidebarTableChrome.makeTableView(
-            rowHeight: model.databaseSidebarFontSize + 5,
-            columnIdentifier: "Favorite",
-            coordinator: context.coordinator,
-            doubleAction: #selector(Coordinator.handleDoubleAction(_:)),
-            activationHandler: { [weak coordinator = context.coordinator] in coordinator?.activateSelection() },
-            rowMenuProvider: { [weak coordinator = context.coordinator] row in coordinator?.makeRowMenu(row: row) }
-        )
-        context.coordinator.attach(tableView: chrome.tableView)
-        return chrome.scrollView
-    }
-
-    func updateNSView(_ nsView: NSScrollView, context: Context) {
-        context.coordinator.model = model
-        context.coordinator.reload()
-    }
-
-    @MainActor
-    final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
-        struct Row { let track: TrackItem; let snapshot: FavoriteTrackSnapshot }
-
-        @Bindable var model: PlayerViewModel
-        private weak var tableView: NSTableView?
-        private var rows: [Row] = []
-
-        init(model: PlayerViewModel) { self.model = model }
-
-        func attach(tableView: NSTableView) {
-            self.tableView = tableView
-            reload()
-        }
-
-        func reload() {
-            let query = model.sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            rows = zip(model.favoriteTracks, model.displayedFavoriteRecords).compactMap { track, snapshot in
-                let label = FavoriteListPresentation.displayName(for: snapshot)
-                guard query.isEmpty || "\(label) \(snapshot.filename) \(snapshot.title) \(snapshot.game)".lowercased().contains(query) else { return nil }
-                return Row(track: track, snapshot: snapshot)
-            }
-            tableView?.rowHeight = model.databaseSidebarFontSize + 5
-            tableView?.reloadData()
-            if let selected = model.selectedTrackID,
-               let row = rows.firstIndex(where: { $0.track.id == selected }) {
-                tableView?.selectRowIndexes(IndexSet(integer: row), byExtendingSelection: false)
-            }
-            if let tableView { DatabaseSidebarTableChrome.updateSelectionHighlight(in: tableView, animated: false) }
-        }
-
-        func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
-
-        func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
-            guard rows.indices.contains(row) else { return nil }
-            let cell = DatabaseSidebarTableChrome.textCell(in: tableView, identifier: .init("FavoriteCell"))
-            cell.textField?.stringValue = FavoriteListPresentation.displayName(for: rows[row].snapshot)
-            cell.textField?.font = model.databaseSidebarMonospaceFont
-                ? .monospacedSystemFont(ofSize: model.databaseSidebarFontSize, weight: .regular)
-                : .systemFont(ofSize: model.databaseSidebarFontSize)
-            cell.textField?.textColor = DatabaseSidebarTableChrome.textColor(model.databaseSidebarTextColor)
-            return cell
-        }
-
-        func tableViewSelectionDidChange(_ notification: Notification) {
-            guard let tableView, rows.indices.contains(tableView.selectedRow) else { return }
-            let track = rows[tableView.selectedRow].track
-            model.selectedTrackID = track.id
-            model.selectedTrackIDs = [track.id]
-            DatabaseSidebarTableChrome.updateSelectionHighlight(in: tableView, animated: true)
-        }
-
-        @objc func handleDoubleAction(_ sender: Any?) { activateSelection() }
-
-        func activateSelection() {
-            guard let tableView, rows.indices.contains(tableView.selectedRow) else { return }
-            model.playNowTrack(rows[tableView.selectedRow].track)
-        }
-
-        func makeRowMenu(row: Int) -> NSMenu? {
-            guard rows.indices.contains(row) else { return nil }
-            let menu = NSMenu(title: "Favorite")
-            let play = NSMenuItem(title: "Play", action: #selector(playFavorite(_:)), keyEquivalent: "")
-            play.representedObject = rows[row].track.id
-            play.target = self
-            menu.addItem(play)
-            let showInFinder = NSMenuItem(title: "Show in Finder", action: #selector(showFavoriteInFinder(_:)), keyEquivalent: "")
-            showInFinder.representedObject = rows[row].track.url
-            showInFinder.target = self
-            menu.addItem(showInFinder)
-            let remove = NSMenuItem(title: "Remove from Favorites", action: #selector(removeFavorite(_:)), keyEquivalent: "")
-            remove.representedObject = rows[row].track.id
-            remove.target = self
-            menu.addItem(remove)
-            return menu
-        }
-
-        @objc private func playFavorite(_ sender: NSMenuItem) {
-            guard let id = sender.representedObject as? String,
-                  let row = rows.first(where: { $0.track.id == id }) else { return }
-            model.playNowTrack(row.track)
-        }
-
-        @objc private func showFavoriteInFinder(_ sender: NSMenuItem) {
-            guard let url = sender.representedObject as? URL else { return }
-            model.showOnDisk(url)
-        }
-
-        @objc private func removeFavorite(_ sender: NSMenuItem) {
-            guard let id = sender.representedObject as? String,
-                  let row = rows.first(where: { $0.track.id == id }) else { return }
-            model.toggleFavorites(for: row.track)
         }
     }
 }
@@ -485,7 +376,8 @@ private enum DatabaseSidebarTableChrome {
         let rowRects = selectedRows.map(tableView.rect(ofRow:))
         let highlight = (tableView as? DatabaseSidebarNativeTableView)?.selectionHighlightView
         let stored = UserDefaults.standard.object(forKey: AppDefaultsKey.selectionAnimationMilliseconds) as? NSNumber
-        highlight?.animationDuration = Double(stored?.intValue ?? 200) / 1_000
+        let enabled = UserDefaults.standard.object(forKey: AppDefaultsKey.selectionAnimationEnabled) as? Bool ?? true
+        highlight?.animationDuration = enabled ? Double(stored?.intValue ?? 200) / 1_000 : 0
         highlight?.update(
             selectionRects: rowRects,
             primaryRect: selectedRows.count == 1 ? rowRects.first : nil,

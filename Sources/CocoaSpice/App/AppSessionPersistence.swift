@@ -13,6 +13,7 @@ enum AppDefaultsKey {
     static let manualPreFadeSeconds = "CocoaSpice.manualPreFadeSeconds"
     static let unknownDurationSeconds = "CocoaSpice.unknownDurationSeconds"
     static let endFadeEnabled = "CocoaSpice.endFadeEnabled"
+    static let fadeSeconds = "CocoaSpice.fadeSeconds"
     static let fadedSkipEnabled = "CocoaSpice.fadedSkipEnabled"
     static let equalizerEnabled = "CocoaSpice.equalizerEnabled"
     static let equalizerBandGains = "CocoaSpice.equalizerBandGains"
@@ -48,6 +49,9 @@ enum AppDefaultsKey {
     static let localBrowserPath = "CocoaSpice.localBrowserPath"
     static let autoResizeAnimationMilliseconds = "CocoaSpice.autoResizeAnimationMilliseconds"
     static let selectionAnimationMilliseconds = "CocoaSpice.selectionAnimationMilliseconds"
+    static let autoResizeAnimationEnabled = "CocoaSpice.autoResizeAnimationEnabled"
+    static let selectionAnimationEnabled = "CocoaSpice.selectionAnimationEnabled"
+    static let columnAutoSize = "CocoaSpice.columnAutoSize"
     static let mainWindowAlwaysOnTop = "CocoaSpice.mainWindowAlwaysOnTop"
     static let settingsWindowAlwaysOnTop = "CocoaSpice.settingsWindowAlwaysOnTop"
     static let archiveCacheMode = "CocoaSpice.archiveCacheMode"
@@ -67,6 +71,7 @@ struct RestoredPlaybackPreferences {
     let manualPreFadeSeconds: Int?
     let unknownDurationSeconds: Int?
     let endFadeEnabled: Bool
+    let fadeSeconds: Int
     let fadedSkipEnabled: Bool
     let equalizerEnabled: Bool
     let equalizerBandGains: [Double]?
@@ -139,6 +144,8 @@ enum AppSessionPersistence {
         }
         let storedLongPlaySeconds = defaults.integer(forKey: AppDefaultsKey.manualPreFadeSeconds)
         let storedUnknownDurationSeconds = defaults.integer(forKey: AppDefaultsKey.unknownDurationSeconds)
+        let storedFadeSeconds = defaults.object(forKey: AppDefaultsKey.fadeSeconds)
+            .flatMap { ($0 as? NSNumber)?.intValue } ?? PlaybackTimingPreferences.defaultFadeSeconds
         let storedEqualizerGains = defaults.array(forKey: AppDefaultsKey.equalizerBandGains) as? [NSNumber]
         let shared = PlaybackPreferences(
             timing: PlaybackTimingPreferences(
@@ -166,6 +173,7 @@ enum AppSessionPersistence {
             manualPreFadeSeconds: storedLongPlaySeconds > 0 ? shared.timing.longPlaySeconds : nil,
             unknownDurationSeconds: storedUnknownDurationSeconds > 0 ? shared.timing.unknownDurationSeconds : nil,
             endFadeEnabled: shared.fadeEnabled,
+            fadeSeconds: max(0, storedFadeSeconds),
             fadedSkipEnabled: defaults.object(forKey: AppDefaultsKey.fadedSkipEnabled) as? Bool ?? false,
             equalizerEnabled: shared.equalizer.enabled,
             equalizerBandGains: storedEqualizerGains?.map {
@@ -225,6 +233,7 @@ enum AppSessionPersistence {
         manualPreFadeSeconds: Int,
         unknownDurationSeconds: Int,
         endFadeEnabled: Bool,
+        fadeSeconds: Int,
         fadedSkipEnabled: Bool,
         equalizerEnabled: Bool,
         equalizerBandGains: [Float],
@@ -255,7 +264,7 @@ enum AppSessionPersistence {
             timing: PlaybackTimingPreferences(
                 longPlaySeconds: manualPreFadeSeconds,
                 unknownDurationSeconds: unknownDurationSeconds,
-                fadeSeconds: PlaybackTimingPreferences.defaultFadeSeconds
+                fadeSeconds: fadeSeconds
             ),
             fadeEnabled: endFadeEnabled,
             equalizerEnabled: equalizerEnabled,
@@ -272,6 +281,7 @@ enum AppSessionPersistence {
         defaults.set(shared.timing.longPlaySeconds, forKey: AppDefaultsKey.manualPreFadeSeconds)
         defaults.set(shared.timing.unknownDurationSeconds, forKey: AppDefaultsKey.unknownDurationSeconds)
         defaults.set(shared.fadeEnabled, forKey: AppDefaultsKey.endFadeEnabled)
+        defaults.set(shared.timing.fadeSeconds, forKey: AppDefaultsKey.fadeSeconds)
         defaults.set(fadedSkipEnabled, forKey: AppDefaultsKey.fadedSkipEnabled)
         defaults.set(shared.equalizer.enabled, forKey: AppDefaultsKey.equalizerEnabled)
         defaults.set(shared.equalizer.gainsDecibels.map(Double.init), forKey: AppDefaultsKey.equalizerBandGains)

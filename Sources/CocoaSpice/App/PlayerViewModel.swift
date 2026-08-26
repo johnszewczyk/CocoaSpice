@@ -18,7 +18,6 @@ import VGMBoyKit
 enum SidebarBrowserMode: String, CaseIterable, Identifiable {
     case games
     case files
-    case favorites
     case localFiles
 
     var id: String { rawValue }
@@ -27,7 +26,6 @@ enum SidebarBrowserMode: String, CaseIterable, Identifiable {
         switch self {
         case .games: "Console View"
         case .files: "Path View"
-        case .favorites: "Favorites"
         case .localFiles: "Local Files"
         }
     }
@@ -36,7 +34,6 @@ enum SidebarBrowserMode: String, CaseIterable, Identifiable {
         switch self {
         case .games: "square.grid.2x2"
         case .files: "folder"
-        case .favorites: "star"
         case .localFiles: "externaldrive"
         }
     }
@@ -53,7 +50,6 @@ struct LocalBrowserSidebarRow: Identifiable, Equatable, Sendable {
 enum SidebarPresentationView: String, Sendable {
     case folders
     case database
-    case favorites
     case search
 }
 
@@ -177,9 +173,18 @@ final class PlayerViewModel {
     var interfaceFontSize: CGFloat = 12
     var interfaceTextColor: DatabaseSidebarTextColor = .primary
     var interfaceMonospaceFont = false
-    let frontendPreferences = FrontendPreferencesCoordinator()
+    let frontendPreferences = FrontendPreferencesCoordinator(keys: .cocoaSpice)
+    var autoResizeAnimationEnabled: Bool { frontendPreferences.value.animations.autoResizeEnabled }
+    var selectionAnimationEnabled: Bool { frontendPreferences.value.animations.selectionEnabled }
     var autoResizeAnimationMilliseconds: Int { frontendPreferences.value.animations.autoResizeMilliseconds }
+    var effectiveAutoResizeAnimationMilliseconds: Int {
+        autoResizeAnimationEnabled ? frontendPreferences.value.animations.autoResizeMilliseconds : 0
+    }
     var selectionAnimationMilliseconds: Int { frontendPreferences.value.animations.selectionMilliseconds }
+    var effectiveSelectionAnimationMilliseconds: Int {
+        selectionAnimationEnabled ? frontendPreferences.value.animations.selectionMilliseconds : 0
+    }
+    var columnAutoSizeEnabled: Bool { frontendPreferences.value.columnAutoSize }
     var mainWindowAlwaysOnTop: Bool { frontendPreferences.value.windows.mainAlwaysOnTop }
     var settingsWindowAlwaysOnTop: Bool { frontendPreferences.value.windows.settingsAlwaysOnTop }
     var databaseSidebarFontSize: CGFloat {
@@ -226,7 +231,6 @@ final class PlayerViewModel {
         searchText: String
     ) -> SidebarBrowserMode {
         if storedMode == .localFiles { return .localFiles }
-        if storedMode == .favorites { return .favorites }
         return sidebarViewResolution(storedMode: storedMode, searchText: searchText).contentMode == .folders
             ? SidebarBrowserMode.files
             : SidebarBrowserMode.games
@@ -239,7 +243,6 @@ final class PlayerViewModel {
         let sharedMode: CatalogBrowserMode = switch storedMode {
         case .files: .paths
         case .localFiles: .diskPath
-        case .favorites: .favorites
         case .games: .consoles
         }
         let shared = CatalogBrowserState(mode: sharedMode, query: searchText)
@@ -247,28 +250,23 @@ final class PlayerViewModel {
             switch view {
             case .paths, .diskPath: .folders
             case .consoles: .database
-            case .favorites: .favorites
             case .search: .search
             }
         }
         let content: SidebarPresentationView = switch shared.contentMode {
         case .tree: .folders
         case .database: .database
-        case .favorites: .favorites
         }
         let storedPresentation: SidebarPresentationView = switch shared.storedMode {
         case .paths, .diskPath: .folders
         case .consoles: .database
-        case .favorites: .favorites
         }
         return SidebarViewResolution(
             storedMode: storedPresentation,
             query: shared.query,
             view: presentation(shared.view),
             contentMode: content,
-            resultSource: content == .folders
-                ? "folder-tree"
-                : content == .favorites ? "favorite-track-history" : "database-index",
+            resultSource: content == .folders ? "folder-tree" : "database-index",
             isTemporary: shared.view == .search
         )
     }
@@ -342,12 +340,55 @@ final class PlayerViewModel {
             )
         }
     }
-    var isFavoritesSidebar: Bool { sidebarBrowserMode == .favorites }
     var localBrowserEnabled = false
     var localBrowserPath = ""
     let localBrowser = LocalBrowserCoordinator()
     var localBrowserRows: [LocalBrowserSidebarRow] { localBrowser.rows }
     var selectedLocalBrowserPath: String? { localBrowser.selectedPath }
+
+    var sidebarDisclosureControlEnabled: Bool {
+        switch effectiveSidebarBrowserMode {
+        case .games:
+            sidebarSystemMode && !databaseGameItems.isEmpty
+        case .files:
+            !databaseFileSidebar.allFolderIDs.isEmpty
+        case .localFiles:
+            localBrowser.canToggleAllFolders
+        }
+    }
+
+    var sidebarDisclosureControlTitle: String {
+        sidebarHasExpandedItems ? "Fold All" : "Unfold All"
+    }
+
+    var sidebarDisclosureControlIconName: String {
+        sidebarHasExpandedItems ? "chevron.up.square" : "chevron.down.square"
+    }
+
+    func toggleSidebarDisclosureAll() {
+        guard sidebarDisclosureControlEnabled else { return }
+        let shouldCollapse = sidebarHasExpandedItems
+        switch effectiveSidebarBrowserMode {
+        case .games:
+            let knownGroups = Set(databaseGameItems.map(sidebarSystemName(for:)))
+            applyDatabaseGroupState(.setAllCollapsed(shouldCollapse, knownGroupNames: knownGroups))
+        case .files:
+            databaseFileSidebar.setAllFoldersCollapsed(shouldCollapse)
+        case .localFiles:
+            localBrowser.setAllFoldersCollapsed(shouldCollapse)
+        }
+    }
+
+    private var sidebarHasExpandedItems: Bool {
+        switch effectiveSidebarBrowserMode {
+        case .games:
+            !expandedDatabaseSystems.isEmpty
+        case .files:
+            !databaseFileSidebar.expandedFolderIDs.isEmpty
+        case .localFiles:
+            localBrowser.hasExpandedDescendantFolders
+        }
+    }
     var playlistContentRevision: Int { queue.contentRevision }
     private var isRestoringPersistedPlaylist = false
     private var deferredPersistedPlaylistValues: [String] = []
@@ -379,12 +420,13 @@ final class PlayerViewModel {
     var manualPreFadeSeconds: Int = 180
     var unknownDurationSeconds: Int = PlaybackTimingPreferences.defaultUnknownDurationSeconds
     var endFadeEnabled = true
+    var configuredFadeSeconds: Int = PlaybackTimingPreferences.defaultFadeSeconds
     var fadedSkipEnabled = false
     var libgmeTempo = PlaybackTempo.defaultValue
     var libgmeTempoEnabled = false
     var libvgmTempo = PlaybackTempo.defaultValue
     var libvgmTempoEnabled = false
-    var fadeSeconds: Int { endFadeEnabled ? 6 : 0 }
+    var fadeSeconds: Int { endFadeEnabled ? configuredFadeSeconds : 0 }
     private var fadedSkipTask: Task<Void, Never>?
     private var fadedSkipToken: UUID?
     var statusText: String = "Choose a music folder to begin."
@@ -419,8 +461,6 @@ final class PlayerViewModel {
             databaseSidebarLoader.fileLoadingStatus.isEmpty
                 ? "Preparing the folder tree…"
                 : databaseSidebarLoader.fileLoadingStatus
-        case .favorites:
-            "Reading Favorites"
         case .localFiles:
             "Reading Local Files"
         }
@@ -429,7 +469,6 @@ final class PlayerViewModel {
         switch effectiveSidebarBrowserMode {
         case .games: databaseSidebarLoader.gameLoadError
         case .files: databaseSidebarLoader.fileLoadError
-        case .favorites: nil
         case .localFiles: nil
         }
     }
@@ -634,9 +673,18 @@ final class PlayerViewModel {
                 self.isPlaying = snapshot.isPlaying
                 self.playbackReachedEnd = snapshot.reachedEnd
                 self.updateRemoteTransportState()
-                if snapshot.reachedEnd {
-                    self.handlePlaybackCompletionIfNeeded()
+            }
+        }
+        playback.setPlaybackNaturalEndHandler { [weak self] snapshot in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.playbackReachedEnd = true
+                if !self.isSeeking {
+                    self.playbackElapsedSeconds = snapshot.elapsedSeconds
                 }
+                self.isPlaying = false
+                self.handlePlaybackCompletionIfNeeded()
+                self.updateRemoteTransportState()
             }
         }
         playbackStorage = playback
@@ -729,8 +777,20 @@ final class PlayerViewModel {
         frontendPreferences.setAutoResizeMilliseconds(value)
     }
 
+    func setAutoResizeAnimationEnabled(_ enabled: Bool) {
+        frontendPreferences.setAutoResizeEnabled(enabled)
+    }
+
     func setSelectionAnimationMilliseconds(_ value: Int) {
         frontendPreferences.setSelectionMilliseconds(value)
+    }
+
+    func setSelectionAnimationEnabled(_ enabled: Bool) {
+        frontendPreferences.setSelectionEnabled(enabled)
+    }
+
+    func setColumnAutoSizeEnabled(_ enabled: Bool) {
+        frontendPreferences.setColumnAutoSize(enabled)
     }
 
     func setMainWindowAlwaysOnTop(_ enabled: Bool) {
@@ -746,10 +806,6 @@ final class PlayerViewModel {
         favoriteSortOrder = order
         UserDefaults.standard.set(order.rawValue, forKey: AppDefaultsKey.favoriteSortOrder)
         favorites.presentationChanged()
-        if isFavoritesSidebar {
-            playlist = favoriteTracks
-            applyFavoriteMetadata()
-        }
     }
 
     func setLocalBrowserEnabled(_ enabled: Bool) {
@@ -1459,6 +1515,7 @@ final class PlayerViewModel {
             manualPreFadeSeconds: manualPreFadeSeconds,
             unknownDurationSeconds: unknownDurationSeconds,
             endFadeEnabled: endFadeEnabled,
+            fadeSeconds: configuredFadeSeconds,
             fadedSkipEnabled: fadedSkipEnabled,
             equalizerEnabled: equalizerEnabled,
             equalizerBandGains: equalizerBandGains,
@@ -1529,6 +1586,14 @@ final class PlayerViewModel {
 
     func setEndFadeEnabled(_ enabled: Bool) {
         endFadeEnabled = enabled
+        savePreferencesNow()
+        if currentTrack != nil {
+            applyPlaybackTiming()
+        }
+    }
+
+    func setFadeSeconds(_ seconds: Int) {
+        configuredFadeSeconds = max(0, seconds)
         savePreferencesNow()
         if currentTrack != nil {
             applyPlaybackTiming()
@@ -1628,19 +1693,25 @@ final class PlayerViewModel {
             return
         }
         sidebarBrowserMode = mode
-        if mode == .favorites {
-            playlist = favoriteTracks
-            applyFavoriteMetadata()
-            statusText = favoriteTracks.isEmpty ? "No favorites yet." : "Showing \(favoriteTracks.count) favorite tracks."
-        }
         applySidebarSearch()
-        if mode != .favorites && mode != .localFiles { loadDatabaseSidebarIfNeeded() }
+        if mode != .localFiles { loadDatabaseSidebarIfNeeded() }
         savePreferencesNow()
+    }
+
+    /// Replaces the playlist with a snapshot of shared Favorites without
+    /// changing the catalog/sidebar mode. Favorites are a playlist projection,
+    /// not a third catalog browser.
+    func showFavoritesPlaylist() {
+        playlist = favoriteTracks
+        applyFavoriteMetadata()
+        selectedTrackID = playlist.first?.id
+        selectedTrackIDs = selectedTrackID.map { [$0] } ?? []
+        statusText = playlist.isEmpty ? "No favorites yet." : "Showing \(playlist.count) favorite tracks."
     }
 
     func cycleLibrarySidebarMode() {
         guard !localBrowserEnabled else { return }
-        let modes: [SidebarBrowserMode] = [.games, .files, .favorites]
+        let modes: [SidebarBrowserMode] = [.games, .files]
         let index = modes.firstIndex(of: sidebarBrowserMode) ?? -1
         setSidebarBrowserMode(modes[(index + 1) % modes.count])
     }
@@ -1724,7 +1795,6 @@ final class PlayerViewModel {
         }
         do {
             let mutation = try favorites.toggle(snapshots)
-            if isFavoritesSidebar { playlist = favoriteTracks }
             statusText = tracks.count == 1
                 ? (mutation.added ? "Added to Favorites." : "Removed from Favorites.")
                 : "Updated Favorites for \(tracks.count) tracks."
@@ -1753,7 +1823,6 @@ final class PlayerViewModel {
     func refreshSharedFavorites() {
         do {
             guard try favorites.refreshIfChanged() else { return }
-            if isFavoritesSidebar { playlist = favoriteTracks }
         } catch {
             statusText = "Could not refresh shared Favorites: \(error.localizedDescription)"
         }
@@ -2601,7 +2670,6 @@ final class PlayerViewModel {
                 if !self.isSeeking {
                     self.playbackElapsedSeconds = snapshot.elapsedSeconds
                 }
-                self.handlePlaybackCompletionIfNeeded()
                 self.updateRemoteTransportState()
             }
         }
@@ -2955,6 +3023,7 @@ final class PlayerViewModel {
             unknownDurationSeconds = max(1, storedUnknownDuration)
         }
         endFadeEnabled = preferences.endFadeEnabled
+        configuredFadeSeconds = max(0, preferences.fadeSeconds)
         fadedSkipEnabled = preferences.fadedSkipEnabled
         equalizerEnabled = preferences.equalizerEnabled
         if let storedGains = preferences.equalizerBandGains,
@@ -3044,12 +3113,6 @@ final class PlayerViewModel {
         if sidebarBrowserMode == .localFiles {
             databaseSidebar.searchText = ""
             databaseFileSidebarSearchTaskOwner.cancel()
-            return
-        }
-        if sidebarBrowserMode == .favorites {
-            databaseSidebar.searchText = ""
-            databaseFileSidebarSearchTaskOwner.cancel()
-            if playlist != favoriteTracks { playlist = favoriteTracks }
             return
         }
         let hasQuery = !sidebarSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty

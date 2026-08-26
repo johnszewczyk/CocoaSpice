@@ -26,13 +26,22 @@
   normalization. `AppSessionPersistence` retains CocoaSpice's UserDefaults keys and legacy-shape
   compatibility while passing values through that shared semantic model.
 
-- `VGMBoyPlaybackEngine` is the only CocoaSpice playback façade and submits typed `PlaybackControlRequest` values to `PlaybackController`.
-- `PlaybackRequestCore.PlaybackSerialExecutor` is the shared command-serialization boundary. CocoaSpice relinks its existing VGMBoy session queue through that primitive; request cancellation and UI generation remain in `PlaybackRequestState`.
-- SPCBoyWK uses the same native request lifecycle and shared queue/fade
-  contracts. Its WebKit finalizer captures the request generation before an
-  awaited queue lookup and drops stale completion work, matching CocoaSpice's
-  newest-request-wins boundary.
-- `PlaybackControlSurface` is read once from the bundled controller and is the capability gate for CocoaSpice Audio-panel mappings. Volume and Mono submit their core requests through that one mapping point; no CocoaSpice audio DSP or alternative output path exists.
+- `FrontendCore.PlaybackTransportCore.PlaybackTransportCoordinator` is the
+  shared native playback façade. It owns the serialized `PlaybackController`,
+  newest-request token, loaded naked-file identity, timing reconfiguration,
+  output controls, status, diagnostics, and the generation-checked one-shot
+  natural-end event.
+- CocoaSpice's `VGMBoyPlaybackEngine` is only a TrackItem/archive-materializer
+  adapter around that coordinator. SPCBoyWK's `WKPlaybackBridge` is only a
+  JSON request adapter around the same coordinator. Neither frontend owns a
+  second controller or serial executor.
+- Request cancellation and queue/UI generation remain frontend concerns until
+  the queue-state extraction slice; native transport request invalidation is
+  shared and occurs before a stop or replacement can race a start.
+- `PlaybackControlSurface` is read by the shared coordinator and is the
+  capability gate for frontend Audio-panel mappings. Volume, Mono, EQ, timing,
+  and transport commands all reach VGMBoy through that one mapping point; no
+  frontend audio DSP or alternative output path exists.
 - CocoaSpice passes a materialized naked playable file path and its subtrack
   index to VGMBoy. The format-owned materialization requirement comes from
   `VGMBoyKit.FormatRegistry`; `FrontendCore.ArchivePlaybackMaterializer`
@@ -40,7 +49,7 @@
   limit enforcement, dependency preparation, playable-output validation, and
   cache-lease activation. CocoaSpice supplies only cache preferences and
   catalog/playback presentation around that shared result.
-- `VGMBoyPlaybackEngine` builds the shared `PlaybackTimingRequest` from the selected path and
+- `PlaybackTransportCoordinator` builds the shared `PlaybackTimingRequest` from the selected path and
   Long Play state. Ordinary file-default timing sends no play length, so VGMBoy derives the
   natural window from decoder metadata. Long Play alone supplies the manual duration; a catalog
   duration remains a display/queue fact and is not authoritative for the core's finite playback
@@ -52,13 +61,17 @@
 - CocoaSpice persists separate Long Play and unknown-duration values. The latter is sent through
   the shared typed request and applies only when the decoder provides no natural duration.
 - AAC export passes the playlist display name and the already-effective finite playback timing to
-  `PlaybackController.exportAAC`. CocoaSpice never gives VGMBoy catalog access or asks it to derive
+  `PlaybackTransportCoordinator`, which calls `PlaybackController.exportAAC`.
+  CocoaSpice never gives VGMBoy catalog access or asks it to derive
   a title; VGMBoy performs filename sanitation and no-overwrite collision handling.
 - CocoaSpice does not link its former decoder bridges or create an audio engine. Duplicate playback implementations are unsupported.
 - CocoaSpice is not the owner of ScanSong's vgmstream or Highly Complete inspection plugins. Those
   executables are built and handed off by VGMBoy; CocoaSpice only provides the shared upstream
   source/build inputs used by the app family.
-- Core status and natural-end events update CocoaSpice display state; CocoaSpice alone chooses the following queue item.
+- Core status updates CocoaSpice display state, while the coordinator's
+  one-shot natural-end event triggers CocoaSpice's queue policy. CocoaSpice
+  still alone chooses the following queue item; the shared core prevents
+  duplicate or stale completion delivery.
 - VGMBoy retains one silent initialized macOS output endpoint for the host lifetime. CocoaSpice
   must express pause, replacement, seek, and completion only through the typed core controls; it
   must not stop/recreate a separate device path around those transitions.

@@ -10,6 +10,15 @@ final class LocalBrowserCoordinator {
     private var children: [String: [LocalFileBrowserNode]] = [:]
     private var expandedPaths: Set<String> = []
 
+    var hasExpandedDescendantFolders: Bool {
+        guard let rootPath = session?.rootURL.path else { return false }
+        return expandedPaths.contains { $0 != rootPath }
+    }
+
+    var canToggleAllFolders: Bool {
+        session != nil && !children.isEmpty
+    }
+
     func configure(path: String, isPlayableFile: @escaping @Sendable (URL) -> Bool) throws -> LocalFileBrowserNode {
         let session = try LocalFileBrowserSession(
             rootURL: URL(fileURLWithPath: path, isDirectory: true),
@@ -44,6 +53,12 @@ final class LocalBrowserCoordinator {
             children[path] = try session.children(of: URL(fileURLWithPath: path, isDirectory: true))
         }
         expandedPaths.insert(path)
+        rebuildRows()
+    }
+
+    func setAllFoldersCollapsed(_ collapsed: Bool) {
+        guard let rootPath = session?.rootURL.path else { return }
+        expandedPaths = collapsed ? [rootPath] : Set(children.keys).union([rootPath])
         rebuildRows()
     }
 

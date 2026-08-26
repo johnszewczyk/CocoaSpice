@@ -9,6 +9,7 @@ struct OptionsView: View {
     @Bindable var model: PlayerViewModel
     @State private var longPlayTimeText = ""
     @State private var unknownDurationTimeText = ""
+    @State private var fadeTimeText = ""
     @State private var libGmeTempoText = PlaybackTempo.defaultValue.displayString
     @State private var libVgmTempoText = PlaybackTempo.defaultValue.displayString
     @State private var selection: OptionsSection = .data
@@ -41,6 +42,11 @@ struct OptionsView: View {
     }
     private static let remoteSections: [OptionsSection] = [.audio, .diagnostics, .playback]
 
+    private var pageTitle: String {
+        let owner = Self.remoteSections.contains(selection) ? "VGMBoy" : "CocoaSpice"
+        return "\(owner) / \(selection.rawValue)"
+    }
+
     private let windowBackground = Color(red: 30 / 255, green: 30 / 255, blue: 30 / 255)
     private let panelBackground = Color(red: 40 / 255, green: 40 / 255, blue: 40 / 255)
 
@@ -66,7 +72,7 @@ struct OptionsView: View {
         } detail: {
             VStack(spacing: 0) {
                 HStack {
-                    Text(selection.rawValue)
+                    Text(pageTitle)
                         .font(.title3.weight(.semibold))
                         .foregroundStyle(.white)
                     Spacer()
@@ -96,6 +102,7 @@ struct OptionsView: View {
         .onAppear {
             longPlayTimeText = Self.formatTime(model.manualPreFadeSeconds)
             unknownDurationTimeText = Self.formatTime(model.unknownDurationSeconds)
+            fadeTimeText = Self.formatTime(model.configuredFadeSeconds)
             libGmeTempoText = model.libgmeTempo.displayString
             libVgmTempoText = model.libvgmTempo.displayString
             DispatchQueue.main.async {
@@ -118,6 +125,12 @@ struct OptionsView: View {
             let formatted = Self.formatTime(newValue)
             if unknownDurationTimeText != formatted {
                 unknownDurationTimeText = formatted
+            }
+        }
+        .onChange(of: model.configuredFadeSeconds) { _, newValue in
+            let formatted = Self.formatTime(newValue)
+            if fadeTimeText != formatted {
+                fadeTimeText = formatted
             }
         }
     }
@@ -209,25 +222,36 @@ struct OptionsView: View {
             }
 
             sectionCard(title: "End Fade") {
-                Toggle(isOn: Binding(
-                    get: { model.endFadeEnabled },
-                    set: { model.setEndFadeEnabled($0) }
-                )) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Enable 6-second fade out")
-                            .foregroundStyle(.white)
-                        Text("Applies to metadata-timed playback and Long Play. Turning it off lets tracks use their native ending.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
+                HStack(spacing: 12) {
+                    Toggle(isOn: Binding(
+                        get: { model.endFadeEnabled },
+                        set: { model.setEndFadeEnabled($0) }
+                    )) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Enable Fade Out")
+                                .foregroundStyle(.white)
+                            Text("Applies to metadata-timed playback and Long Play. Turning it off lets tracks use their native ending.")
+                                .font(.system(size: 11))
+                                .foregroundStyle(.secondary)
+                        }
                     }
+                    .toggleStyle(.checkbox)
+
+                    Spacer(minLength: 24)
+
+                    TextField("0:06", text: $fadeTimeText)
+                        .textFieldStyle(.plain)
+                        .multilineTextAlignment(.trailing)
+                        .foregroundStyle(.white)
+                        .font(.system(.body, design: .monospaced))
+                        .frame(width: 72)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.08)))
+                        .overlay(RoundedRectangle(cornerRadius: 6).stroke(Color.white.opacity(0.12), lineWidth: 1))
+                        .onSubmit(applyFadeTimeText)
                 }
-                .toggleStyle(.checkbox)
 
-            }
-
-            tempoCard
-
-            sectionCard(title: "Faded Skip") {
                 Toggle(isOn: Binding(
                     get: { model.fadedSkipEnabled },
                     set: { model.setFadedSkipEnabled($0) }
@@ -241,7 +265,10 @@ struct OptionsView: View {
                     }
                 }
                 .toggleStyle(.checkbox)
+
             }
+
+            tempoCard
 
         }
     }
@@ -406,6 +433,21 @@ struct OptionsView: View {
     private var interfacePage: some View {
         VStack(alignment: .leading, spacing: 16) {
             interfaceAppearanceCard
+
+            sectionCard(title: "Playlist Options") {
+                Toggle(isOn: Binding(
+                    get: { model.columnAutoSizeEnabled },
+                    set: { model.setColumnAutoSizeEnabled($0) }
+                )) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Enable Column Auto-size")
+                        Text("Automatically resize columns for content width on selection.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .toggleStyle(.checkbox)
+            }
 
             CocoaSpiceAnimationOptionsCard(model: model)
 
@@ -856,6 +898,13 @@ struct OptionsView: View {
         unknownDurationTimeText = Self.formatTime(model.unknownDurationSeconds)
     }
 
+    private func applyFadeTimeText() {
+        let trimmed = fadeTimeText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let parsedSeconds = Self.parseTime(trimmed) ?? model.configuredFadeSeconds
+        model.setFadeSeconds(parsedSeconds)
+        fadeTimeText = Self.formatTime(model.configuredFadeSeconds)
+    }
+
     private static func formatTime(_ totalSeconds: Int) -> String {
         let minutes = max(0, totalSeconds) / 60
         let seconds = max(0, totalSeconds) % 60
@@ -890,25 +939,37 @@ private struct CocoaSpiceAnimationOptionsCard: View {
 
     var body: some View {
         optionsCard(title: "Animations") {
-            timingRow(title: "Auto-Resize", detail: "Duration for automatic playlist column resizing.", value: Binding(
+            timingRow(title: "Auto-Resize", detail: "Duration for automatic playlist column resizing.", enabled: Binding(
+                get: { model.autoResizeAnimationEnabled },
+                set: { model.setAutoResizeAnimationEnabled($0) }
+            ), value: Binding(
                 get: { model.autoResizeAnimationMilliseconds },
                 set: { model.setAutoResizeAnimationMilliseconds($0) }
             ))
-            timingRow(title: "Selection Bar", detail: "Duration for playlist and sidebar selection movement.", value: Binding(
+            timingRow(title: "Selection Bar", detail: "Duration for playlist and sidebar selection movement.", enabled: Binding(
+                get: { model.selectionAnimationEnabled },
+                set: { model.setSelectionAnimationEnabled($0) }
+            ), value: Binding(
                 get: { model.selectionAnimationMilliseconds },
                 set: { model.setSelectionAnimationMilliseconds($0) }
             ))
         }
     }
 
-    private func timingRow(title: String, detail: String, value: Binding<Int>) -> some View {
+    private func timingRow(title: String, detail: String, enabled: Binding<Bool>, value: Binding<Int>) -> some View {
         HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                Text(detail).font(.system(size: 11)).foregroundStyle(.secondary)
+            Toggle(isOn: enabled) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title)
+                    Text(detail).font(.system(size: 11)).foregroundStyle(.secondary)
+                }
             }
+            .toggleStyle(.checkbox)
             Spacer(minLength: 16)
-            TextField("200", value: value, format: .number).multilineTextAlignment(.trailing).frame(width: 58)
+            TextField("200", value: value, format: .number)
+                .multilineTextAlignment(.trailing)
+                .frame(width: 58)
+                .disabled(!enabled.wrappedValue)
             Text("ms").foregroundStyle(.secondary)
         }
     }
@@ -920,10 +981,16 @@ private struct CocoaSpiceWindowsOptionsPage: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             optionsCard(title: "Always on Top") {
-                Toggle("Main Window", isOn: Binding(get: { model.mainWindowAlwaysOnTop }, set: { model.setMainWindowAlwaysOnTop($0) }))
-                    .toggleStyle(.checkbox)
-                Toggle("Settings Window", isOn: Binding(get: { model.settingsWindowAlwaysOnTop }, set: { model.setSettingsWindowAlwaysOnTop($0) }))
-                    .toggleStyle(.checkbox)
+                windowToggle(
+                    title: "Main Window",
+                    detail: "Keep main window on top of other apps.",
+                    isOn: Binding(get: { model.mainWindowAlwaysOnTop }, set: { model.setMainWindowAlwaysOnTop($0) })
+                )
+                windowToggle(
+                    title: "Options Window",
+                    detail: "Keep options window on top of main window.",
+                    isOn: Binding(get: { model.settingsWindowAlwaysOnTop }, set: { model.setSettingsWindowAlwaysOnTop($0) })
+                )
             }
             optionsCard(title: "Window Layout") {
                 Text("Restore the default size and centered position for CocoaSpice windows.")
@@ -931,6 +998,16 @@ private struct CocoaSpiceWindowsOptionsPage: View {
                 HStack { Spacer(); Button("Reset") { NotificationCenter.default.post(name: .cocoaSpiceResetWindows, object: nil) } }
             }
         }
+    }
+
+    private func windowToggle(title: String, detail: String, isOn: Binding<Bool>) -> some View {
+        Toggle(isOn: isOn) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                Text(detail).font(.system(size: 11)).foregroundStyle(.secondary)
+            }
+        }
+        .toggleStyle(.checkbox)
     }
 }
 

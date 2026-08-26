@@ -20,6 +20,12 @@ final class DatabaseFileSidebarState {
     var expandedFolderIDs: Set<String> = []
     private var expandedFolderIDsBeforeSearch: Set<String>?
 
+    var allFolderIDs: Set<String> {
+        if let filteredTreeIndex { return filteredTreeIndex.allFolderIDs }
+        if let treeIndex { return treeIndex.allFolderIDs }
+        return Set(DatabaseFileSidebarTree.rootFolderIDs(for: visibleFileItems))
+    }
+
     func replaceFileItems(_ items: [DatabaseFileItem]) {
         installFileItems(items, treeIndex: nil, searchIndex: nil)
     }
@@ -93,6 +99,10 @@ final class DatabaseFileSidebarState {
 
     func expandFolder(_ folderID: String) {
         expandedFolderIDs.insert(folderID)
+    }
+
+    func setAllFoldersCollapsed(_ collapsed: Bool) {
+        expandedFolderIDs = collapsed ? [] : allFolderIDs
     }
 
     func folder(forID folderID: String) -> DatabaseFileSidebarFolder? {

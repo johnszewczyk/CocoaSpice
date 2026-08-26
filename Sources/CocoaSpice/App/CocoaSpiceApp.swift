@@ -207,11 +207,10 @@ private struct CocoaSpiceCommands: Commands {
             .keyboardShortcut("1", modifiers: .command)
             .disabled(model.localBrowserEnabled)
 
-            Button(FrontendSidebarView.favorites.title) {
-                model.setSidebarBrowserMode(.favorites)
+            Button("Favorites Playlist") {
+                model.showFavoritesPlaylist()
             }
-            .keyboardShortcut("4", modifiers: .command)
-            .disabled(model.localBrowserEnabled)
+            .keyboardShortcut("d", modifiers: [.command, .shift])
 
             Divider()
 
