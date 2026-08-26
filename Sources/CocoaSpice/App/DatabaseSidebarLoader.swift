@@ -10,8 +10,7 @@ import CatalogSessionCore
 final class DatabaseSidebarLoader {
     private let gameSidebar: DatabaseSidebarState
     private let fileSidebar: DatabaseFileSidebarState
-    private let gameLoadTaskOwner = LatestTaskOwner()
-    private let fileLoadTaskOwner = LatestTaskOwner()
+    private let catalogSessions = CatalogSessionCoordinator()
     private(set) var hasLoadedGames = false
     private(set) var hasLoadedFiles = false
     private(set) var gameLoadingStatus = ""
@@ -34,8 +33,8 @@ final class DatabaseSidebarLoader {
         didLoadFiles: @escaping @MainActor () -> Void,
         didFail: @escaping @MainActor (String) -> Void = { _ in }
     ) {
-        gameLoadTaskOwner.cancel()
-        fileLoadTaskOwner.cancel()
+        catalogSessions.cancel(.games)
+        catalogSessions.cancel(.files)
         hasLoadedGames = false
         hasLoadedFiles = false
         isLoadingGames = false
@@ -83,8 +82,8 @@ final class DatabaseSidebarLoader {
     }
 
     func clear() {
-        gameLoadTaskOwner.cancel()
-        fileLoadTaskOwner.cancel()
+        catalogSessions.cancel(.games)
+        catalogSessions.cancel(.files)
         hasLoadedGames = false
         hasLoadedFiles = false
         isLoadingGames = false
@@ -104,7 +103,7 @@ final class DatabaseSidebarLoader {
         didFail: @escaping @MainActor (String) -> Void
     ) {
         guard !hasLoadedGames, !isLoadingGames else { return }
-        let generation = gameLoadTaskOwner.begin()
+        let generation = catalogSessions.begin(.games)
         isLoadingGames = true
         gameLoadingStatus = "Reading indexed games…"
         gameLoadError = nil
@@ -119,9 +118,9 @@ final class DatabaseSidebarLoader {
             }.value
             guard !Task.isCancelled,
                   let self,
-                  self.gameLoadTaskOwner.isCurrent(generation) else { return }
+                  self.catalogSessions.isCurrent(generation, for: .games) else { return }
             self.gameLoadingStatus = ""
-            self.gameLoadTaskOwner.finish(generation: generation)
+            self.catalogSessions.finish(generation, for: .games)
             self.isLoadingGames = false
             switch result {
             case .success(let items):
@@ -134,7 +133,7 @@ final class DatabaseSidebarLoader {
                 didFail(message)
             }
         }
-        gameLoadTaskOwner.install(task, generation: generation)
+        catalogSessions.install(task, generation: generation, for: .games)
     }
 
     private func loadFilesIfNeeded(
@@ -143,7 +142,7 @@ final class DatabaseSidebarLoader {
         didFail: @escaping @MainActor (String) -> Void
     ) {
         guard !hasLoadedFiles, !isLoadingFiles else { return }
-        let generation = fileLoadTaskOwner.begin()
+        let generation = catalogSessions.begin(.files)
         isLoadingFiles = true
         fileLoadingStatus = "Reading scanned source records…"
         fileLoadError = nil
@@ -153,7 +152,7 @@ final class DatabaseSidebarLoader {
             }.value
             guard !Task.isCancelled,
                   let self,
-                  self.fileLoadTaskOwner.isCurrent(generation) else { return }
+                  self.catalogSessions.isCurrent(generation, for: .files) else { return }
             guard case .success(let items) = result else {
                 let message: String
                 if case .failure(let error) = result {
@@ -162,7 +161,7 @@ final class DatabaseSidebarLoader {
                     preconditionFailure("Unexpected database sidebar load result")
                 }
                 self.fileLoadingStatus = ""
-                self.fileLoadTaskOwner.finish(generation: generation)
+                self.catalogSessions.finish(generation, for: .files)
                 self.isLoadingFiles = false
                 self.fileLoadError = message
                 didFail(message)
@@ -176,7 +175,7 @@ final class DatabaseSidebarLoader {
                 )
             }.value
             guard !Task.isCancelled,
-                  self.fileLoadTaskOwner.isCurrent(generation) else { return }
+                  self.catalogSessions.isCurrent(generation, for: .files) else { return }
             self.fileSidebar.replaceFileItems(
                 items,
                 treeIndex: indexes.0,
@@ -184,10 +183,10 @@ final class DatabaseSidebarLoader {
             )
             self.hasLoadedFiles = true
             self.fileLoadingStatus = ""
-            self.fileLoadTaskOwner.finish(generation: generation)
+            self.catalogSessions.finish(generation, for: .files)
             self.isLoadingFiles = false
             didLoad()
         }
-        fileLoadTaskOwner.install(task, generation: generation)
+        catalogSessions.install(task, generation: generation, for: .files)
     }
 }
