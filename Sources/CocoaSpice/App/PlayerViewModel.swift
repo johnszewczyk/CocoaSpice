@@ -2699,12 +2699,17 @@ final class PlayerViewModel {
             requestPlayback(for: randomTrack)
             return
         }
-        guard let sharedRepeatMode = PlaybackRepeatMode(rawValue: repeatMode.rawValue),
-              let nextTrackID = playbackQueueState.completionTargetID(
-                  playlistIDs: playlist.map(\.id),
-                  repeatMode: sharedRepeatMode
-              ),
-              let nextTrack = playlist.first(where: { $0.id == nextTrackID }) else { return }
+        guard let sharedRepeatMode = PlaybackRepeatMode(rawValue: repeatMode.rawValue) else {
+            return
+        }
+        let decision = playbackQueueState.completionDecision(
+            playlistIDs: playlist.map(\.id),
+            repeatMode: sharedRepeatMode
+        )
+        guard case let .play(nextTrackID) = decision.action,
+              let nextTrack = playlist.first(where: { $0.id == nextTrackID }) else {
+            return
+        }
         requestPlayback(for: nextTrack)
     }
 
