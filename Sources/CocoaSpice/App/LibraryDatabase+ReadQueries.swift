@@ -133,20 +133,19 @@ extension LibraryDatabase {
         }
         defer { sqlite3_finalize(statement) }
 
-        var items: [DatabaseGameItem] = []
+        var buckets: [CatalogGameBucket] = []
         while sqlite3_step(statement) == SQLITE_ROW {
             let rootID = sqlite3_column_int64(statement, 0)
             let rootPath = sqliteString(statement, index: 1)
-            let rawName = sqliteString(statement, index: 2).trimmingCharacters(in: .whitespacesAndNewlines)
-            let systemName = sqliteString(statement, index: 3).trimmingCharacters(in: .whitespacesAndNewlines)
-            let name = rawName.isEmpty ? "Unknown Game" : rawName
-            let displayName = ZipArchiveSupport.canHandle(URL(fileURLWithPath: name))
-                ? URL(fileURLWithPath: name).lastPathComponent
-                : nil
-            let count = Int(sqlite3_column_int(statement, 4))
-            items.append(DatabaseGameItem(rootID: rootID, rootPath: rootPath, name: name, systemName: systemName, trackCount: count, displayName: displayName))
+            buckets.append(CatalogGameBucket(
+                rootID: rootID,
+                rootPath: rootPath,
+                game: sqliteString(statement, index: 2),
+                system: sqliteString(statement, index: 3),
+                trackCount: Int(sqlite3_column_int(statement, 4))
+            ))
         }
-        return DatabaseSidebarPresentation.disambiguateGameItems(items)
+        return CatalogBrowser.databaseGameItems(from: buckets)
     }
 
     private static func loadGameItemsFromTracks(
@@ -176,20 +175,19 @@ extension LibraryDatabase {
         }
         defer { sqlite3_finalize(statement) }
 
-        var items: [DatabaseGameItem] = []
+        var buckets: [CatalogGameBucket] = []
         while sqlite3_step(statement) == SQLITE_ROW {
             let rootID = sqlite3_column_int64(statement, 0)
             let rootPath = sqliteString(statement, index: 1)
-            let rawName = sqliteString(statement, index: 2).trimmingCharacters(in: .whitespacesAndNewlines)
-            let systemName = sqliteString(statement, index: 3).trimmingCharacters(in: .whitespacesAndNewlines)
-            let name = rawName.isEmpty ? "Unknown Game" : rawName
-            let displayName = ZipArchiveSupport.canHandle(URL(fileURLWithPath: name))
-                ? URL(fileURLWithPath: name).lastPathComponent
-                : nil
-            let count = Int(sqlite3_column_int(statement, 4))
-            items.append(DatabaseGameItem(rootID: rootID, rootPath: rootPath, name: name, systemName: systemName, trackCount: count, displayName: displayName))
+            buckets.append(CatalogGameBucket(
+                rootID: rootID,
+                rootPath: rootPath,
+                game: sqliteString(statement, index: 2),
+                system: sqliteString(statement, index: 3),
+                trackCount: Int(sqlite3_column_int(statement, 4))
+            ))
         }
-        return DatabaseSidebarPresentation.disambiguateGameItems(items)
+        return CatalogBrowser.databaseGameItems(from: buckets)
     }
 
     private static func loadFileItems(handle: OpaquePointer) throws -> [DatabaseFileItem] {

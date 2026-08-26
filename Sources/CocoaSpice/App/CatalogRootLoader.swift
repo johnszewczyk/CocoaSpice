@@ -1,4 +1,5 @@
 import CatalogReader
+import CatalogBrowserCore
 import CatalogSessionCore
 import Foundation
 
@@ -6,6 +7,19 @@ import Foundation
 /// Playlist activation uses the shared CatalogReader projection so the native
 /// and WebKit frontends consume the same root/game/system selection semantics.
 enum CatalogBrowser {
+    static func databaseGameItems(from buckets: [CatalogGameBucket]) -> [DatabaseGameItem] {
+        CatalogBrowserProjection.games(from: buckets).map { game in
+            DatabaseGameItem(
+                rootID: game.rootID,
+                rootPath: game.rootPath,
+                name: game.name,
+                systemName: game.system,
+                trackCount: game.trackCount,
+                displayName: game.displayName
+            )
+        }
+    }
+
     static func roots(databaseURL: URL) throws -> [CatalogRoot] {
         try ReadOnlyCatalog(databaseURL: databaseURL).roots().map {
             CatalogRoot(
@@ -21,26 +35,10 @@ enum CatalogBrowser {
         databaseURL: URL,
         preferFoldersOverMetadata: Bool = true
     ) throws -> [DatabaseGameItem] {
-        let items = try CatalogSidebarReader.gameBuckets(
+        databaseGameItems(from: try CatalogSidebarReader.gameBuckets(
             databaseURL: databaseURL,
             preferFoldersOverMetadata: preferFoldersOverMetadata
-        ).map { bucket in
-            let name = bucket.game.trimmingCharacters(in: .whitespacesAndNewlines)
-            return DatabaseGameItem(
-                rootID: bucket.rootID,
-                rootPath: bucket.rootPath,
-                name: name.isEmpty ? "Unknown Game" : name,
-                systemName: bucket.system,
-                trackCount: bucket.trackCount
-            )
-        }
-        return DatabaseSidebarPresentation.disambiguateGameItems(items).sorted {
-            let name = $0.name.localizedCaseInsensitiveCompare($1.name)
-            if name != .orderedSame { return name == .orderedAscending }
-            let system = $0.systemName.localizedCaseInsensitiveCompare($1.systemName)
-            if system != .orderedSame { return system == .orderedAscending }
-            return $0.rootPath.localizedCaseInsensitiveCompare($1.rootPath) == .orderedAscending
-        }
+        ))
     }
 
     static func fileItems(databaseURL: URL) throws -> [DatabaseFileItem] {

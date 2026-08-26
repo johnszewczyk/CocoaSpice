@@ -1,4 +1,5 @@
 import AppKit
+import CatalogReader
 import Foundation
 import Testing
 @testable import CocoaSpice
@@ -10,17 +11,17 @@ import Testing
 }
 
 @Test func databaseSidebarDisambiguatesDuplicateGameTitlesBySystem() {
-    let items = DatabaseSidebarPresentation.disambiguateGameItems([
-        DatabaseGameItem(rootID: 1, rootPath: "/music/JoshW", name: "Mega Man", systemName: "NES", trackCount: 10),
-        DatabaseGameItem(rootID: 2, rootPath: "/music/SNESMusicOrg", name: "Mega Man", systemName: "Game Boy", trackCount: 12),
-        DatabaseGameItem(rootID: 1, rootPath: "/music/JoshW", name: "Actraiser", systemName: "SNES", trackCount: 18)
+    let items = CatalogBrowser.databaseGameItems(from: [
+        CatalogGameBucket(rootID: 1, rootPath: "/music/JoshW", game: "Mega Man", system: "NES", trackCount: 10),
+        CatalogGameBucket(rootID: 2, rootPath: "/music/SNESMusicOrg", game: "Mega Man", system: "Game Boy", trackCount: 12),
+        CatalogGameBucket(rootID: 1, rootPath: "/music/JoshW", game: "Actraiser", system: "SNES", trackCount: 18)
     ])
 
-    #expect(items[0].id != items[1].id)
-    #expect(items[0].displayName == "Mega Man (NES)")
+    #expect(items.map(\.name) == ["Actraiser", "Mega Man", "Mega Man"])
+    #expect(items[1].id != items[2].id)
     #expect(items[1].displayName == "Mega Man (Game Boy)")
-    #expect(items[2].displayName == "Actraiser")
-    #expect(items[0].searchableName.contains("nes"))
+    #expect(items[2].displayName == "Mega Man (NES)")
+    #expect(items[2].searchableName.contains("nes"))
 }
 
 @Test func displayNamesStripWholeCompressedTarSuffixes() {
