@@ -7,15 +7,39 @@
 ## Ownership
 
 - VGMBoyKit owns format routing, decoder bridges, audio output, timing, Long Play, tempo, fade, and equalizer processing.
-- CocoaSpice owns playlist membership, queue navigation, repeat/shuffle policy, database rows, archive materialization, UI, and macOS transport registration.
-- CocoaSpice owns the remembered AAC destination and the playlist context-menu action; VGMBoy owns
-  the offline AAC render once CocoaSpice has materialized an archive member to a naked playable file.
+- CocoaSpice owns playlist membership, queue navigation, repeat/shuffle policy,
+  database rows, archive source identity/cache presentation, UI, and macOS
+  transport registration. `FrontendCore.ArchivePlaybackMaterializer` owns the
+  shared selected-entry/complete-set materialization orchestration and
+  dependency preparation used by both CocoaSpice and SPCBoyWK; CocoaSpice does
+  not access decoder implementations.
+- CocoaSpice owns the remembered AAC destination and the playlist context-menu
+  action; the shared intake produces a naked playable file and VGMBoy owns the
+  offline AAC render.
 
 ## Invariants
 
+- `VGMBoyKit.FormatRegistry.playbackDescriptors` is the complete frontend capability projection.
+  CocoaSpice's `PlaybackFormatRegistry` is only an archive-admission adapter and must not rebuild
+  extension unions, backend IDs, Long Play, tempo, or natural-ending flags.
+- `VGMBoyKit.PlaybackPreferences` owns timing, fade, EQ, volume, mono, and native-tempo
+  normalization. `AppSessionPersistence` retains CocoaSpice's UserDefaults keys and legacy-shape
+  compatibility while passing values through that shared semantic model.
+
 - `VGMBoyPlaybackEngine` is the only CocoaSpice playback façade and submits typed `PlaybackControlRequest` values to `PlaybackController`.
+- `PlaybackRequestCore.PlaybackSerialExecutor` is the shared command-serialization boundary. CocoaSpice relinks its existing VGMBoy session queue through that primitive; request cancellation and UI generation remain in `PlaybackRequestState`.
+- SPCBoyWK uses the same native request lifecycle and shared queue/fade
+  contracts. Its WebKit finalizer captures the request generation before an
+  awaited queue lookup and drops stale completion work, matching CocoaSpice's
+  newest-request-wins boundary.
 - `PlaybackControlSurface` is read once from the bundled controller and is the capability gate for CocoaSpice Audio-panel mappings. Volume and Mono submit their core requests through that one mapping point; no CocoaSpice audio DSP or alternative output path exists.
-- CocoaSpice passes a materialized naked playable file path and its subtrack index to VGMBoy. Archive policy remains CocoaSpice-owned.
+- CocoaSpice passes a materialized naked playable file path and its subtrack
+  index to VGMBoy. The format-owned materialization requirement comes from
+  `VGMBoyKit.FormatRegistry`; `FrontendCore.ArchivePlaybackMaterializer`
+  owns cache identity, warm-hit behavior, atomic staging, completion markers,
+  limit enforcement, dependency preparation, playable-output validation, and
+  cache-lease activation. CocoaSpice supplies only cache preferences and
+  catalog/playback presentation around that shared result.
 - `VGMBoyPlaybackEngine` builds the shared `PlaybackTimingRequest` from the selected path and
   Long Play state. Ordinary file-default timing sends no play length, so VGMBoy derives the
   natural window from decoder metadata. Long Play alone supplies the manual duration; a catalog

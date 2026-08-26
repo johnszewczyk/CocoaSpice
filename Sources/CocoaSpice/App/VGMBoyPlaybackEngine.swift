@@ -1,11 +1,12 @@
 import Foundation
+import PlaybackRequestCore
 import VGMBoyKit
 
 /// CocoaSpice's playlist-facing wrapper around the bundled VGMBoyKit core.
 /// Queue ownership remains here; decoded audio, timing, EQ, and transport do not.
 final class PlaybackEngine: @unchecked Sendable {
     private let controller = PlaybackController()
-    private let queue = DispatchQueue(label: "CocoaSpice.vgmboy-playback", qos: .userInitiated)
+    private let queue = PlaybackSerialExecutor(label: "CocoaSpice.vgmboy-playback", qos: .userInitiated)
     private let exportQueue = DispatchQueue(label: "CocoaSpice.vgmboy-export", qos: .utility)
     private let requestLock = NSLock()
     private var latestPlaybackRequest = 0
@@ -32,7 +33,17 @@ final class PlaybackEngine: @unchecked Sendable {
     }
 
     func setEqualizer(enabled: Bool, bandGains: [Float]) {
-        _ = controller.perform(.init(command: .setEqualizer, payload: .init(equalizer: .init(enabled: enabled, gainsDecibels: bandGains))))
+        let preferences = PlaybackPreferences(
+            equalizerEnabled: enabled,
+            equalizerBandGains: bandGains
+        )
+        queue.async { [weak self] in
+            guard let self else { return }
+            _ = controller.perform(.init(
+                command: .setEqualizer,
+                payload: .init(equalizer: preferences.equalizer)
+            ))
+        }
     }
 
     func setPlaybackStateHandler(_ handler: (@Sendable (PlaybackStatusSnapshot) -> Void)?) {
@@ -80,6 +91,15 @@ final class PlaybackEngine: @unchecked Sendable {
         }
     }
 
+    func restoreOutputGain() async {
+        await run {
+            _ = self.controller.perform(.init(
+                command: .rampOutputGain,
+                payload: .init(outputGain: 1, rampMilliseconds: 10)
+            ))
+        }
+    }
+
     func stopPlayback() async {
         await run {
             _ = self.controller.perform(.init(command: .stop))
@@ -117,22 +137,24 @@ final class PlaybackEngine: @unchecked Sendable {
     }
 
     func diagnosticsSnapshot() -> PlaybackDiagnosticsSnapshot {
-        let diagnostics = controller.diagnostics()
-        let status = controller.perform(.init(command: .status)).status
-        let statistics = status?.statistics
-        return PlaybackDiagnosticsSnapshot(
-            decoderFamily: statistics?.decoderFamily,
-            decoderSampleRate: statistics?.decoderSampleRate ?? 0,
-            decodedFrames: statistics?.decodedFrames ?? 0,
-            audiblePositionFrames: statistics?.audiblePositionFrames ?? 0,
-            tempo: statistics?.tempo ?? 1,
-            bufferedFrames: Int64(diagnostics.bufferedFrames),
-            ringBufferFrames: Int64(diagnostics.capacityFrames),
-            underrunCount: diagnostics.underrunCount,
-            clippedSampleCount: 0,
-            sampleRate: diagnostics.sampleRate,
-            outputHealth: diagnostics.isOutputRunning ? .running : .inactive
-        )
+        queue.sync {
+            let diagnostics = controller.diagnostics()
+            let status = controller.perform(.init(command: .status)).status
+            let statistics = status?.statistics
+            return PlaybackDiagnosticsSnapshot(
+                decoderFamily: statistics?.decoderFamily,
+                decoderSampleRate: statistics?.decoderSampleRate ?? 0,
+                decodedFrames: statistics?.decodedFrames ?? 0,
+                audiblePositionFrames: statistics?.audiblePositionFrames ?? 0,
+                tempo: statistics?.tempo ?? 1,
+                bufferedFrames: Int64(diagnostics.bufferedFrames),
+                ringBufferFrames: Int64(diagnostics.capacityFrames),
+                underrunCount: diagnostics.underrunCount,
+                clippedSampleCount: 0,
+                sampleRate: diagnostics.sampleRate,
+                outputHealth: diagnostics.isOutputRunning ? .running : .inactive
+            )
+        }
     }
     func currentTrackID() async -> TrackItem.ID? { await run { self.currentTrack?.id } }
 
@@ -208,9 +230,12 @@ final class PlaybackEngine: @unchecked Sendable {
             assertionFailure("Bundled VGMBoyKit does not expose \(command.rawValue).")
             return
         }
-        let event = controller.perform(.init(command: command, payload: payload))
-        if event.kind == .error {
-            assertionFailure(event.message ?? "VGMBoyKit rejected \(command.rawValue).")
+        queue.async { [weak self] in
+            guard let self else { return }
+            let event = controller.perform(.init(command: command, payload: payload))
+            if event.kind == .error {
+                assertionFailure(event.message ?? "VGMBoyKit rejected \(command.rawValue).")
+            }
         }
     }
 
@@ -253,10 +278,10 @@ struct PlaybackStatusSnapshot: Sendable {
 enum AudioEqualizer {
     static let bandFrequencies = EqualizerConfiguration.bandFrequencies
     static let gainRange = EqualizerConfiguration.gainRange
-    static func clampedGain(_ value: Float) -> Float { min(max(value, gainRange.lowerBound), gainRange.upperBound) }
+    static func clampedGain(_ value: Float) -> Float { PlaybackPreferences.clampedEqualizerGain(value) }
 }
 
 enum AudioOutputVolume {
-    static let range: ClosedRange<Float> = 0...1
-    static func clamped(_ value: Float) -> Float { min(max(value, range.lowerBound), range.upperBound) }
+    static let range = PlaybackPreferences.volumeRange
+    static func clamped(_ value: Float) -> Float { PlaybackPreferences.clampedVolume(value) }
 }

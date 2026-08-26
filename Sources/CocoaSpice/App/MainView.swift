@@ -304,6 +304,10 @@ private struct FavoritesSidebarListView: NSViewRepresentable {
             play.representedObject = rows[row].track.id
             play.target = self
             menu.addItem(play)
+            let showInFinder = NSMenuItem(title: "Show in Finder", action: #selector(showFavoriteInFinder(_:)), keyEquivalent: "")
+            showInFinder.representedObject = rows[row].track.url
+            showInFinder.target = self
+            menu.addItem(showInFinder)
             let remove = NSMenuItem(title: "Remove from Favorites", action: #selector(removeFavorite(_:)), keyEquivalent: "")
             remove.representedObject = rows[row].track.id
             remove.target = self
@@ -315,6 +319,11 @@ private struct FavoritesSidebarListView: NSViewRepresentable {
             guard let id = sender.representedObject as? String,
                   let row = rows.first(where: { $0.track.id == id }) else { return }
             model.playNowTrack(row.track)
+        }
+
+        @objc private func showFavoriteInFinder(_ sender: NSMenuItem) {
+            guard let url = sender.representedObject as? URL else { return }
+            model.showOnDisk(url)
         }
 
         @objc private func removeFavorite(_ sender: NSMenuItem) {
@@ -596,7 +605,7 @@ private struct DatabaseGameListView: NSViewRepresentable {
             }
 
             guard needsContentReload else {
-                syncSelection(in: tableView, refreshHighlight: false)
+                syncSelection(in: tableView, refreshHighlight: false, scrollToSelection: selectionChanged)
                 return
             }
 
@@ -607,11 +616,15 @@ private struct DatabaseGameListView: NSViewRepresentable {
                 guard let self, let tableView else { return }
                 self.reloadScheduled = false
                 tableView.reloadData()
-                self.syncSelection(in: tableView, refreshHighlight: true)
+                self.syncSelection(in: tableView, refreshHighlight: true, scrollToSelection: selectionChanged)
             }
         }
 
-        private func syncSelection(in tableView: NSTableView, refreshHighlight: Bool) {
+        private func syncSelection(
+            in tableView: NSTableView,
+            refreshHighlight: Bool,
+            scrollToSelection: Bool = true
+        ) {
             isSynchronizingTableSelection = true
             defer { isSynchronizingTableSelection = false }
             let rows = IndexSet(cachedSidebarRows.enumerated().compactMap { index, row in
@@ -624,7 +637,7 @@ private struct DatabaseGameListView: NSViewRepresentable {
                     tableView.selectRowIndexes(rows, byExtendingSelection: false)
                     selectionChanged = true
                 }
-                if let row = rows.last {
+                if scrollToSelection, let row = rows.last {
                     tableView.scrollRowToVisible(row)
                 }
             } else if tableView.selectedRow != -1 {
@@ -730,6 +743,12 @@ private struct DatabaseGameListView: NSViewRepresentable {
             favorite.target = self
             menu.addItem(favorite)
 
+            let showInFinder = NSMenuItem(title: "Show in Finder", action: #selector(handleShowInFinder(_:)), keyEquivalent: "")
+            showInFinder.representedObject = URL(fileURLWithPath: item.rootPath).standardizedFileURL
+            showInFinder.target = self
+            showInFinder.isEnabled = !item.rootPath.isEmpty
+            menu.addItem(showInFinder)
+
             return menu
         }
 
@@ -749,6 +768,11 @@ private struct DatabaseGameListView: NSViewRepresentable {
             guard let id = sender.representedObject as? String,
                   let item = model.databaseGameItems.first(where: { $0.id == id }) else { return }
             model.toggleFavorites(for: item)
+        }
+
+        @objc private func handleShowInFinder(_ sender: NSMenuItem) {
+            guard let url = sender.representedObject as? URL else { return }
+            model.showOnDisk(url)
         }
 
         private func reloadVisibleRows() {
@@ -917,7 +941,7 @@ private struct DatabaseFileListView: NSViewRepresentable {
             }
 
             guard needsContentReload else {
-                syncSelection(in: tableView, refreshHighlight: false)
+                syncSelection(in: tableView, refreshHighlight: false, scrollToSelection: selectionChanged)
                 return
             }
             guard !reloadScheduled else { return }
@@ -928,11 +952,15 @@ private struct DatabaseFileListView: NSViewRepresentable {
                 self.isSynchronizingTableSelection = true
                 defer { self.isSynchronizingTableSelection = false }
                 tableView.reloadData()
-                self.syncSelection(in: tableView, refreshHighlight: true)
+                self.syncSelection(in: tableView, refreshHighlight: true, scrollToSelection: selectionChanged)
             }
         }
 
-        private func syncSelection(in tableView: NSTableView, refreshHighlight: Bool) {
+        private func syncSelection(
+            in tableView: NSTableView,
+            refreshHighlight: Bool,
+            scrollToSelection: Bool = true
+        ) {
             let rows = IndexSet(cachedRows.enumerated().compactMap { index, row in
                 switch row {
                 case .file(let item, _):
@@ -947,7 +975,7 @@ private struct DatabaseFileListView: NSViewRepresentable {
                     tableView.selectRowIndexes(rows, byExtendingSelection: false)
                     selectionChanged = true
                 }
-                if let row = rows.last {
+                if scrollToSelection, let row = rows.last {
                     tableView.scrollRowToVisible(row)
                 }
             } else if tableView.selectedRow != -1 {
@@ -1062,7 +1090,7 @@ private struct DatabaseFileListView: NSViewRepresentable {
                 payload: dragPayload(for: IndexSet(integer: clickedRow))
             )
             let menu = NSMenu(title: "Actions")
-            let showOnDisk = NSMenuItem(title: "Show on Disk", action: #selector(handleShowOnDisk(_:)), keyEquivalent: "")
+            let showOnDisk = NSMenuItem(title: "Show in Finder", action: #selector(handleShowOnDisk(_:)), keyEquivalent: "")
             showOnDisk.representedObject = fileURL(for: cachedRows[clickedRow])
             showOnDisk.target = self
             menu.addItem(showOnDisk)

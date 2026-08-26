@@ -11,6 +11,8 @@
 - Main shell and toolbar.
 - Playlist and queue operations.
 - Read-only database browsing and queue projections.
+- Shared `CatalogReader`, `CatalogPlaylistCore`, and `CatalogBrowserCore`
+  projections, adapted into native sidebar and playlist rows.
 - Local-folder queue enumeration through shared `LocalFileBrowserCore`.
 - VGMBoy playback controls, transport, timing, and equalizer presentation.
 - Persistence and async task ownership.

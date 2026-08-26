@@ -802,8 +802,17 @@ struct PlaylistTableView: NSViewRepresentable {
                 : model.selectedTrackID.flatMap { selectedID in
                     model.visiblePlaylist.firstIndex { $0.id == selectedID }
                 } ?? -1
+            guard row >= 0, row < model.visiblePlaylist.count else { return }
             activateRow(row)
             syncSelection(in: tableView)
+            // Enter starts the row without going through NSTableView's normal
+            // key handling. Restore both the visual selection and first
+            // responder explicitly so the next arrow key continues from the
+            // activated row instead of the pre-Enter cursor.
+            lastSelectedTrackIDs = model.selectedTrackIDs
+            lastPrimarySelectedTrackID = model.selectedTrackID
+            tableView.scrollRowToVisible(row)
+            tableView.window?.makeFirstResponder(tableView)
         }
 
         func autoSizeColumn(at columnIndex: Int) {

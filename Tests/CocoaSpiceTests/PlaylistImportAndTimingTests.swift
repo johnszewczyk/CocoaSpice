@@ -3,6 +3,17 @@ import Testing
 import VGMBoyKit
 @testable import CocoaSpice
 
+@Test func archivePreparationUsesVGMBoyFormatCapabilities() throws {
+    #expect(PlaybackFormatRegistry.archiveMaterialization(for: ["track.flac"]) == .selectedEntry)
+    #expect(PlaybackFormatRegistry.archiveMaterialization(for: ["track.psf"]) == .completeSet)
+    #expect(
+        PlaybackFormatRegistry.archiveMaterialization(for: ["track.usf"])
+            == .completeSetWithLazyUSFAliases
+    )
+    #expect(PlaybackFormatRegistry.archiveMaterialization(for: ["track.miniqsf"]) == .completeSet)
+    #expect(PlaybackFormatRegistry.archiveMaterialization(for: ["track.unknown"]) == nil)
+}
+
 @Test func droppedZipImportCreatesArchiveTracks() async throws {
     #expect(FileManager.default.isExecutableFile(atPath: "/usr/bin/zip"))
 

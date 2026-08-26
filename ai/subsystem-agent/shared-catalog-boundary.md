@@ -32,6 +32,10 @@
   not create or repair them.
 - Query failure retains the last valid sidebar snapshot.
 - Playback telemetry may update the in-memory playback display only; it never supplies catalog metadata.
+- Games playlist hydration is owned by `CatalogPlaylistCore`. Folder-system and
+  metadata-system fallback branches preserve the `tracks_game_sidebar_index`
+  access path; a root-wide `OR` fallback, source-path walk, decoder call, or
+  full UI rebuild is not an acceptable replacement.
 
 ## Files
 

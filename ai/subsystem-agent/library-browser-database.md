@@ -17,12 +17,22 @@
   when a query fails.
 - `CatalogSessionCore` supplies the read-only Games/Files bucket reader and
   the generation-guarded task owner used by the native loader.
-- `ArchiveCacheCore` owns cache-root cleanup and LRU eviction mechanics;
-  its playback lease, and the policy value model; CocoaSpice retains archive
-  format/tool selection, preference keys, and Options presentation.
-- `ArchiveMaterializationCore.ArchiveMaterializationPlan` owns the shared
-  selected-entry versus complete-set contract. CocoaSpice still owns its
-  format-specific extractor and dependency preparation.
+- `ArchiveCacheCore` owns cache-root cleanup, stable archive identity, free
+  space checks, LRU eviction mechanics, playback lease, and policy value model;
+  CocoaSpice retains only archive format/tool selection, preference keys,
+  Options presentation, user-facing error mapping, and maintenance scheduling.
+- `VGMBoyFormatCore.VGMArchiveMaterializationRequirement` and
+  `VGMBoyKit.FormatRegistry` own the format decision about selected-entry
+  versus complete-set preparation. `ArchiveMaterializationCore` owns PSF
+  closure, complete-set staging, lazyUSF aliases, TXTP aliases, cache identity,
+  warm-hit checks, atomic staging, completion markers, and cache-limit
+  orchestration plus cache-lease activation. CocoaSpice retains only
+  archive-tool closures, archive listing/manifest reads, TAR+Zstandard piping,
+  cleanup scheduling, and app-facing error mapping.
+- `ArchiveMaterializationCore.ArchiveListingParser` owns bounded
+  7-Zip/TAR/RSN listing parsing and reversible BSD-tar octal pathname
+  rendering. `ArchiveManifestReader` owns temporary, non-cache manifest reads;
+  CocoaSpice retains only process execution and tool selection.
 - `ArchiveMaterializationCore.ArchiveProcessRunner` owns bounded archive
   process permits, cancellation/timeout observation, captured stdout limits,
   and stderr collection. CocoaSpice retains the format-specific executable
@@ -38,6 +48,14 @@
   and the specialized TAR+Zstandard raw-name pipeline.
 - `PlaylistQueueLoader` converts stored game/file identities into playlist rows
   without rescanning source media.
+- `CatalogPlaylistCore` owns the indexed Games playlist projection. Its
+  folder-system and metadata-system fallback branches must remain separate so
+  the `tracks_game_sidebar_index` can be used; CocoaSpice may adapt the shared
+  rows to `TrackItem`, but must not recreate the query or inspect source files.
+- `PlaybackQueueCore` is the extracted source of truth for queue target,
+  adjacency, completion, and replacement-state transitions. CocoaSpice keeps
+  only TrackItem adapters around those ID-based rules; SPCBoyWK consumes the
+  same module through its native bridge.
 
 ## Invariants
 
@@ -63,8 +81,8 @@
 
 - Folder-first Games reads use `game_sidebar_buckets`; metadata-first Games
   reads use the selected read-only console expression over `tracks` and
-  `track_metadata`. Files reads use `file_sidebar_buckets`; search uses stored
-  FTS/projection data.
+  `track_metadata`, with index-preserving fallback branches. Files reads use
+  `file_sidebar_buckets`; search uses stored FTS/projection data.
 - Files loads only when opened and begins with roots collapsed.
 - Sidebar requests retain the last successful result while a retryable failure
   is displayed.
@@ -76,10 +94,16 @@
 - [DatabaseSidebarLoader.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarLoader.swift)
 - [CatalogSessionCore.swift](/Users/john/Downloads/Code/VGMMan/CatalogReader/Sources/CatalogSessionCore/CatalogSessionCore.swift)
 - [ArchiveCacheLifecycle.swift](/Users/john/Downloads/Code/VGMMan/FrontendCore/Sources/ArchiveCacheCore/ArchiveCacheLifecycle.swift)
+- [ArchiveCacheStore.swift](/Users/john/Downloads/Code/VGMMan/FrontendCore/Sources/ArchiveCacheCore/ArchiveCacheStore.swift)
 - [ArchivePlaybackLease.swift](/Users/john/Downloads/Code/VGMMan/FrontendCore/Sources/ArchiveCacheCore/ArchivePlaybackLease.swift)
 - [ArchiveProcessRunner.swift](/Users/john/Downloads/Code/VGMMan/FrontendCore/Sources/ArchiveMaterializationCore/ArchiveProcessRunner.swift)
+- [ArchiveCacheMaterializer.swift](/Users/john/Downloads/Code/VGMMan/FrontendCore/Sources/ArchiveMaterializationCore/ArchiveCacheMaterializer.swift)
+- [ArchiveMaterializationSession.swift](/Users/john/Downloads/Code/VGMMan/FrontendCore/Sources/ArchiveMaterializationCore/ArchiveMaterializationSession.swift)
+- [ArchiveListingParser.swift](/Users/john/Downloads/Code/VGMMan/FrontendCore/Sources/ArchiveMaterializationCore/ArchiveListingParser.swift)
+- [ArchiveManifestReader.swift](/Users/john/Downloads/Code/VGMMan/FrontendCore/Sources/ArchiveMaterializationCore/ArchiveManifestReader.swift)
 - [ArchiveEntryPath.swift](/Users/john/Downloads/Code/VGMMan/FrontendCore/Sources/ArchiveMaterializationCore/ArchiveEntryPath.swift)
 - [ArchiveToolRouting.swift](/Users/john/Downloads/Code/VGMMan/FrontendCore/Sources/ArchiveMaterializationCore/ArchiveToolRouting.swift)
 - [DatabaseSidebarPresentation.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/DatabaseSidebarPresentation.swift)
 - [PlaylistQueueLoader.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Sources/CocoaSpice/App/PlaylistQueueLoader.swift)
+- [PlaybackQueueNavigation.swift](/Users/john/Downloads/Code/VGMMan/FrontendCore/Sources/PlaybackQueueCore/PlaybackQueueNavigation.swift)
 - [DatabaseFileSidebarSelectionTests.swift](/Users/john/Downloads/Code/VGMMan/CocoaSpice/Tests/CocoaSpiceTests/DatabaseFileSidebarSelectionTests.swift)

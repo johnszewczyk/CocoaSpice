@@ -1,4 +1,5 @@
 import Foundation
+import PlaylistIdentityCore
 
 enum TrackSource: Hashable, Sendable {
     case file(URL)
@@ -113,26 +114,6 @@ enum TrackSource: Hashable, Sendable {
             .map(String.init)
             .filter { !$0.isEmpty }
             .joined(separator: "/")
-    }
-}
-
-/// A versioned, delimiter-safe identity shared by every playlist intake path.
-/// Swift's UTF-16 count intentionally matches JavaScript String.length so the
-/// sister apps can execute the same fixture without lossy path escaping.
-enum PlaylistTrackIdentity {
-    static func sourceID(sourcePath: String, archiveEntry: String?) -> String {
-        if let archiveEntry {
-            return "ps1|a|\(sourcePath.utf16.count)|\(sourcePath)|\(archiveEntry.utf16.count)|\(archiveEntry)"
-        }
-        return "ps1|f|\(sourcePath.utf16.count)|\(sourcePath)"
-    }
-
-    static func trackID(sourcePath: String, archiveEntry: String?, trackIndex: Int) -> String {
-        let index = max(0, trackIndex)
-        if let archiveEntry {
-            return "pt1|a|\(sourcePath.utf16.count)|\(sourcePath)|\(archiveEntry.utf16.count)|\(archiveEntry)|\(index)"
-        }
-        return "pt1|f|\(sourcePath.utf16.count)|\(sourcePath)|\(index)"
     }
 }
 

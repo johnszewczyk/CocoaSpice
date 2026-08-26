@@ -11,8 +11,9 @@
 - The right pane playlist is the active editable queue.
 - The playlist is shown directly without a second search/filter field or hidden filtered state; database search remains in the sidebar.
 - Rows use the versioned, delimiter-safe `pt1` playable identity: source path,
-  optional archive member path, and zero-based subtrack index. Metadata and
-  display values are excluded, so catalog metadata can never replace the row.
+  optional archive member path, and zero-based subtrack index. The format is
+  owned by shared `PlaylistIdentityCore`; metadata and display values are
+  excluded, so catalog metadata can never replace the row.
 - Double-click on a row starts playback of that row.
 - `Return` starts playback of the primary selected row.
 - The row transport button plays that row, or stops it if that row is the active playing track.

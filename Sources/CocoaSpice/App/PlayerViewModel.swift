@@ -10,6 +10,8 @@ import FavoriteTrackCore
 import OSLog
 import Observation
 import LocalFileBrowserCore
+import PlaybackQueueCore
+import PlaybackTransportCore
 import UniformTypeIdentifiers
 import VGMBoyKit
 
@@ -271,6 +273,7 @@ final class PlayerViewModel {
         )
     }
     private(set) var expandedDatabaseSystems: Set<String> = []
+    private var databaseGroupState = CatalogBrowserGroupState()
     var databaseGameItems: [DatabaseGameItem] { databaseSidebar.gameItems }
     var visibleDatabaseGameItems: [DatabaseGameItem] { databaseSidebar.visibleGameItems }
     var databaseFileItems: [DatabaseFileItem] { databaseFileSidebar.fileItems }
@@ -961,6 +964,7 @@ final class PlayerViewModel {
     }
 
     func selectDatabaseGame(_ item: DatabaseGameItem) {
+        applyDatabaseGroupState(.selectGame(groupName: sidebarSystemName(for: item), gameID: item.id))
         selectedDatabaseGameID = item.id
         selectedDatabaseGameIDs = [item.id]
         statusText = DatabaseSidebarPresentation.selectionStatusText(for: item)
@@ -970,6 +974,10 @@ final class PlayerViewModel {
         selectedDatabaseGameIDs = Set(ids)
         selectedDatabaseGameID = primaryID
         let selectedItems = databaseGameItems.filter { selectedDatabaseGameIDs.contains($0.id) }
+        if let primaryID,
+           let item = selectedItems.first(where: { $0.id == primaryID }) {
+            applyDatabaseGroupState(.selectGame(groupName: sidebarSystemName(for: item), gameID: item.id))
+        }
         if playlistFollowsCursor, !selectedItems.isEmpty {
             activateDatabaseGames(selectedItems, replace: true)
             return
@@ -1251,6 +1259,8 @@ final class PlayerViewModel {
         playlistColumnWidthHints = widthHints
 
         if replace {
+            let hadFadedSkip = fadedSkipToken != nil
+            cancelFadedSkip()
             if !preservePlayback {
                 playbackRequestState.cancel()
                 isLoading = false
@@ -1269,16 +1279,20 @@ final class PlayerViewModel {
                 // its one-shot completion so the replacement queue takes over
                 // when that decoder reaches its real end.
                 didAutoAdvanceForCurrentTrack = false
+                if hadFadedSkip {
+                    let playback = self.playback
+                    Task { await playback.restoreOutputGain() }
+                }
             }
             playlist = Self.deduplicatedTracks(tracks)
             syncManualPlaylistOrder()
             reapplyPlaylistSortIfNeeded()
-            if let currentTrack,
-               playlist.contains(where: { $0.id == currentTrack.id }) {
-                selectedTrackID = currentTrack.id
-            } else {
-                selectedTrackID = playlist.first?.id
-            }
+            let replacementState = PlaybackQueueNavigation.replacementState(
+                currentTrackID: currentTrack?.id,
+                playlistIDs: playlist.map(\.id),
+                preservePlayback: preservePlayback
+            )
+            selectedTrackID = replacementState.selectedTrackID
             selectedTrackIDs = selectedTrackID.map { [$0] } ?? []
         } else {
             appendTracksToPlaylist(
@@ -1590,9 +1604,10 @@ final class PlayerViewModel {
 
     func setSidebarSystemMode(_ enabled: Bool) {
         sidebarSystemMode = enabled
-        expandedDatabaseSystems = enabled && effectiveSidebarBrowserMode == .games && !sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        let groups = enabled && effectiveSidebarBrowserMode == .games && !sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
             : []
+        applyDatabaseGroupState(.replaceExpandedGroups(groups))
         savePreferencesNow()
     }
 
@@ -1825,11 +1840,12 @@ final class PlayerViewModel {
     }
 
     func toggleDatabaseSystemExpansion(_ systemName: String) {
-        if expandedDatabaseSystems.contains(systemName) {
-            expandedDatabaseSystems.remove(systemName)
-        } else {
-            expandedDatabaseSystems.insert(systemName)
-        }
+        applyDatabaseGroupState(.toggleGroup(systemName))
+    }
+
+    private func applyDatabaseGroupState(_ action: CatalogBrowserGroupState.Action) {
+        databaseGroupState = databaseGroupState.applying(action)
+        expandedDatabaseSystems = databaseGroupState.expandedGroupNames
     }
 
     func sidebarSystemName(for item: DatabaseGameItem) -> String {
@@ -2150,11 +2166,15 @@ final class PlayerViewModel {
     }
 
     private func requestAdjacentPlayback(_ track: TrackItem) {
-        guard fadedSkipEnabled,
-              isPlaying,
-              fadeSeconds > 0,
-              currentTrack != nil,
-              playbackElapsedSeconds < Double(effectivePreFadeSeconds) else {
+        guard let fadeDuration = PlaybackFadePolicy.queuedSkipDuration(
+            enabled: fadedSkipEnabled,
+            isPlaying: isPlaying,
+            hasCurrentTrack: currentTrack != nil,
+            elapsedSeconds: playbackElapsedSeconds,
+            preFadeSeconds: Double(effectivePreFadeSeconds),
+            fadeSeconds: Double(fadeSeconds),
+            totalSeconds: Double(totalPlaybackSeconds)
+        ) else {
             requestPlayback(for: track)
             return
         }
@@ -2168,7 +2188,6 @@ final class PlayerViewModel {
         }
 
         let token = UUID()
-        let fadeDuration = TimeInterval(fadeSeconds)
         fadedSkipToken = token
         let playback = self.playback
         fadedSkipTask = Task { @MainActor [weak self] in
@@ -2302,6 +2321,7 @@ final class PlayerViewModel {
     }
 
     func completeSeek() {
+        let hadFadedSkip = fadedSkipToken != nil
         cancelFadedSkip()
         let target = seekPreviewSeconds
         isSeeking = false
@@ -2309,6 +2329,9 @@ final class PlayerViewModel {
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
+                if hadFadedSkip {
+                    await playback.restoreOutputGain()
+                }
                 try await playback.seek(to: target)
                 self.playbackElapsedSeconds = target
                 self.updateRemoteTransportState()
@@ -2600,10 +2623,6 @@ final class PlayerViewModel {
         guard playbackReachedEnd else { return }
 
         didAutoAdvanceForCurrentTrack = true
-        if repeatMode == .song {
-            requestPlayback(for: currentTrack)
-            return
-        }
         if randomPlaybackScope == .library {
             playRandomLibraryTrackWhenReady()
             return
@@ -2612,15 +2631,13 @@ final class PlayerViewModel {
             requestPlayback(for: randomTrack)
             return
         }
-        let nextTrack = QueueTransportNavigation.completionAdvanceTarget(
-            currentTrack: currentTrack,
-            playlist: playlist
-        )
-        guard let nextTrack else {
-            guard repeatMode == .playlist, let firstTrack = playlist.first else { return }
-            requestPlayback(for: firstTrack)
-            return
-        }
+        guard let sharedRepeatMode = PlaybackRepeatMode(rawValue: repeatMode.rawValue),
+              let nextTrackID = PlaybackQueueNavigation.completionTargetID(
+                  currentTrackID: currentTrack.id,
+                  playlistIDs: playlist.map(\.id),
+                  repeatMode: sharedRepeatMode
+              ),
+              let nextTrack = playlist.first(where: { $0.id == nextTrackID }) else { return }
         requestPlayback(for: nextTrack)
     }
 
@@ -2850,7 +2867,7 @@ final class PlayerViewModel {
         finishLibraryReloadIfNeeded()
         if sidebarSystemMode,
            !sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            expandedDatabaseSystems = Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
+            applyDatabaseGroupState(.replaceExpandedGroups(Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })))
         }
         if randomPlaybackScope == .library {
             randomLibraryTracks = []
@@ -2981,7 +2998,7 @@ final class PlayerViewModel {
         if sidebarSystemMode,
            sidebarBrowserMode == .games,
            !sidebarSearchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            expandedDatabaseSystems = Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
+            applyDatabaseGroupState(.replaceExpandedGroups(Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })))
         }
         if let storedSortColumn = preferences.playlistSortColumnRawValue.flatMap(PlaylistSortColumn.init(rawValue:)) {
             playlistSortColumn = storedSortColumn
@@ -3040,9 +3057,9 @@ final class PlayerViewModel {
             databaseFileSidebarSearchTaskOwner.cancel()
             databaseSidebar.searchText = sidebarSearchQuery
             if sidebarSystemMode {
-                expandedDatabaseSystems = hasQuery
+                applyDatabaseGroupState(.replaceExpandedGroups(hasQuery
                     ? Set(visibleDatabaseGameItems.map { sidebarSystemName(for: $0) })
-                    : []
+                    : []))
             }
         } else {
             databaseSidebar.searchText = ""

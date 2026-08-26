@@ -22,6 +22,9 @@
 - With `Group by Console` enabled, root console rows only expand or collapse. Game leaves retain selection, multi-select, Return, double-click, and context-menu behavior.
 - A non-empty sidebar search temporarily expands the matching system groups. Clearing the query folds every system group while retaining the library/sidebar root itself.
 - Sidebar state publishes a content revision whenever the loaded or filtered game rows change. The native table caches the flattened rows for that revision and rebuilds them only after a content, `Group by Console`, or expansion change.
+- Disclosure-only changes preserve the current viewport. Selection
+  synchronization scrolls to the selected row only after a real selection
+  change, never merely because a console group was expanded or collapsed.
 - After either native Games or Files table is first shown, both remain alive while the other is visible. A Games/Files toggle changes visibility only; it must not recreate an expanded Files hierarchy or reread SQLite.
 - Startup loads only the sidebar mode that was last selected, on its own background connection. A persisted Files view begins its Files request immediately; Games remains deferred until Games is selected, and vice versa. A large Files listing must never wait behind the Games query or delay first-window creation.
 - `DatabaseSidebarLoader` owns the Games/Files snapshot cache. A mode toggle reads an already loaded snapshot; only a scan, root-state change, maintenance write, or explicit database reset invalidates it.
