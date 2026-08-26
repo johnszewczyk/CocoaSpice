@@ -32,6 +32,7 @@
 - A failed snapshot refresh leaves the last committed snapshot intact and displays an inline error with Retry. Do not clear loaded rows or reinterpret a read failure as an empty database.
 - Games reads and activation use CatalogReader's shared folder-versus-metadata aggregation. Folder-first mode prefers MediaScanner's indexed `browser_system`, metadata-first mode prefers `track_metadata.system`, and either falls through when the preferred value is empty. Changing source preference reloads the view without mutating the scanner catalog.
 - Games search caches the candidate indices from the preceding query when new terms extend it. Query changes that are not an extension intentionally restart from the complete game list so results stay exact.
+- The candidate-index algorithm is shared through `CatalogBrowserCore.CatalogSearchIndex`; CocoaSpice adapts projected searchable fields to its native `DatabaseGameItem` rows and does not own a second matching policy.
 - File roots begin collapsed after a Files refresh. This keeps flattened native-table construction proportional to the folders the user opens instead of eagerly building every source-file row.
 - The Files sidebar builds its reusable folder graph alongside the background SQLite read. Once published, a disclosure reload walks only expanded branches; it must never rebuild the full graph on the main actor.
 

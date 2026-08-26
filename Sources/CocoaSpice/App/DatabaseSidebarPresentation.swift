@@ -1,3 +1,4 @@
+import CatalogBrowserCore
 import Foundation
 
 enum DatabaseSidebarPresentation {
@@ -11,35 +12,18 @@ enum DatabaseSidebarPresentation {
 /// the complete game list.
 struct DatabaseGameSearchIndex {
     private let items: [DatabaseGameItem]
-    private var previousTerms: [String] = []
-    private var previousMatches: [Int] = []
+    private var sharedIndex: CatalogSearchIndex
 
     init(items: [DatabaseGameItem] = []) {
         self.items = items
-        self.previousMatches = Array(items.indices)
+        self.sharedIndex = CatalogSearchIndex(searchValues: items.map {
+            "\($0.name) \($0.systemName) \($0.rootDisplayName) \($0.displayName)"
+        })
     }
 
     mutating func items(matching query: String) -> [DatabaseGameItem] {
-        let terms = query
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased()
-            .split(whereSeparator: \.isWhitespace)
-            .map(String.init)
-
-        guard !terms.isEmpty else {
-            previousTerms = []
-            previousMatches = Array(items.indices)
-            return items
+        sharedIndex.matchingIndices(query: query).compactMap { position in
+            items.indices.contains(position) ? items[position] : nil
         }
-
-        let candidates = terms.starts(with: previousTerms)
-            ? previousMatches
-            : Array(items.indices)
-        let matches = candidates.filter { index in
-            terms.allSatisfy { items[index].searchableName.contains($0) }
-        }
-        previousTerms = terms
-        previousMatches = matches
-        return matches.map { items[$0] }
     }
 }
