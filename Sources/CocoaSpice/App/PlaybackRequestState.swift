@@ -1,5 +1,6 @@
 import Foundation
 import CatalogSessionCore
+import PlaybackQueueCore
 import PlaybackRequestCore
 
 /// Owns the identity and cancellation lifecycle of the pending playback
@@ -7,10 +8,22 @@ import PlaybackRequestCore
 @MainActor
 final class PlaybackRequestState {
     private let taskOwner = PlaybackRequestLifecycle()
+    private let completionGate = PlaybackContinuationGate()
+    private var completionGeneration = 0
 
     var pendingTrack: TrackItem?
     var reachedEnd = false
-    var didAutoAdvance = false
+    var didAutoAdvance: Bool {
+        get { completionGate.isClaimed(generation: completionGeneration) }
+        set {
+            if newValue {
+                _ = completionGate.claim(generation: completionGeneration)
+            } else {
+                completionGeneration &+= 1
+                completionGate.reset()
+            }
+        }
+    }
 
     func begin(track: TrackItem) -> Int {
         let generation = taskOwner.begin()
