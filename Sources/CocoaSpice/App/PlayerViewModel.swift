@@ -2690,22 +2690,24 @@ final class PlayerViewModel {
         // thresholds can mistake a pause or a short/unknown duration for EOF.
         guard playbackReachedEnd else { return }
 
-        didAutoAdvanceForCurrentTrack = true
         if randomPlaybackScope == .library {
+            didAutoAdvanceForCurrentTrack = true
             playRandomLibraryTrackWhenReady()
             return
         }
         if randomPlaybackScope == .playlist, let randomTrack = randomPlaybackTarget() {
+            didAutoAdvanceForCurrentTrack = true
             requestPlayback(for: randomTrack)
             return
         }
         guard let sharedRepeatMode = PlaybackRepeatMode(rawValue: repeatMode.rawValue) else {
             return
         }
-        let decision = playbackQueueState.completionDecision(
+        guard let decision = playbackRequestState.completionDecision(
+            state: playbackQueueState,
             playlistIDs: playlist.map(\.id),
             repeatMode: sharedRepeatMode
-        )
+        ) else { return }
         guard case let .play(nextTrackID) = decision.action,
               let nextTrack = playlist.first(where: { $0.id == nextTrackID }) else {
             return

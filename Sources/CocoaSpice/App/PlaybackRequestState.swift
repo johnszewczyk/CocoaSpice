@@ -8,19 +8,19 @@ import PlaybackRequestCore
 @MainActor
 final class PlaybackRequestState {
     private let taskOwner = PlaybackRequestLifecycle()
-    private let completionGate = PlaybackContinuationGate()
+    private let completionCoordinator = PlaybackContinuationCoordinator()
     private var completionGeneration = 0
 
     var pendingTrack: TrackItem?
     var reachedEnd = false
     var didAutoAdvance: Bool {
-        get { completionGate.isClaimed(generation: completionGeneration) }
+        get { completionCoordinator.isClaimed(generation: completionGeneration) }
         set {
             if newValue {
-                _ = completionGate.claim(generation: completionGeneration)
+                _ = completionCoordinator.claim(generation: completionGeneration)
             } else {
                 completionGeneration &+= 1
-                completionGate.reset()
+                completionCoordinator.reset()
             }
         }
     }
@@ -31,6 +31,19 @@ final class PlaybackRequestState {
         reachedEnd = false
         didAutoAdvance = false
         return generation
+    }
+
+    func completionDecision(
+        state: PlaybackQueueState,
+        playlistIDs: [String],
+        repeatMode: PlaybackRepeatMode
+    ) -> PlaybackContinuationDecision? {
+        completionCoordinator.decision(
+            generation: completionGeneration,
+            state: state,
+            playlistIDs: playlistIDs,
+            repeatMode: repeatMode
+        )
     }
 
     func install(_ task: Task<Void, Never>, generation: Int) {
