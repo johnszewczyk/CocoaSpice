@@ -7,7 +7,7 @@ import Foundation
 enum ZipArchiveSupport {
     static var cacheDirectoryURL: URL { cacheRootURL() }
 
-    static let supportedArchiveExtensions: Set<String> = ["zip", "7z", "rsn", "tzst"]
+    static let supportedArchiveExtensions: Set<String> = ["zip", "7z", "rsn", "tzst", "zst", "zstd"]
     private static let archiveListingTimeout: TimeInterval = 30
     private static let archiveExtractionTimeout: TimeInterval = 600
     private static let archiveListingMaximumBytes = 64 * 1024 * 1024
@@ -165,6 +165,11 @@ enum ZipArchiveSupport {
             throw ArchiveError.unsupportedArchive(archiveURL)
         }
 
+        if let standaloneEntry = standaloneEntry(in: archiveURL),
+           URL(fileURLWithPath: standaloneEntry.entryPath).pathExtension.lowercased() == "m3u" {
+            return [standaloneEntry]
+        }
+
         return try listEntries(in: archiveURL).entries
             .map(normalizeEntryPath)
             .compactMap { entryPath in
@@ -185,6 +190,14 @@ enum ZipArchiveSupport {
         let archiveURL = archiveURL.standardizedFileURL
         guard canHandle(archiveURL) else {
             throw ArchiveError.unsupportedArchive(archiveURL)
+        }
+
+        if let standaloneEntry = standaloneEntry(in: archiveURL) {
+            let ext = URL(fileURLWithPath: standaloneEntry.entryPath).pathExtension.lowercased()
+            guard supportedExtensions.contains(ext) else {
+                return PlayableEntryListing(entries: [], scanSignature: nil)
+            }
+            return PlayableEntryListing(entries: [standaloneEntry], scanSignature: nil)
         }
 
         let listing = try listEntries(in: archiveURL)
@@ -225,6 +238,8 @@ enum ZipArchiveSupport {
             guard report.contains("Check: XXH64") else { return nil }
             return "zstd-report:\n\(report)"
         case .rsn:
+            return nil
+        case .singleFileZstandard:
             return nil
         }
     }
@@ -315,6 +330,9 @@ enum ZipArchiveSupport {
 
     static func materializeArchive(at archiveURL: URL) throws -> URL {
         let archiveURL = archiveURL.standardizedFileURL
+        guard archiveKind(for: archiveURL) != .singleFileZstandard else {
+            throw ArchiveError.unsupportedArchive(archiveURL)
+        }
         let policy = ArchiveCachePolicy.load()
         return try withCacheErrors {
             try cacheMaterializer.materializeCompleteSet(
@@ -338,6 +356,9 @@ enum ZipArchiveSupport {
     /// member only adds startup and temporary-file overhead.
     static func materializeEntries(at archiveURL: URL, entryPaths: [String]) throws -> URL {
         let archiveURL = archiveURL.standardizedFileURL
+        guard archiveKind(for: archiveURL) != .singleFileZstandard else {
+            throw ArchiveError.unsupportedArchive(archiveURL)
+        }
         let policy = ArchiveCachePolicy.load()
         return try withCacheErrors {
             let rootURL = try cacheMaterializer.materializeEntries(
@@ -470,6 +491,8 @@ enum ZipArchiveSupport {
             return try parseListingErrors {
                 try ArchiveListingParser.parseTarListing(data)
             }
+        case .singleFileZstandard:
+            throw ArchiveError.unsupportedArchive(archiveURL)
         }
     }
 
@@ -491,6 +514,13 @@ enum ZipArchiveSupport {
 
     private static func archiveKind(for archiveURL: URL) -> ArchiveContainerKind {
         ArchiveContainerKind(archiveURL: archiveURL) ?? .rsn
+    }
+
+    private static func standaloneEntry(in archiveURL: URL) -> ArchiveEntry? {
+        guard archiveKind(for: archiveURL) == .singleFileZstandard else { return nil }
+        let entryPath = archiveURL.deletingPathExtension().lastPathComponent
+        guard !entryPath.isEmpty, ArchiveEntryPath.isSafe(entryPath) else { return nil }
+        return ArchiveEntry(archiveURL: archiveURL, entryPath: entryPath)
     }
 
     private static func executable(named name: String) throws -> String {

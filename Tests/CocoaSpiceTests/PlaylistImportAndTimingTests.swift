@@ -14,6 +14,16 @@ import VGMBoyKit
     #expect(PlaybackFormatRegistry.archiveMaterialization(for: ["track.unknown"]) == nil)
 }
 
+@Test func standaloneZstandardListingUsesItsImplicitPlayableMember() throws {
+    let archiveURL = URL(fileURLWithPath: "/tmp/track.vgm.zst")
+    let listing = try ZipArchiveSupport.listPlayableEntries(
+        in: archiveURL,
+        supportedExtensions: ["vgm"]
+    )
+    #expect(listing.count == 1)
+    #expect(listing[0].entryPath == "track.vgm")
+}
+
 @Test func droppedZipImportCreatesArchiveTracks() async throws {
     #expect(FileManager.default.isExecutableFile(atPath: "/usr/bin/zip"))
 
