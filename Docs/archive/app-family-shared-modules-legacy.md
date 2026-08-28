@@ -5,15 +5,15 @@
 CocoaSpice is the native SwiftUI frontend/reference application for the current
 app family. VGMBoy owns the shared playback/decoder core and compiled
 dependency staging used by the family.
-MediaScanner is the only schema-23 catalog writer. CocoaSpice and SPCBoy select
+ScanSong is the only schema-23 catalog writer. CocoaSpice and SPCBoy select
 and validate a catalog, open it through OS-level read-only SQLite handles, load
 stored rows into playlists, and play those rows without database writeback.
 
 The former Library controls in both players are read-only catalog status pages.
 Root mutation, scanning, repair, metadata persistence, and projection building
-belong to MediaScanner. SPCBoy's JavaScript catalog scanner has been removed.
+belong to ScanSong. SPCBoy's JavaScript catalog scanner has been removed.
 
-MediaScanner currently lives in its own repository so its process and package
+ScanSong currently lives in its own repository so its process and package
 boundaries remain explicit. The eventual app-family repository may contain
 multiple frontends while continuing to build the scanner and catalog reader as
 separate modules:
@@ -21,13 +21,13 @@ separate modules:
 - CocoaSpice: native SwiftUI frontend/reference application.
 - SPCBoy: Electron frontend with the current web UI.
 - SWIFTBoy: planned Swift core plus WKWebView frontend using the SPCBoy skin.
-- MediaScanner: native GUI/CLI and sole catalog writer.
+- ScanSong: native GUI/CLI and sole catalog writer.
 - VGMBoy: playback/decoder core, dependency staging, and scanner-facing
   inspection plugin builds.
 
 ## Completed Verification
 
-- MediaScanner creates schema-23 catalogs, stages a full root, checkpoints one
+- ScanSong creates schema-23 catalogs, stages a full root, checkpoints one
   complete loose source or archive, resumes validated checkpoints, and
   publishes atomically.
 - Cancellation retains unpublished completed work and leaves the prior live
@@ -36,14 +36,14 @@ separate modules:
   on an early-closing producer pipe. The two reported Hoot fixtures completed
   as 56 tracks with no zstd exit-code-13 failures.
 - NSF/GBS and other libgme containers enumerate native child tracks.
-- CocoaSpice's integration test reads a MediaScanner catalog through its
+- CocoaSpice's integration test reads a ScanSong catalog through its
   production read-only adapter and resolves the stored game into a playable
   playlist row.
 - SPCBoy's canonical-reader test resolves a stored game into its playback row,
   exposes no mutation API, and uses an OS-level read-only SQLite worker.
 - The writer uses rollback-journal (`DELETE`) mode, leaving one self-contained
   database file that either player can open without WAL/SHM writes.
-- MediaScanner loads attached roots from the selected catalog, displays
+- ScanSong loads attached roots from the selected catalog, displays
   per-root unscanned/clean/issue status, and treats checked roots as the scan or
   detach selection.
 - Test Files validates distinct physical sources and marks missing sources in
@@ -85,10 +85,10 @@ controller. Remaining cleanup is therefore limited to:
 1. Remove legacy schema migration and catalog-write sources from the CocoaSpice
    application target.
 2. Remove obsolete scan-controller, staging, projection-write, and metadata
-   writeback tests, retaining reader and MediaScanner integration coverage.
+   writeback tests, retaining reader and ScanSong integration coverage.
 3. Split playback-only archive materialization from any remaining scan-named
    types and files.
-4. Make `MediaScannerKit` and a shared read-only `MediaCatalogKit` explicit
+4. Make `ScanSongKit` and a shared read-only `MediaCatalogKit` explicit
    package products before combining repositories.
 
 ## Shared Reader Module

@@ -1,6 +1,6 @@
 import Foundation
 
-/// A root published in the read-only MediaScanner catalog.
+/// A root published in the read-only ScanSong catalog.
 struct CatalogRoot: Identifiable, Equatable {
     let id: Int64
     let path: String

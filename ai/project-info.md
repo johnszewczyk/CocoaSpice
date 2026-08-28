@@ -3,7 +3,7 @@
 ## Product
 
 - `CocoaSpice` is a native macOS game-music playlist frontend.
-- It reads a schema-23 catalog published by MediaScanner and bundles `VGMBoyKit` for playback.
+- It reads a schema-23 catalog published by ScanSong and bundles `VGMBoyKit` for playback.
 - The product split is a read-only `Database` browser on the left and an editable `Playlist` on the right.
 
 ## Major Components
@@ -43,7 +43,7 @@ Agent engineering notes:
 
 - Human subsystem notes describe only what users can see and do.
 - Agent subsystem notes describe only current engineering constraints and ownership facts.
-- CocoaSpice never writes, scans, migrates, or enriches the selected MediaScanner catalog.
+- CocoaSpice never writes, scans, migrates, or enriches the selected ScanSong catalog.
 - Keep database browsing and queue construction separate from VGMBoy playback control.
 - Format routing, decoder integration, timing, audio output, and scanner-plugin build ownership belong to VGMBoyKit/VGMBoy; CocoaSpice must not add decoder, audio-engine, or ScanSong plugin implementations.
 - Keep the UI native and simple before inventing custom chrome.

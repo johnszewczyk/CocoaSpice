@@ -123,13 +123,13 @@ struct MainView: View {
                         ContentUnavailableView(
                             "No Database Games",
                             systemImage: "books.vertical",
-                            description: Text("Open a published MediaScanner catalog with game entries.")
+                            description: Text("Open a published ScanSong catalog with game entries.")
                         )
                     } else if model.effectiveSidebarBrowserMode == .files && model.databaseFileItems.isEmpty {
                         ContentUnavailableView(
                             "No Database Files",
                             systemImage: "folder",
-                            description: Text("Open a published MediaScanner catalog with file entries.")
+                            description: Text("Open a published ScanSong catalog with file entries.")
                         )
                     } else if model.effectiveSidebarBrowserMode == .games && model.visibleDatabaseGameItems.isEmpty {
                         ContentUnavailableView(
@@ -193,11 +193,18 @@ struct MainView: View {
 
     private var statusBar: some View {
         HStack(spacing: 12) {
-            Text(model.statusPathReadout)
+            Text(model.isExportingAAC ? model.statusText : model.statusPathReadout)
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
                 .lineLimit(1)
                 .truncationMode(.middle)
+
+            if model.isExportingAAC {
+                ProgressView(value: model.aacExportProgress)
+                    .frame(width: 96)
+                Button("Abort") { model.cancelAACExport() }
+                    .help("Cancel AAC export and remove its incomplete output")
+            }
 
             Spacer(minLength: 12)
 

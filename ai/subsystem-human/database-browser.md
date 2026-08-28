@@ -15,9 +15,9 @@
 - Group by Console: Options can group games under expandable console headings. `Prefer Folders over Metadatas` uses the catalog's recognized parent console folder (including the parent of a `.tar.zst` game archive) before embedded console metadata; when that folder tag is empty, the embedded metadata fills the gap. Disabling it reverses that source priority. Changing it reloads the read-only sidebar without rewriting the catalog.
 - Game names: use the inspected game tag when present, otherwise the archive filename for archived tracks or immediate parent-folder name for loose tracks. A recognized terminal console tag is omitted from an archive game name, while unrelated suffixes such as `[USA]` remain part of the title.
 - Rows: show track counts and scan-root status. The same game/system scanned from different library paths remains separate; only those duplicate rows include their compact source-root name (for example, `JoshW` or `SNESMusicOrg`).
-- MediaScanner incremental scans retain successful unchanged ZIP, 7z, and TAR+Zstandard archive results instead of re-inspecting their playable members.
+- ScanSong incremental scans retain successful unchanged ZIP, 7z, and TAR+Zstandard archive results instead of re-inspecting their playable members.
 - When a changed archive is rescanned, its stored member set is replaced as a whole. Renamed or removed members therefore cannot remain in the Database after a repack.
-- While MediaScanner writes, CocoaSpice continues showing its opened read-only snapshot. Choose Options > Database > Reload Library after publication to consume the current catalog without restarting or interrupting playback.
+- While ScanSong writes, CocoaSpice continues showing its opened read-only snapshot. Choose Options > Database > Reload Library after publication to consume the current catalog without restarting or interrupting playback.
 - If a database sidebar read fails, the existing list remains available and an inline Retry message shows the error instead of presenting an empty library.
 - Database reads show a loading status while the indexed snapshot is being obtained; the database view never expands by walking source folders.
 

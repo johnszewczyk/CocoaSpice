@@ -6,7 +6,7 @@ are maintained in [VGMBoy's README](../../../VGMBoy/README.md).
 
 ## Catalogs and Direct Imports
 
-- A MediaScanner catalog controls which library rows and subtracks appear in the
+- A ScanSong catalog controls which library rows and subtracks appear in the
   Database browser. CocoaSpice displays its published metadata unchanged.
 - Finder drops and `.m3u` files accept files that VGMBoyKit registers as playable.
   Direct imports use filename-derived display fallbacks; CocoaSpice does not read

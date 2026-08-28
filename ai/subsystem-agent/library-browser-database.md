@@ -7,7 +7,7 @@
 
 ## Ownership
 
-- MediaScanner is the sole catalog writer and owns roots, scanning, metadata,
+- ScanSong is the sole catalog writer and owns roots, scanning, metadata,
   console identity, checkpoints, and sidebar projections.
 - `LibraryDatabase.configuredDatabaseURL` owns launch-time path selection.
 - CocoaSpice opens the selected file with `SQLITE_OPEN_READONLY` plus
@@ -69,7 +69,7 @@
 - Track identity is root, source path, archive member, and subtrack index.
 - Game identity is `root_id + browser_game + browser_system`; same-title games
   in separate roots remain distinct.
-- Games, Files, and activation consume MediaScanner's stored projections and
+- Games, Files, and activation consume ScanSong's stored projections and
   playable leaves. They do not walk or regroup the filesystem.
 - Search is a temporary Games view independent of the underlying Games/Files
   choice. Clearing search restores that choice.

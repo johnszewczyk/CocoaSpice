@@ -84,7 +84,7 @@ extension LibraryDatabase {
         handle: OpaquePointer,
         preferFoldersOverMetadata: Bool
     ) throws -> [DatabaseGameItem] {
-        // The default folder-first view can use MediaScanner's compact durable
+        // The default folder-first view can use ScanSong's compact durable
         // projection. Do not regroup the whole catalog when the sidebar opens.
         if preferFoldersOverMetadata,
            try gameSidebarBucketsAreCurrent(handle: handle) {

@@ -11,7 +11,7 @@
   latest-task generation/cancellation primitive used by frontend loaders.
 - `CatalogPlaylistCore` owns the exact extracted CocoaSpice Games playlist query and projection.
 - `LibraryDatabase+ReadQueries.swift` owns CocoaSpice's typed adapter for shared catalog rows plus its remaining Files/folder/path projections. Both its normal bucket read and dirty-root direct SQLite read pass game buckets through `CatalogBrowserCore.CatalogBrowserProjection` before creating native `DatabaseGameItem` rows.
-- MediaScanner owns all catalog writes and durable sidebar-projection rebuilds.
+- ScanSong owns all catalog writes and durable sidebar-projection rebuilds.
 
 ## Invariants
 

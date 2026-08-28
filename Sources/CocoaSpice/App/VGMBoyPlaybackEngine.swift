@@ -7,21 +7,38 @@ import VGMBoyKit
 final class PlaybackEngine: @unchecked Sendable {
     private let transport = PlaybackTransportCoordinator(label: "CocoaSpice.vgmboy-playback")
     private let exportQueue = DispatchQueue(label: "CocoaSpice.vgmboy-export", qos: .utility)
+    private let adapterState = PlaybackAdapterState()
     private var playbackStateHandler: (@Sendable (PlaybackStatusSnapshot) -> Void)?
     private var playbackNaturalEndHandler: (@Sendable (PlaybackStatusSnapshot) -> Void)?
-    private var currentMaterializedPath: String?
-    private(set) var currentTrack: TrackItem?
-    private(set) var currentPlaybackPlan = PlaybackPlan(preFadeSeconds: 150, fadeSeconds: 6, usesNativeEnding: false, isLongPlay: false)
+
+    /// This is a lock-backed snapshot because the adapter's async playback
+    /// methods resume on a cooperative executor while transport callbacks are
+    /// delivered on the main queue. It must not expose a TrackItem across
+    /// those queues as an ordinary mutable stored property.
+    private(set) var currentTrack: TrackItem? {
+        get { adapterState.currentTrack }
+        set { adapterState.currentTrack = newValue }
+    }
 
     init() {
-        transport.setStatusHandler { [weak self] status in self?.publish(status: status) }
+        // Transport status arrives on its own serial queue. TrackItem is UI
+        // state and is replaced on the main queue; reading it here raced
+        // replacement and produced a bad Swift URL/String access on Atari ST
+        // activation. Keep this adapter's presentation handoff on main.
+        transport.setStatusHandler { [weak self] status in
+            DispatchQueue.main.async { [weak self] in
+                self?.publish(status: status)
+            }
+        }
         transport.setNaturalEndHandler { [weak self] status in
-            self?.playbackNaturalEndHandler?(PlaybackStatusSnapshot(
-                currentTrackID: self?.currentTrack?.id ?? status.currentTrackID,
-                isPlaying: status.isPlaying,
-                elapsedSeconds: status.elapsedSeconds,
-                reachedEnd: true
-            ))
+            DispatchQueue.main.async { [weak self] in
+                self?.playbackNaturalEndHandler?(PlaybackStatusSnapshot(
+                    currentTrackID: status.currentTrackID,
+                    isPlaying: status.isPlaying,
+                    elapsedSeconds: status.elapsedSeconds,
+                    reachedEnd: true
+                ))
+            }
         }
     }
 
@@ -46,6 +63,13 @@ final class PlaybackEngine: @unchecked Sendable {
     }
 
     func play(track: TrackItem, plan: PlaybackPlan, tempo: PlaybackTempo, requestID: Int) async throws {
+        // A replacement begins by retiring the previous native session. Archive
+        // materialization can fail or take time; leaving the old session alive
+        // made its elapsed clock continue beneath the newly selected row and
+        // falsely looked like the new track had loaded. A failed request must
+        // therefore be visibly stopped and surface its materialization error.
+        await transport.stop()
+        currentTrack = nil
         let url = try ZipArchiveSupport.materializePlayableFile(for: track)
         try await transport.play(
             track: PlaybackTransportTrack(id: track.id, path: url.path, trackIndex: track.trackIndex),
@@ -54,13 +78,10 @@ final class PlaybackEngine: @unchecked Sendable {
             requestID: requestID
         )
         currentTrack = track
-        currentMaterializedPath = url.path
-        currentPlaybackPlan = plan
     }
 
     func reconfigureCurrentTrack(plan: PlaybackPlan, tempo: PlaybackTempo) async throws {
         try await transport.reconfigureCurrentTrack(plan: plan, tempo: tempo)
-        currentPlaybackPlan = plan
     }
 
     func setTempo(_ tempo: PlaybackTempo) async throws {
@@ -78,7 +99,6 @@ final class PlaybackEngine: @unchecked Sendable {
     func stopPlayback() async {
         await transport.stop()
         currentTrack = nil
-        currentMaterializedPath = nil
         ZipArchiveSupport.discardDisposablePlaybackMaterialization()
     }
 
@@ -125,7 +145,14 @@ final class PlaybackEngine: @unchecked Sendable {
 
     /// Archive materialization remains a CocoaSpice concern. Once a naked
     /// playable path is ready, VGMBoy owns the offline decode and AAC write.
-    func exportAAC(track: TrackItem, plan: PlaybackPlan, outputDirectory: URL, filenameStem: String) async throws -> URL {
+    func exportAAC(
+        track: TrackItem,
+        plan: PlaybackPlan,
+        outputDirectory: URL,
+        filenameStem: String,
+        cancellation: AACExportCancellation,
+        progress: @escaping @Sendable (AACExportProgress) -> Void
+    ) async throws -> URL {
         try await withCheckedThrowingContinuation { continuation in
             exportQueue.async {
                 do {
@@ -135,7 +162,9 @@ final class PlaybackEngine: @unchecked Sendable {
                         trackIndex: track.trackIndex,
                         plan: plan,
                         outputDirectory: outputDirectory,
-                        filenameStem: filenameStem
+                        filenameStem: filenameStem,
+                        cancellation: cancellation,
+                        progress: progress
                     )
                     continuation.resume(returning: outputURL)
                 } catch {
@@ -147,11 +176,33 @@ final class PlaybackEngine: @unchecked Sendable {
 
     private func publish(status: PlaybackTransportStatus) {
         playbackStateHandler?(PlaybackStatusSnapshot(
-            currentTrackID: currentTrack?.id ?? status.currentTrackID,
+            currentTrackID: status.currentTrackID,
             isPlaying: status.isPlaying,
             elapsedSeconds: status.elapsedSeconds,
             reachedEnd: status.reachedEnd
         ))
+    }
+}
+
+/// Thread-safe presentation identity retained only by CocoaSpice's adapter.
+/// The shared transport already owns its own queue-confined string identity;
+/// this protects the frontend-specific TrackItem snapshot from crossing the
+/// async playback and callback queues unsafely.
+final class PlaybackAdapterState: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storedTrack: TrackItem?
+
+    var currentTrack: TrackItem? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return storedTrack
+        }
+        set {
+            lock.lock()
+            storedTrack = newValue
+            lock.unlock()
+        }
     }
 }
 

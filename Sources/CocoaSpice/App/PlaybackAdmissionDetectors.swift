@@ -2,7 +2,7 @@ import Foundation
 
 /// Small read-only admission checks retained by the playlist frontend. These
 /// decide whether a dropped file is a playable source; they do not inspect or
-/// write MediaScanner's catalog.
+/// write ScanSong's catalog.
 enum WwiseBankDetector {
     static func isEventBank(_ fileURL: URL) -> Bool {
         guard fileURL.pathExtension.lowercased() == "bnk",

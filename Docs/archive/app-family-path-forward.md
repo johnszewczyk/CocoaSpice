@@ -2,10 +2,10 @@
 
 ## Current Boundary
 
-MediaScanner remains a separate application and the sole schema-23 catalog
+ScanSong remains a separate application and the sole schema-23 catalog
 writer. CocoaSpice and SPCBoy each use their own strict read-only readers.
 Neither player contains a scanner/writer implementation or stages a
-MediaScanner executable. Each player owns its own playlist, UI,
+ScanSong executable. Each player owns its own playlist, UI,
 archive-materialization, and playback-client work.
 
 `VGMBoyKit` is bundled in process by native frontends. It is not a server,
@@ -16,7 +16,7 @@ control surface. Frontends own queue policy, repeat, shuffle, catalogs, and UI.
 ## SPCBoy Read-Only Boundary
 
 SPCBoy has no JavaScript catalog scanner, writer, staging database,
-root-mutation service, MediaScanner client, or staged MediaScanner executable.
+root-mutation service, ScanSong client, or staged ScanSong executable.
 Choosing a catalog opens it with SPCBoy's own SQLite worker in OS-level
 read-only/query-only mode, checks the schema version and required tables,
 returns stored catalog tallies, and closes the validation reader. No fallback

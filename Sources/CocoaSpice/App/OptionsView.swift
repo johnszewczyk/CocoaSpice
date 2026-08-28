@@ -275,10 +275,6 @@ struct OptionsView: View {
 
     private var diagnosticsPage: some View {
         VStack(alignment: .leading, spacing: 16) {
-            sectionCard(title: "Transport") {
-                diagnosticRow("Output", model.playbackDiagnostics.outputHealth.rawValue.capitalized)
-                diagnosticRow("Underruns", "\(model.playbackDiagnostics.underrunCount)")
-            }
             sectionCard(title: "Buffer") {
                 diagnosticRow(
                     "Buffer",
@@ -303,6 +299,10 @@ struct OptionsView: View {
                 Text("Output detects when the source node stops receiving render requests while CocoaSpice thinks it is playing. It cannot detect a Bluetooth radio, codec, or speaker failure after Core Audio. Counters reset for each new track.")
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
+            }
+            sectionCard(title: "Transport") {
+                diagnosticRow("Output", model.playbackDiagnostics.outputHealth.rawValue.capitalized)
+                diagnosticRow("Underruns", "\(model.playbackDiagnostics.underrunCount)")
             }
         }
     }
@@ -389,9 +389,6 @@ struct OptionsView: View {
 
     private var audioPage: some View {
         VStack(alignment: .leading, spacing: 16) {
-            appVolumeCard
-            monoCard
-            equalizerCard
             sectionCard(title: "AAC Export") {
                 Text("Export Folder")
                 pathBar(path: model.aacExportDirectoryPath, browse: model.chooseAACExportDirectory)
@@ -399,6 +396,9 @@ struct OptionsView: View {
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
             }
+            equalizerCard
+            monoCard
+            appVolumeCard
         }
     }
 
@@ -432,6 +432,7 @@ struct OptionsView: View {
 
     private var interfacePage: some View {
         VStack(alignment: .leading, spacing: 16) {
+            CocoaSpiceAnimationOptionsCard(model: model)
             interfaceAppearanceCard
 
             sectionCard(title: "Playlist Options") {
@@ -448,8 +449,6 @@ struct OptionsView: View {
                 }
                 .toggleStyle(.checkbox)
             }
-
-            CocoaSpiceAnimationOptionsCard(model: model)
 
             sectionCard(title: "Sidebar Options") {
                 Toggle(isOn: Binding(
@@ -599,74 +598,6 @@ struct OptionsView: View {
 
     private var dataPage: some View {
         VStack(alignment: .leading, spacing: 16) {
-            sectionCard(title: "Local Files") {
-                Toggle(isOn: Binding(
-                    get: { model.localBrowserEnabled },
-                    set: { model.setLocalBrowserEnabled($0) }
-                )) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Use Local Files")
-                        Text("Browse one folder directly. The database library is disabled while this is on.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .toggleStyle(.checkbox)
-
-                pathBar(
-                    path: model.localBrowserPath.isEmpty ? "No local folder selected" : model.localBrowserPath,
-                    browse: model.chooseLocalBrowserRoot
-                )
-            }
-
-            sectionCard(title: "Favorites") {
-                HStack {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text("Order")
-                        Text("Historical preserves the order favorites were added. Alphabetical changes display only.")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.secondary)
-                    }
-                    Spacer(minLength: 16)
-                    Picker("Order", selection: Binding(
-                        get: { model.favoriteSortOrder },
-                        set: { model.setFavoriteSortOrder($0) }
-                    )) {
-                        ForEach(FavoriteSortOrder.allCases) { order in
-                            Text(order.title).tag(order)
-                        }
-                    }
-                    .labelsHidden()
-                    .pickerStyle(.menu)
-                    .frame(width: 140)
-                }
-            }
-
-            sectionCard(title: "Database") {
-                pathBar(path: model.configuredLibraryDatabasePath, browse: model.chooseLibraryDatabase)
-
-                if let status = model.libraryDatabaseLocationStatus {
-                    Text(status)
-                        .font(.system(size: 11))
-                        .foregroundStyle(status.hasPrefix("Database not selected") ? .red : .secondary)
-                } else {
-                    Text("CocoaSpice reads this schema-23 catalog. MediaScanner owns scan paths, scanning, link checks, and cleanup.")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.secondary)
-                }
-
-                HStack(spacing: 8) {
-                    fullWidthActionButton("Use Default") { model.useDefaultLibraryDatabase() }
-                    fullWidthActionButton("Reload Library") { model.reloadLibrary() }
-                    fullWidthActionButton("Show in Finder") { model.showLibraryDatabaseInFinder() }
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .disabled(model.localBrowserEnabled)
-            .opacity(model.localBrowserEnabled ? 0.55 : 1)
-
             sectionCard(title: "Cache") {
                 pathBar(path: ZipArchiveSupport.cacheDirectoryURL.path, browse: model.showArchiveCacheInFinder)
                 HStack(alignment: .center, spacing: 12) {
@@ -712,6 +643,66 @@ struct OptionsView: View {
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            }
+
+            sectionCard(title: "Database") {
+                pathBar(path: model.configuredLibraryDatabasePath, browse: model.chooseLibraryDatabase)
+
+                if let status = model.libraryDatabaseLocationStatus {
+                    Text(status)
+                        .font(.system(size: 11))
+                        .foregroundStyle(status.hasPrefix("Database not selected") ? .red : .secondary)
+                } else {
+                    Text("CocoaSpice reads this schema-23 catalog. ScanSong owns scan paths, scanning, link checks, and cleanup.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+
+                HStack(spacing: 8) {
+                    fullWidthActionButton("Use Default") { model.useDefaultLibraryDatabase() }
+                    fullWidthActionButton("Reload Library") { model.reloadLibrary() }
+                    fullWidthActionButton("Show in Finder") { model.showLibraryDatabaseInFinder() }
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .disabled(model.localBrowserEnabled)
+            .opacity(model.localBrowserEnabled ? 0.55 : 1)
+
+            sectionCard(title: "Favorites") {
+                Toggle(isOn: Binding(
+                    get: { model.favoriteSortOrder == .historical },
+                    set: { model.setFavoriteSortOrder($0 ? .historical : .alphabetical) }
+                )) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Sort by Date Added")
+                        Text("Sort favorites playlist by date added.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .toggleStyle(.checkbox)
+            }
+
+            sectionCard(title: "Local Files") {
+                Toggle(isOn: Binding(
+                    get: { model.localBrowserEnabled },
+                    set: { model.setLocalBrowserEnabled($0) }
+                )) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Use Local Files")
+                        Text("Browse one folder directly. The database library is disabled while this is on.")
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .toggleStyle(.checkbox)
+
+                pathBar(
+                    path: model.localBrowserPath.isEmpty ? "No local folder selected" : model.localBrowserPath,
+                    browse: model.chooseLocalBrowserRoot
+                )
             }
         }
         .onAppear {
@@ -939,14 +930,14 @@ private struct CocoaSpiceAnimationOptionsCard: View {
 
     var body: some View {
         optionsCard(title: "Animations") {
-            timingRow(title: "Auto-Resize", detail: "Duration for automatic playlist column resizing.", enabled: Binding(
+            timingRow(title: "Auto-Resize", detail: "Duration for automatic playlist column resizing (ms).", enabled: Binding(
                 get: { model.autoResizeAnimationEnabled },
                 set: { model.setAutoResizeAnimationEnabled($0) }
             ), value: Binding(
                 get: { model.autoResizeAnimationMilliseconds },
                 set: { model.setAutoResizeAnimationMilliseconds($0) }
             ))
-            timingRow(title: "Selection Bar", detail: "Duration for playlist and sidebar selection movement.", enabled: Binding(
+            timingRow(title: "Selection Bar", detail: "Duration for playlist and sidebar selection movement (ms).", enabled: Binding(
                 get: { model.selectionAnimationEnabled },
                 set: { model.setSelectionAnimationEnabled($0) }
             ), value: Binding(
@@ -970,7 +961,6 @@ private struct CocoaSpiceAnimationOptionsCard: View {
                 .multilineTextAlignment(.trailing)
                 .frame(width: 58)
                 .disabled(!enabled.wrappedValue)
-            Text("ms").foregroundStyle(.secondary)
         }
     }
 }

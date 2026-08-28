@@ -3,7 +3,7 @@ import OSLog
 import SQLite3
 
 /// Namespace for CocoaSpice's narrow, read-only catalog queries. The catalog
-/// is created and maintained by MediaScanner; this type never opens a writable
+/// is created and maintained by ScanSong; this type never opens a writable
 /// SQLite connection or performs schema maintenance.
 final class LibraryDatabase: @unchecked Sendable {
     static let schemaVersion = 23

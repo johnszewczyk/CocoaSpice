@@ -54,7 +54,7 @@ knowledge.
   keyboard/drag-drop behavior still bind directly to `PlayerViewModel`.
   They need their own selection/query contract before a second full skin can
   replace the native main shell.
-- CocoaSpice remains read-only with respect to MediaScanner catalogs. The
+- CocoaSpice remains read-only with respect to ScanSong catalogs. The
   control surface validates a selected catalog path but never scans, writes,
   migrates, or enriches it.
 

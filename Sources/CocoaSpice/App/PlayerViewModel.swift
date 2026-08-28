@@ -443,6 +443,8 @@ final class PlayerViewModel {
     private(set) var isClearingArchiveCache = false
     var archiveCachePolicy = ArchiveCachePolicy.load()
     var isExportingAAC = false
+    var aacExportProgress = 0.0
+    private var aacExportCancellation: AACExportCancellation?
     private var selectedAACExportDirectory: URL?
     private(set) var deadLinkSummaryText = "Unavailable"
     private(set) var deadLinkCount = 0
@@ -495,7 +497,7 @@ final class PlayerViewModel {
         selectedDatabaseFileIDs.removeAll()
         selectedDatabaseFileFolders.removeAll()
         reloadDatabaseSidebar()
-        libraryDatabaseLocationStatus = "Reloading the current MediaScanner catalog…"
+        libraryDatabaseLocationStatus = "Reloading the current ScanSong catalog…"
     }
 
     var enabledCatalogRootURLs: [URL] {
@@ -555,6 +557,9 @@ final class PlayerViewModel {
             return
         }
         isExportingAAC = true
+        aacExportProgress = 0
+        let cancellation = AACExportCancellation()
+        aacExportCancellation = cancellation
         let catalogMetadata = metadataCache[track.id]
         let plan = playbackPlan(for: catalogMetadata, trackPathExtension: track.playablePathExtension)
         let destination = aacExportDirectory
@@ -568,13 +573,29 @@ final class PlayerViewModel {
                     track: track,
                     plan: plan,
                     outputDirectory: destination,
-                    filenameStem: catalogMetadata?.song.nonEmpty ?? track.displayName
+                    filenameStem: catalogMetadata?.song.nonEmpty ?? track.displayName,
+                    cancellation: cancellation,
+                    progress: { [weak self] progress in
+                        Task { @MainActor in
+                            guard let self, self.aacExportCancellation === cancellation else { return }
+                            self.aacExportProgress = progress.fractionComplete
+                            self.statusText = "Exporting \(track.displayName) to AAC… \(Int((progress.fractionComplete * 100).rounded()))%"
+                        }
+                    }
                 )
                 self.statusText = "Exported AAC: \(output.lastPathComponent)"
             } catch {
                 self.statusText = error.localizedDescription
             }
+            self.aacExportCancellation = nil
+            self.aacExportProgress = 0
         }
+    }
+
+    func cancelAACExport() {
+        guard let aacExportCancellation else { return }
+        aacExportCancellation.cancel()
+        statusText = "Cancelling AAC export…"
     }
 
     func chooseLibraryDatabase() {
@@ -2346,7 +2367,6 @@ final class PlayerViewModel {
         guard let currentTrack,
               FormatRegistry.family(for: currentTrack.playablePathExtension)?.id == backendID,
               !isLoading else { return }
-        let plan = playbackPlan(for: currentMetadata, trackPathExtension: currentTrack.playablePathExtension)
         let tempo = playbackTempo(for: currentTrack)
         isLoading = true
         statusText = "Updating tempo…"
@@ -2354,7 +2374,7 @@ final class PlayerViewModel {
         Task { @MainActor [weak self] in
             guard let self else { return }
             do {
-                try await playback.reconfigureCurrentTrack(plan: plan, tempo: tempo)
+                try await playback.setTempo(tempo)
                 let snapshot = await playback.statusSnapshot()
                 self.playbackElapsedSeconds = snapshot.elapsedSeconds
                 self.seekPreviewSeconds = snapshot.elapsedSeconds
@@ -2843,7 +2863,7 @@ final class PlayerViewModel {
 
         // Catalog rows are the sole metadata contract. CocoaSpice never
         // opens a decoder to repair or enrich them; incomplete catalog fields
-        // must be corrected by a later MediaScanner publication.
+        // must be corrected by a later ScanSong publication.
         playlistColumnWidthHints = Self.buildPlaylistColumnWidthHints(
             tracks: tracks,
             metadata: cachedMetadata
@@ -2956,8 +2976,8 @@ final class PlayerViewModel {
     }
 
     private func finishLibraryReloadIfNeeded() {
-        guard libraryDatabaseLocationStatus?.hasPrefix("Reloading the current MediaScanner catalog") == true else { return }
-        libraryDatabaseLocationStatus = "Library reloaded from the current MediaScanner catalog."
+        guard libraryDatabaseLocationStatus?.hasPrefix("Reloading the current ScanSong catalog") == true else { return }
+        libraryDatabaseLocationStatus = "Library reloaded from the current ScanSong catalog."
     }
 
     private func syncActiveRootToCatalogRoots(preferredRoot: URL? = nil) {

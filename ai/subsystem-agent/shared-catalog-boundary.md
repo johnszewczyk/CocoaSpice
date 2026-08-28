@@ -3,15 +3,15 @@
 ## Scope
 
 - Selected catalog path, visible roots, and the boundary between CocoaSpice and
-  the standalone MediaScanner.
+  the standalone ScanSong.
 
 ## Ownership
 
-- MediaScanner owns root mutation, Scan, Rebuild, cancellation, resume,
+- ScanSong owns root mutation, Scan, Rebuild, cancellation, resume,
   diagnostics, link maintenance, and every catalog write.
 - CocoaSpice owns only catalog path selection, explicit read-only reload, and
   presentation of indexed games and files.
-- `OptionsView` directs users to MediaScanner for every catalog-maintenance action.
+- `OptionsView` directs users to ScanSong for every catalog-maintenance action.
 
 ## Invariants
 
@@ -21,7 +21,7 @@
 - A catalog switch requires restart and never replaces a live SQLite handle.
   Reloading the active catalog is safe: it invalidates read-only sidebar
   snapshots and opens fresh reader connections without touching playback.
-- MediaScanner preserves the catalog's durable SQLite journal mode (including
+- ScanSong preserves the catalog's durable SQLite journal mode (including
   WAL) so active CocoaSpice and SPCBoy readers can continue while it writes.
 - Playback archive materialization and cache remain CocoaSpice-owned transient
   playback concerns; they never become scan writes.

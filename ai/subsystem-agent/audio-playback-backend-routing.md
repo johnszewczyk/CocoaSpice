@@ -35,7 +35,14 @@
   adapter around that coordinator. SPCBoyWK's `WKPlaybackBridge` is only a
   JSON request adapter around the same coordinator. Neither frontend owns a
   second controller or serial executor.
-- Request cancellation and queue/UI generation remain frontend concerns until
+- `VGMBoyPlaybackEngine` retains its frontend `TrackItem` snapshot behind a
+  lock because async playback requests and transport callbacks use different
+  executors. Callback identity comes from the coordinator's queue-confined
+  string ID; callbacks must not read the adapter's mutable TrackItem.
+- `PlaybackQueueCore.PlaybackSessionLifecycleCoordinator` owns newest-request
+  invalidation and the one-shot completion claim used by CocoaSpice. Its
+  `PlaybackRequestState` adapter retains only the pending `TrackItem` and
+  presentation-facing end state. Queue/UI identity remains frontend state until
   the queue-state extraction slice; native transport request invalidation is
   shared and occurs before a stop or replacement can race a start.
 - `PlaybackControlSurface` is read by the shared coordinator and is the
@@ -63,7 +70,9 @@
 - AAC export passes the playlist display name and the already-effective finite playback timing to
   `PlaybackTransportCoordinator`, which calls `PlaybackController.exportAAC`.
   CocoaSpice never gives VGMBoy catalog access or asks it to derive
-  a title; VGMBoy performs filename sanitation and no-overwrite collision handling.
+  a title; VGMBoy performs filename sanitation and no-overwrite collision handling. CocoaSpice shows
+  native render progress in its status bar and sends Abort through the shared cancellation token;
+  VGMBoy removes the unfinished partial file before it returns cancellation.
 - CocoaSpice does not link its former decoder bridges or create an audio engine. Duplicate playback implementations are unsupported.
 - CocoaSpice is not the owner of ScanSong's vgmstream or Highly Complete inspection plugins. Those
   executables are built and handed off by VGMBoy; CocoaSpice only provides the shared upstream

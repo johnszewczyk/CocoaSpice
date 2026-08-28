@@ -1,35 +1,30 @@
 import Foundation
 import CatalogSessionCore
 import PlaybackQueueCore
-import PlaybackRequestCore
 
 /// Owns the identity and cancellation lifecycle of the pending playback
 /// request. Playback UI and decoder state remain with `PlayerViewModel`.
 @MainActor
 final class PlaybackRequestState {
-    private let taskOwner = PlaybackRequestLifecycle()
-    private let completionCoordinator = PlaybackContinuationCoordinator()
-    private var completionGeneration = 0
+    private let lifecycle = PlaybackSessionLifecycleCoordinator()
 
     var pendingTrack: TrackItem?
     var reachedEnd = false
     var didAutoAdvance: Bool {
-        get { completionCoordinator.isClaimed(generation: completionGeneration) }
+        get { lifecycle.completionClaimed }
         set {
             if newValue {
-                _ = completionCoordinator.claim(generation: completionGeneration)
+                lifecycle.markCompletionHandled()
             } else {
-                completionGeneration &+= 1
-                completionCoordinator.reset()
+                lifecycle.resetCompletion()
             }
         }
     }
 
     func begin(track: TrackItem) -> Int {
-        let generation = taskOwner.begin()
+        let generation = lifecycle.begin()
         pendingTrack = track
         reachedEnd = false
-        didAutoAdvance = false
         return generation
     }
 
@@ -38,8 +33,7 @@ final class PlaybackRequestState {
         playlistIDs: [String],
         repeatMode: PlaybackRepeatMode
     ) -> PlaybackContinuationDecision? {
-        completionCoordinator.decision(
-            generation: completionGeneration,
+        lifecycle.completionDecision(
             state: state,
             playlistIDs: playlistIDs,
             repeatMode: repeatMode
@@ -47,19 +41,19 @@ final class PlaybackRequestState {
     }
 
     func install(_ task: Task<Void, Never>, generation: Int) {
-        taskOwner.install(task, generation: generation)
+        lifecycle.install(task, generation: generation)
     }
 
     func isCurrent(_ generation: Int) -> Bool {
-        taskOwner.isCurrent(generation)
+        lifecycle.isCurrent(generation)
     }
 
     func finish(generation: Int) {
-        taskOwner.finish(generation: generation)
+        lifecycle.finish(generation: generation)
     }
 
     func cancel(clearPendingTrack: Bool = true) {
-        taskOwner.cancel()
+        lifecycle.cancel()
         if clearPendingTrack {
             pendingTrack = nil
         }
