@@ -1,6 +1,25 @@
+import AudioToolbox
 import Foundation
 import Testing
 @testable import CocoaSpice
+import VGMBoyKit
+
+private final class AACProgressBox: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: AACExportProgress?
+
+    var last: AACExportProgress? {
+        lock.lock()
+        defer { lock.unlock() }
+        return stored
+    }
+
+    func record(_ progress: AACExportProgress) {
+        lock.lock()
+        stored = progress
+        lock.unlock()
+    }
+}
 
 @MainActor
 @Test
@@ -78,6 +97,47 @@ func residentEvil2ArchiveReplacesPlaybackThroughVGMBoy() async throws {
     #expect(status.currentTrackID == track.id)
     #expect(status.isPlaying)
     await engine.stop()
+}
+
+@MainActor
+@Test(
+    "AAC export renders an archive-backed RE2 track",
+    .enabled(
+        if: ProcessInfo.processInfo.environment["COCOASPICE_AAC_ARCHIVE"] != nil,
+        "Set COCOASPICE_AAC_ARCHIVE to run the real archive AAC check."
+    )
+)
+func archiveBackedAACExportProducesFiniteOutput() async throws {
+    let archivePath = try #require(ProcessInfo.processInfo.environment["COCOASPICE_AAC_ARCHIVE"])
+    let outputDirectory = FileManager.default.temporaryDirectory
+        .appendingPathComponent("CocoaSpice-AAC-\(UUID().uuidString)", isDirectory: true)
+    try FileManager.default.createDirectory(at: outputDirectory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: outputDirectory) }
+
+    let engine = PlaybackEngine()
+    let track = TrackItem(
+        archiveURL: URL(fileURLWithPath: archivePath),
+        entryPath: "11 Secure Place.psf"
+    )
+    let cancellation = AACExportCancellation()
+    let progressBox = AACProgressBox()
+    let output = try await engine.exportAAC(
+        track: track,
+        plan: PlaybackPlan(preFadeSeconds: 2, fadeSeconds: 0, usesNativeEnding: true, isLongPlay: false),
+        outputDirectory: outputDirectory,
+        filenameStem: "re2-aac-fixture",
+        cancellation: cancellation,
+        progress: { progress in progressBox.record(progress) }
+    )
+
+    let attributes = try FileManager.default.attributesOfItem(atPath: output.path)
+    #expect(FileManager.default.fileExists(atPath: output.path))
+    #expect((attributes[.size] as? NSNumber)?.int64Value ?? 0 > 0)
+    #expect(progressBox.last?.fractionComplete == 1)
+
+    var audioFile: AudioFileID?
+    #expect(AudioFileOpenURL(output as CFURL, .readPermission, kAudioFileAAC_ADTSType, &audioFile) == noErr)
+    if let audioFile { AudioFileClose(audioFile) }
 }
 
 @MainActor
