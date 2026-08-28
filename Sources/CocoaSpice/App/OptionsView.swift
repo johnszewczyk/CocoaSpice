@@ -749,7 +749,7 @@ struct OptionsView: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("Playlist Follows Cursor")
                         .foregroundStyle(.white)
-                    Text("Game-list selection replaces the playlist; Files view queues only on double-click or Return.")
+                    Text("Game-list selection replaces the playlist; multi-track and archive Files selections populate it, while single-track files require double-click or Return.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
                 }

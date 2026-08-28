@@ -54,7 +54,11 @@
 - Keep sidebar search focused on game leaves; it does not become a separate system search mode.
 - Do not regroup or re-signature the complete sidebar during ordinary table redraws or scrolling.
 - Keep row-status text and scan-root readouts centralized so wording changes do not drift across call sites.
-- Files mode uses a native tree interaction: triangle click, a repeat click on a selected folder, and Space toggle only that folder. Double-click and Return activate the selected file or folder rather than changing disclosure.
+- Files mode uses a native tree interaction: triangle click, a repeat click on a
+  selected folder, and Space toggle only that folder. Selecting a multi-track
+  source or archive populates the playlist; double-click and Return activate the
+  selected file or folder rather than changing disclosure. Single-track files
+  remain selection-only until double-click or Return.
 - Files disclosure geometry uses persisted point gap and child-indent values from Sidebar Options. The triangle glyph follows Sidebar Style font size while the user-selected triangle-to-label space and hierarchy offset stay exact. Child-indent changes reload visible native rows only.
 - Database sidebar tables and the playlist use one non-interactive capsule-selection overlay on full-width table chrome. A single selection glides between rows with the standard ease-in/ease-out curve; multi-selections update as individual capsules. A user-driven sidebar selection must not be immediately re-synced before that transition begins. The overlay must remain below row content and never alter native selection semantics.
 - Catalog snapshot loading remains a native session contract: Games and Files

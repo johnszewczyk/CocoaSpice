@@ -36,6 +36,14 @@ enum DatabaseFileSidebarInteraction {
         modifierFlags.intersection([.shift, .command, .control]).isEmpty
     }
 
+    /// Selecting a container or a catalog source with multiple tracks should
+    /// populate the playlist without requiring a second activation gesture.
+    /// Single-track files remain selection-only so browsing does not silently
+    /// replace a queue for ordinary files.
+    static func shouldPopulatePlaylistOnSelection(_ item: DatabaseFileItem) -> Bool {
+        item.isArchive || item.trackCount > 1
+    }
+
     static func isDisclosureHit(locationX: CGFloat, depth: Int, fontSize: CGFloat, gap: CGFloat, childIndent: CGFloat) -> Bool {
         let leading = disclosureOrigin(depth: depth, fontSize: fontSize, gap: gap, childIndent: childIndent)
         return locationX >= leading && locationX < leading + disclosureGlyphWidth(fontSize: fontSize)

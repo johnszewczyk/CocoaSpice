@@ -33,7 +33,9 @@
 ## Selection
 
 - Selection: supports native multi-selection and drag-range selection in both Games and Files views.
-- Files: selecting a folder only expands or collapses it; selection alone never changes the playlist.
+- Files: selecting a folder only expands or collapses it. Selecting a
+  multi-track source or archive populates the playlist; a single-track file
+  remains selection-only until double-click or Return.
 - Files: dragging selected file rows to the Playlist appends their stored tracks without rescanning their sources.
 - Files: clicking a single archive source immediately loads its stored archive-member tracks into the playlist.
 - Files: right-click offers Show on Disk, Set as Playlist, and Add to Playlist for source files and folders. Folder actions use the clicked folder and include all of its indexed descendant leaves.

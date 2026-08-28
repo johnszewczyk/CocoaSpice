@@ -22,7 +22,10 @@
 - Duration: set a manual playback target.
 - End Fade: enable or disable the fade and configure its duration (default six seconds). With it off, metadata-timed tracks use their native ending.
 - End Fade: Faded Skip is appended to this panel and optionally uses that same configured duration for Next and Previous while the live source continues playing; press again to advance immediately. It is not a separate options page.
-- Library Behavior: Playlist Follows Cursor applies to the Games browser; the Files browser queues only on double-click or Return. Double-Click Enqueues remains a playback control for Games.
+- Library Behavior: Playlist Follows Cursor applies to the Games browser. In
+  Files view, selecting a multi-track source or archive populates the playlist;
+  single-track files queue only on double-click or Return. Double-Click Enqueues
+  remains a playback control for Games.
 - Diagnostics: reports current PCM buffer headroom and per-track underruns from the bundled VGMBoy output. These counters cannot detect amplifier or speaker distortion.
 
 ## Export
@@ -38,7 +41,10 @@
 - Interface Style: one font size, color, and monospace setting applies consistently to both the database sidebar and playlist.
 - Each appearance card Reset restores its own default primary 12pt appearance.
 - Sidebar Options: Group by Console sorts the Database game list into consoles. Prefer Folders over Metadatas chooses the scanned archive or file's parent console folder before embedded console metadata; disabling it reverses that preference. It is a read-only sidebar reload, not a scan or database rewrite. Files Disclosure Gap sets 0–16 pt spacing between folder triangles and names in Files view. Files Child Indent is a numeric 0–32 pt field that offsets every Files-view child level; its default 8 pt is about one character at the default font size. Hide File Extensions changes only Files-view labels, never filenames stored by the database or passed to playback.
-- Library Behavior belongs to Interface: Playlist Follows Cursor applies to the Games browser; the Files browser queues only on double-click or Return. Double-Click Enqueues remains a browser behavior control for Games.
+- Library Behavior belongs to Interface: Playlist Follows Cursor applies to the
+  Games browser. In Files view, multi-track sources and archives populate the
+  playlist on selection; single-track files queue only on double-click or
+  Return. Double-Click Enqueues remains a browser behavior control for Games.
 - Every Options panel places a horizontal rule below its heading. Checkbox options use a leading checkbox with any explanatory text aligned beneath its label.
 - Playlist Options: Enable Column Auto-size defaults on and automatically resizes columns for content width on selection.
 - Animations: Auto-Resize and Selection Bar are independently checkbox-enabled (both default on) and retain their configured 0–1000 ms values when disabled; disabling one makes its effective duration 0 ms.

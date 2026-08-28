@@ -961,8 +961,9 @@ private struct DatabaseFileListView: NSViewRepresentable {
             if items.isEmpty, folders.count == 1, let folder = folders.first {
                 model.expandDatabaseFileFolder(folder.id)
             }
-            if folders.isEmpty, items.count == 1, let archive = items.first, archive.isArchive {
-                model.activateDatabaseFile(archive, replace: true)
+            if folders.isEmpty, items.count == 1, let item = items.first,
+               DatabaseFileSidebarInteraction.shouldPopulatePlaylistOnSelection(item) {
+                model.activateDatabaseFile(item, replace: true)
             }
             reloadVisibleRows()
             DatabaseSidebarTableChrome.updateSelectionHighlight(in: tableView, animated: true)

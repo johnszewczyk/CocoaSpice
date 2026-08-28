@@ -15,3 +15,34 @@ import Testing
     sidebar.toggleFolder(folderID)
     #expect(sidebar.expandedFolderIDs == [folderID])
 }
+
+@Test func multiTrackFilesPopulatePlaylistOnSelection() {
+    let sndh = DatabaseFileItem(
+        rootID: 1,
+        rootPath: "/audio/AtariST",
+        folderPath: "/audio/AtariST",
+        path: "/audio/AtariST/Zone_Warrior.sndh",
+        isArchive: false,
+        trackCount: 4
+    )
+    let singleTrack = DatabaseFileItem(
+        rootID: 1,
+        rootPath: "/audio/AtariST",
+        folderPath: "/audio/AtariST",
+        path: "/audio/AtariST/one-track.sndh",
+        isArchive: false,
+        trackCount: 1
+    )
+    let archive = DatabaseFileItem(
+        rootID: 1,
+        rootPath: "/audio/AtariST",
+        folderPath: "/audio/AtariST",
+        path: "/audio/AtariST/collection.7z",
+        isArchive: true,
+        trackCount: 1
+    )
+
+    #expect(DatabaseFileSidebarInteraction.shouldPopulatePlaylistOnSelection(sndh))
+    #expect(!DatabaseFileSidebarInteraction.shouldPopulatePlaylistOnSelection(singleTrack))
+    #expect(DatabaseFileSidebarInteraction.shouldPopulatePlaylistOnSelection(archive))
+}
