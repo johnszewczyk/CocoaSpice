@@ -2582,7 +2582,26 @@ final class PlayerViewModel {
     }
 
     var effectivePreFadeSeconds: Int {
-        playbackPlan(for: currentMetadata, trackPathExtension: currentTrack?.playablePathExtension).preFadeSeconds
+        let presentationTrack: TrackItem?
+        if isPlaying || isLoading || pendingPlaybackTrack != nil {
+            presentationTrack = currentTrack ?? transportPlaybackTarget
+        } else {
+            presentationTrack = selectedTrack() ?? currentTrack ?? transportPlaybackTarget
+        }
+        let timingMetadata: TrackMetadata? = if let presentationTrack {
+            metadataCache[presentationTrack.id] ?? (presentationTrack.id == currentTrack?.id ? currentMetadata : nil)
+        } else {
+            currentMetadata
+        }
+        return playbackPlan(
+            for: timingMetadata,
+            trackPathExtension: presentationTrack?.playablePathExtension
+        ).preFadeSeconds
+    }
+
+    private func selectedTrack() -> TrackItem? {
+        guard let selectedTrackID else { return nil }
+        return playlist.first(where: { $0.id == selectedTrackID })
     }
 
     var totalPlaybackSeconds: Int {

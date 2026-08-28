@@ -20,6 +20,7 @@
 - Natural completion: the shared transport claims and retires the finished native session first; archive lease release precedes any next-member materialization, then the shared transport starts the resolved target.
 - Database playlists: choosing an item in the sidebar immediately publishes its stored source, archive-member, subtrack, and cached metadata rows. The shared CatalogReader performs the exact Games, source, folder, and path SQLite projections; CocoaSpice does not rescan, inspect, extract, or write the catalog while hydrating that playlist.
 - Format-specific decoding, dependency handling, subtrack behavior, and timing are owned by VGMBoyKit. CocoaSpice passes a materialized playable path and catalog subtrack index; it does not inspect decoder headers or tags.
+- Before playback, the transport duration readout uses the selected catalog row's cached timing when available, including PSF `length` and `fade`; it uses the unknown-duration default only when the selected track has no catalog timing.
 - PlayStation PSF playback waits for the Play! decoder's sound stream to be ready before it reports playable PCM. Archive-backed sets retain their sibling `.psflib` files, including Resident Evil 2's root and `UNKNOWN/` library layouts.
 - AAC conversion remains responsive while it renders. The status bar shows bounded native progress and provides Abort; an incomplete conversion is removed rather than presented as an AAC file.
 - Seeking: supports forward and backward movement.

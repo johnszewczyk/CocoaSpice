@@ -70,6 +70,48 @@ func playbackAdapterStateAllowsConcurrentTrackSnapshotReplacement() {
 }
 
 @MainActor
+@Test
+func selectedCatalogMetadataDrivesPrePlaybackDurationReadout() {
+    let model = PlayerViewModel()
+    let track = TrackItem(
+        archiveURL: URL(fileURLWithPath: "/tmp/Resident Evil 2.tar.zst"),
+        entryPath: "11 Secure Place.psf"
+    )
+    let staleTrack = TrackItem(
+        archiveURL: URL(fileURLWithPath: "/tmp/Resident Evil 2.tar.zst"),
+        entryPath: "16 T-A.psf"
+    )
+    model.playlist = [track, staleTrack]
+    model.metadataCache = [track.id: TrackMetadata(
+        game: "Resident Evil 2",
+        song: "Secure Place",
+        system: "Sony PlayStation",
+        author: "",
+        comment: "",
+        introLengthMs: 0,
+        loopLengthMs: 0,
+        playLengthMs: 43_000,
+        fadeLengthMs: 10_000
+    ), staleTrack.id: TrackMetadata(
+        game: "Resident Evil 2",
+        song: "T-A",
+        system: "Sony PlayStation",
+        author: "",
+        comment: "",
+        introLengthMs: 0,
+        loopLengthMs: 0,
+        playLengthMs: 69_000,
+        fadeLengthMs: 10_000
+    )]
+    model.selectedTrackID = track.id
+    model.currentTrack = staleTrack
+    model.currentMetadata = nil
+    model.endFadeEnabled = false
+
+    #expect(model.currentTrackDurationReadout == "0:43")
+}
+
+@MainActor
 @Test(
     "Resident Evil 2 archive reaches the shared VGMBoy transport",
     .enabled(
