@@ -145,6 +145,10 @@ struct PlaylistTableView: NSViewRepresentable {
                 self != .favorite
             }
 
+            var visibilityConfigurable: Bool {
+                true
+            }
+
             var canAutoSize: Bool {
                 userConfigurable
             }
@@ -474,7 +478,7 @@ struct PlaylistTableView: NSViewRepresentable {
         nonisolated func tableView(_ tableView: NSTableView, userCanChangeVisibilityOf tableColumn: NSTableColumn) -> Bool {
             MainActor.assumeIsolated {
                 guard let column = Column(rawValue: tableColumn.identifier.rawValue) else { return false }
-                return column.userConfigurable
+                return column.visibilityConfigurable
             }
         }
 
@@ -632,17 +636,15 @@ struct PlaylistTableView: NSViewRepresentable {
         private func applyVisibility(to tableView: NSTableView) {
             let visibility = storedVisibility()
             for column in tableView.tableColumns {
-                guard let playlistColumn = Column(rawValue: column.identifier.rawValue), playlistColumn.userConfigurable else {
-                    if column.isHidden {
-                        column.isHidden = false
-                    }
-                    continue
-                }
-
-                let isHidden = visibility[playlistColumn.rawValue] == false
+                guard let playlistColumn = Column(rawValue: column.identifier.rawValue) else { continue }
+                let isHidden = playlistColumn.visibilityConfigurable && visibility[playlistColumn.rawValue] == false
                 if column.isHidden != isHidden {
                     column.isHidden = isHidden
                 }
+            }
+            if tableView.tableColumns.allSatisfy(\.isHidden),
+               let firstColumn = tableView.tableColumns.first {
+                firstColumn.isHidden = false
             }
         }
 
@@ -736,9 +738,7 @@ struct PlaylistTableView: NSViewRepresentable {
         private func persistVisibility() {
             guard let tableView else { return }
             let visibility: [String: Bool] = Dictionary(uniqueKeysWithValues: tableView.tableColumns.compactMap { column in
-                guard let playlistColumn = Column(rawValue: column.identifier.rawValue), playlistColumn.userConfigurable else {
-                    return nil
-                }
+                guard let playlistColumn = Column(rawValue: column.identifier.rawValue), playlistColumn.visibilityConfigurable else { return nil }
                 return (playlistColumn.rawValue, !column.isHidden)
             })
             model.rememberPlaylistColumnVisibility(visibility)
@@ -918,13 +918,14 @@ struct PlaylistTableView: NSViewRepresentable {
             menu.addItem(.separator())
 
             for tableColumn in tableView?.tableColumns ?? [] {
-                guard let column = Column(rawValue: tableColumn.identifier.rawValue), column.userConfigurable else {
+                guard let column = Column(rawValue: tableColumn.identifier.rawValue), column.visibilityConfigurable else {
                     continue
                 }
 
                 let item = NSMenuItem(title: column.menuTitle, action: #selector(toggleColumnVisibility(_:)), keyEquivalent: "")
                 item.target = self
                 item.state = tableColumn.isHidden ? .off : .on
+                item.isEnabled = tableColumn.isHidden || (tableView?.tableColumns.filter { !$0.isHidden }.count ?? 0) > 1
                 item.representedObject = tableColumn.identifier.rawValue
                 menu.addItem(item)
             }
@@ -1041,6 +1042,9 @@ struct PlaylistTableView: NSViewRepresentable {
                 return
             }
 
+            guard tableColumn.isHidden || tableView.tableColumns.contains(where: { !$0.isHidden && $0 !== tableColumn }) else {
+                return
+            }
             tableColumn.isHidden.toggle()
             persistVisibility()
         }
