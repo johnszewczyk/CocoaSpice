@@ -10,34 +10,12 @@ final class PlaybackRequestState {
 
     var pendingTrack: TrackItem?
     var reachedEnd = false
-    var didAutoAdvance: Bool {
-        get { lifecycle.completionClaimed }
-        set {
-            if newValue {
-                lifecycle.markCompletionHandled()
-            } else {
-                lifecycle.resetCompletion()
-            }
-        }
-    }
 
     func begin(track: TrackItem) -> Int {
         let generation = lifecycle.begin()
         pendingTrack = track
         reachedEnd = false
         return generation
-    }
-
-    func completionDecision(
-        state: PlaybackQueueState,
-        playlistIDs: [String],
-        repeatMode: PlaybackRepeatMode
-    ) -> PlaybackContinuationDecision? {
-        lifecycle.completionDecision(
-            state: state,
-            playlistIDs: playlistIDs,
-            repeatMode: repeatMode
-        )
     }
 
     func install(_ task: Task<Void, Never>, generation: Int) {

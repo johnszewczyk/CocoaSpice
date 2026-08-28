@@ -659,10 +659,7 @@ final class PlayerViewModel {
     )
     private var playlistMetadataRefreshWorkItem: DispatchWorkItem?
     private var randomLibraryPlaybackPending = false
-    private var didAutoAdvanceForCurrentTrack: Bool {
-        get { playbackRequestState.didAutoAdvance }
-        set { playbackRequestState.didAutoAdvance = newValue }
-    }
+    private var didAutoAdvanceForCurrentTrack = false
     private var playbackReachedEnd: Bool {
         get { playbackRequestState.reachedEnd }
         set { playbackRequestState.reachedEnd = newValue }
@@ -2723,7 +2720,8 @@ final class PlayerViewModel {
         guard let sharedRepeatMode = PlaybackRepeatMode(rawValue: repeatMode.rawValue) else {
             return
         }
-        guard let decision = playbackRequestState.completionDecision(
+        let playback = self.playback
+        guard let decision = playback.completionDecision(
             state: playbackQueueState,
             playlistIDs: playlist.map(\.id),
             repeatMode: sharedRepeatMode

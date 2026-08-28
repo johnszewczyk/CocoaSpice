@@ -1,4 +1,5 @@
 import Foundation
+import PlaybackQueueCore
 import PlaybackTransportCore
 import VGMBoyKit
 
@@ -109,6 +110,18 @@ final class PlaybackEngine: @unchecked Sendable {
 
     func isCurrentGeneration(_ generation: Int) async -> Bool {
         await transport.isCurrentGeneration(generation)
+    }
+
+    func completionDecision(
+        state: PlaybackQueueState,
+        playlistIDs: [String],
+        repeatMode: PlaybackRepeatMode
+    ) -> PlaybackContinuationDecision? {
+        return transport.completionDecision(
+            state: state,
+            playlistIDs: playlistIDs,
+            repeatMode: repeatMode
+        )
     }
 
     func statusSnapshot() async -> PlaybackStatusSnapshot {

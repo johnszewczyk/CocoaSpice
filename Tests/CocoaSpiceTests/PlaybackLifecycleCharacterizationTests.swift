@@ -1,51 +1,22 @@
 import Foundation
-import PlaybackQueueCore
 import Testing
 @testable import CocoaSpice
 
 @MainActor
 @Test
-func playbackRequestSupersessionResetsCompletionForTheNewTrack() {
+func playbackRequestSupersessionReplacesTheOlderFrontendRequest() {
     let requests = PlaybackRequestState()
     let firstTrack = TrackItem(url: URL(fileURLWithPath: "/tmp/first.spc"))
     let secondTrack = TrackItem(url: URL(fileURLWithPath: "/tmp/second.spc"))
     let firstGeneration = requests.begin(track: firstTrack)
-    let firstState = PlaybackQueueState(
-        currentTrackID: firstTrack.id,
-        selectedTrackID: firstTrack.id,
-        pendingTrackID: firstTrack.id
-    )
-
-    #expect(requests.completionDecision(
-        state: firstState,
-        playlistIDs: [firstTrack.id, secondTrack.id],
-        repeatMode: .off
-    ) == PlaybackContinuationDecision(action: .play(trackID: secondTrack.id)))
-    #expect(requests.completionDecision(
-        state: firstState,
-        playlistIDs: [firstTrack.id, secondTrack.id],
-        repeatMode: .off
-    ) == nil)
-
     requests.reachedEnd = true
     let secondGeneration = requests.begin(track: secondTrack)
-    let secondState = PlaybackQueueState(
-        currentTrackID: secondTrack.id,
-        selectedTrackID: secondTrack.id,
-        pendingTrackID: secondTrack.id
-    )
 
     #expect(secondGeneration != firstGeneration)
     #expect(!requests.isCurrent(firstGeneration))
     #expect(requests.isCurrent(secondGeneration))
     #expect(requests.pendingTrack?.id == secondTrack.id)
     #expect(!requests.reachedEnd)
-    #expect(!requests.didAutoAdvance)
-    #expect(requests.completionDecision(
-        state: secondState,
-        playlistIDs: [firstTrack.id, secondTrack.id],
-        repeatMode: .song
-    ) == PlaybackContinuationDecision(action: .play(trackID: secondTrack.id)))
 }
 
 @MainActor
