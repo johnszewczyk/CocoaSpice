@@ -1,12 +1,12 @@
 import Foundation
 import CatalogSessionCore
-import PlaybackQueueCore
+import PlaybackRequestCore
 
 /// Owns the identity and cancellation lifecycle of the pending playback
 /// request. Playback UI and decoder state remain with `PlayerViewModel`.
 @MainActor
 final class PlaybackRequestState {
-    private let lifecycle = PlaybackSessionLifecycleCoordinator()
+    private let lifecycle = PlaybackRequestLifecycle()
 
     var pendingTrack: TrackItem?
     var reachedEnd = false

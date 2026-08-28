@@ -39,12 +39,13 @@
   lock because async playback requests and transport callbacks use different
   executors. Callback identity comes from the coordinator's queue-confined
   string ID; callbacks must not read the adapter's mutable TrackItem.
-- `PlaybackQueueCore.PlaybackSessionLifecycleCoordinator` owns newest-request
-  invalidation and the one-shot completion claim used by CocoaSpice. Its
+- `PlaybackRequestCore.PlaybackRequestLifecycle` owns newest-request
+  invalidation for CocoaSpice's frontend playback request. Its
   `PlaybackRequestState` adapter retains only the pending `TrackItem` and
   presentation-facing end state. Queue/UI identity remains frontend state until
   the queue-state extraction slice; native transport request invalidation is
-  shared and occurs before a stop or replacement can race a start.
+  shared and occurs before a stop or replacement can race a start. Completion
+  claiming and repeat/advance policy live in the shared transport/queue core.
 - `PlaybackControlSurface` is read by the shared coordinator and is the
   capability gate for frontend Audio-panel mappings. Volume, Mono, EQ, timing,
   and transport commands all reach VGMBoy through that one mapping point; no
