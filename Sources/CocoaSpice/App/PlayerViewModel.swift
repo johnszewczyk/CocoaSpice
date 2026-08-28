@@ -2424,7 +2424,7 @@ final class PlayerViewModel {
         }
     }
 
-    private func requestPlayback(for track: TrackItem) {
+    private func requestPlayback(for track: TrackItem, afterCompletion: Bool = false) {
         cancelFadedSkip()
         if isLoading, currentTrack?.id == track.id {
             return
@@ -2440,12 +2440,22 @@ final class PlayerViewModel {
         let task = Task { [weak self] in
             guard !Task.isCancelled else { return }
             guard let self, self.playbackRequestState.isCurrent(generation) else { return }
-            await self.play(track: track, generation: generation, requestID: requestID)
+            await self.play(
+                track: track,
+                generation: generation,
+                requestID: requestID,
+                afterCompletion: afterCompletion
+            )
         }
         playbackRequestState.install(task, generation: generation)
     }
 
-    private func play(track: TrackItem, generation: Int, requestID: Int) async {
+    private func play(
+        track: TrackItem,
+        generation: Int,
+        requestID: Int,
+        afterCompletion: Bool = false
+    ) async {
         isLoading = true
         statusText = "Rendering \(track.filename)..."
 
@@ -2465,7 +2475,21 @@ final class PlayerViewModel {
             guard playbackRequestState.isCurrent(generation) else { return }
 
             let plan = playbackPlan(for: seedMetadata, trackPathExtension: track.playablePathExtension)
-            try await playback.play(track: track, plan: plan, tempo: playbackTempo(for: track), requestID: requestID)
+            if afterCompletion {
+                let decision = try await playback.continueAfterCompletion(
+                    state: playbackQueueState,
+                    playlistIDs: playlist.map(\.id),
+                    repeatMode: PlaybackRepeatMode(rawValue: repeatMode.rawValue) ?? .off,
+                    track: track,
+                    plan: plan,
+                    tempo: playbackTempo(for: track),
+                    requestID: requestID
+                )
+                guard case let .play(targetID) = decision?.action,
+                      targetID == track.id else { return }
+            } else {
+                try await playback.play(track: track, plan: plan, tempo: playbackTempo(for: track), requestID: requestID)
+            }
             guard playbackRequestState.isCurrent(generation) else { return }
             currentTrack = track
             pendingPlaybackTrack = nil
@@ -2717,20 +2741,26 @@ final class PlayerViewModel {
             requestPlayback(for: randomTrack)
             return
         }
-        guard let sharedRepeatMode = PlaybackRepeatMode(rawValue: repeatMode.rawValue) else {
-            return
-        }
-        let playback = self.playback
-        guard let decision = playback.retireCompletedPlayback(
-            state: playbackQueueState,
+        guard let sharedRepeatMode = PlaybackRepeatMode(rawValue: repeatMode.rawValue) else { return }
+        let queueState = playbackQueueState
+        let decision = queueState.completionDecision(
             playlistIDs: playlist.map(\.id),
             repeatMode: sharedRepeatMode
-        ) else { return }
-        guard case let .play(nextTrackID) = decision.action,
-              let nextTrack = playlist.first(where: { $0.id == nextTrackID }) else {
-            return
+        )
+        let playback = self.playback
+        switch decision.action {
+        case .stop:
+            guard playback.retireCompletedPlayback(
+                state: queueState,
+                playlistIDs: playlist.map(\.id),
+                repeatMode: sharedRepeatMode
+            ) != nil else { return }
+            didAutoAdvanceForCurrentTrack = true
+        case let .play(nextTrackID):
+            guard let nextTrack = playlist.first(where: { $0.id == nextTrackID }) else { return }
+            didAutoAdvanceForCurrentTrack = true
+            requestPlayback(for: nextTrack, afterCompletion: true)
         }
-        requestPlayback(for: nextTrack)
     }
 
     func cycleRepeatMode() {

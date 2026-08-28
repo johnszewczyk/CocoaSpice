@@ -123,6 +123,52 @@ final class PlaybackEngine: @unchecked Sendable {
         return decision
     }
 
+    func continueAfterCompletion(
+        state: PlaybackQueueState,
+        playlistIDs: [String],
+        repeatMode: PlaybackRepeatMode,
+        track: TrackItem,
+        plan: PlaybackPlan,
+        tempo: PlaybackTempo,
+        requestID: Int
+    ) async throws -> PlaybackContinuationDecision? {
+        guard transport.isCurrentPlaybackRequest(requestID) else {
+            throw CancellationError()
+        }
+        guard let decision = transport.retireCompletedPlayback(
+            state: state,
+            playlistIDs: playlistIDs,
+            repeatMode: repeatMode
+        ) else { return nil }
+
+        // The completed native session is gone before archive extraction starts.
+        // This prevents a slow next-member materialization from replacing the
+        // lease for a still-playing decoder.
+        ZipArchiveSupport.discardDisposablePlaybackMaterialization()
+        currentTrack = nil
+        guard case let .play(targetID) = decision.action, targetID == track.id else {
+            return decision
+        }
+
+        let url = try ZipArchiveSupport.materializePlayableFile(for: track)
+        let start = PlaybackContinuationStart(
+            track: PlaybackTransportTrack(id: track.id, path: url.path, trackIndex: track.trackIndex),
+            payload: PlaybackControlPayload(
+                path: url.path,
+                trackIndex: track.trackIndex,
+                tempo: tempo.multiplier,
+                playbackMode: plan.isLongPlay ? .longPlay : .fileDefault,
+                playMilliseconds: plan.isLongPlay ? plan.preFadeSeconds * 1_000 : nil,
+                fadeMilliseconds: plan.fadeSeconds * 1_000,
+                unknownDurationMilliseconds: plan.unknownDurationSeconds * 1_000
+            ),
+            requestID: requestID
+        )
+        try await transport.startContinuation(start)
+        currentTrack = track
+        return decision
+    }
+
     func isCurrentGeneration(_ generation: Int) async -> Bool {
         await transport.isCurrentGeneration(generation)
     }
