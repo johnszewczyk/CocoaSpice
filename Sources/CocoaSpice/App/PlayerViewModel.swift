@@ -2721,7 +2721,7 @@ final class PlayerViewModel {
             return
         }
         let playback = self.playback
-        guard let decision = playback.completionDecision(
+        guard let decision = playback.retireCompletedPlayback(
             state: playbackQueueState,
             playlistIDs: playlist.map(\.id),
             repeatMode: sharedRepeatMode

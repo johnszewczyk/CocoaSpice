@@ -108,20 +108,23 @@ final class PlaybackEngine: @unchecked Sendable {
         await transport.beginFadedSkip(duration: duration)
     }
 
-    func isCurrentGeneration(_ generation: Int) async -> Bool {
-        await transport.isCurrentGeneration(generation)
-    }
-
-    func completionDecision(
+    func retireCompletedPlayback(
         state: PlaybackQueueState,
         playlistIDs: [String],
         repeatMode: PlaybackRepeatMode
     ) -> PlaybackContinuationDecision? {
-        return transport.completionDecision(
+        guard let decision = transport.retireCompletedPlayback(
             state: state,
             playlistIDs: playlistIDs,
             repeatMode: repeatMode
-        )
+        ) else { return nil }
+        ZipArchiveSupport.discardDisposablePlaybackMaterialization()
+        currentTrack = nil
+        return decision
+    }
+
+    func isCurrentGeneration(_ generation: Int) async -> Bool {
+        await transport.isCurrentGeneration(generation)
     }
 
     func statusSnapshot() async -> PlaybackStatusSnapshot {
