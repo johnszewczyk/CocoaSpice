@@ -23,8 +23,8 @@
   snapshots and opens fresh reader connections without touching playback.
 - ScanSong preserves the catalog's durable SQLite journal mode (including
   WAL) so active CocoaSpice and SPCBoy readers can continue while it writes.
-- Playback archive materialization and cache remain CocoaSpice-owned transient
-  playback concerns; they never become scan writes.
+- Playback archive materialization and cache remain transient playback concerns
+  behind shared FrontendCore services; they never become scan writes.
 
 ## Failure Boundaries
 
