@@ -1,6 +1,7 @@
 import Foundation
 import CatalogReader
 import CatalogPlaylistCore
+import CatalogPlaylistPresentationCore
 import SQLite3
 
 extension LibraryDatabase {
@@ -44,64 +45,13 @@ extension LibraryDatabase {
         let selections = normalizedItems.map {
             CatalogPlaylistGameSelection(rootID: $0.rootID, game: $0.name, system: $0.systemName)
         }
-        let catalogTracks = try CatalogPlaylistReader.tracksForGames(
-            databaseURL: databaseURL,
-            selections: selections,
-            preferFoldersOverMetadata: preferFoldersOverMetadata
-        )
-
-        var tracks: [TrackItem] = []
-        var metadata: [String: TrackMetadata] = [:]
-        var widestFileText = ""
-        var widestTitleText = ""
-        var widestGameText = ""
-        var widestAuthorText = ""
-        var widestSystemText = ""
-        var widestLengthText = "—"
-        for catalogTrack in catalogTracks {
-            let track = track(from: catalogTrack)
-            let title = catalogTrack.title
-            let game = catalogTrack.game
-            let author = catalogTrack.author
-            let system = catalogTrack.system
-            let comment = catalogTrack.comment
-            let introLengthMs = catalogTrack.introLengthMilliseconds
-            let loopLengthMs = catalogTrack.loopLengthMilliseconds
-            let playLengthMs = catalogTrack.lengthMilliseconds
-            let fadeLengthMs = catalogTrack.fadeLengthMilliseconds
-            tracks.append(track)
-            metadata[track.id] = TrackMetadata(
-                game: game,
-                song: title,
-                system: system,
-                author: author,
-                comment: comment,
-                introLengthMs: introLengthMs,
-                loopLengthMs: loopLengthMs,
-                playLengthMs: playLengthMs,
-                fadeLengthMs: fadeLengthMs
+        return playlistProjection(from: CatalogPlaylistPresentation.project(
+            tracks: try CatalogPlaylistReader.tracksForGames(
+                databaseURL: databaseURL,
+                selections: selections,
+                preferFoldersOverMetadata: preferFoldersOverMetadata
             )
-
-            widestFileText = widerText(widestFileText, track.filename)
-            widestTitleText = widerText(widestTitleText, title.isEmpty ? track.displayName : title)
-            widestGameText = widerText(widestGameText, game.isEmpty ? track.url.deletingLastPathComponent().lastPathComponent : game)
-            widestAuthorText = widerText(widestAuthorText, author.isEmpty ? "—" : author)
-            widestSystemText = widerText(widestSystemText, system.isEmpty ? "SNES" : system)
-            let lengthText = formatLengthText(playLengthMs: playLengthMs)
-            widestLengthText = widerText(widestLengthText, lengthText)
-        }
-
-        let widthHints = PlaylistColumnWidthHints(
-            indexText: String(max(1, tracks.count)),
-            fileText: widestFileText,
-            titleText: widestTitleText,
-            gameText: widestGameText,
-            authorText: widestAuthorText,
-            systemText: widestSystemText,
-            lengthText: widestLengthText
-        )
-
-        return (tracks, metadata, widthHints)
+        ))
     }
 
     static func tracksAndMetadataForFiles(databaseURL: URL, fileItems: [DatabaseFileItem]) throws -> (tracks: [TrackItem], metadata: [String: TrackMetadata], widthHints: PlaylistColumnWidthHints) {
@@ -114,12 +64,16 @@ extension LibraryDatabase {
         let selections = normalizedItems.map {
             CatalogSourceSelection(rootID: $0.rootID, path: $0.path)
         }
-        return playlistProjection(from: try catalog.tracks(sourceSelections: selections))
+        return playlistProjection(from: CatalogPlaylistPresentation.project(
+            tracks: try catalog.tracks(sourceSelections: selections)
+        ))
     }
 
     static func tracksAndMetadataForFolder(databaseURL: URL, rootPath: String, folderPath: String) throws -> (tracks: [TrackItem], metadata: [String: TrackMetadata], widthHints: PlaylistColumnWidthHints) {
         let catalog = try ReadOnlyCatalog(databaseURL: databaseURL)
-        return playlistProjection(from: try catalog.tracks(rootPath: rootPath, folderPath: folderPath))
+        return playlistProjection(from: CatalogPlaylistPresentation.project(
+            tracks: try catalog.tracks(rootPath: rootPath, folderPath: folderPath)
+        ))
     }
 
     static func tracksAndMetadataForPaths(databaseURL: URL, paths: [String]) throws -> (tracks: [TrackItem], metadata: [String: TrackMetadata], widthHints: PlaylistColumnWidthHints) {
@@ -131,7 +85,9 @@ extension LibraryDatabase {
         }
 
         let catalog = try ReadOnlyCatalog(databaseURL: databaseURL)
-        return playlistProjection(from: try catalog.tracks(paths: normalizedPaths))
+        return playlistProjection(from: CatalogPlaylistPresentation.project(
+            tracks: try catalog.tracks(paths: normalizedPaths)
+        ))
     }
 
     static func searchFolderPaths(databaseURL: URL, query: String, limit: Int = 500) throws -> Set<String> {
@@ -397,130 +353,62 @@ extension LibraryDatabase {
         return items
     }
 
-    /// Adapts the shared catalog projection into CocoaSpice's queue and
-    /// presentation models. The database reader owns selection and metadata
-    /// retrieval; CocoaSpice retains only frontend-specific row sizing.
+    /// Adapts the shared catalog playlist projection into CocoaSpice's queue
+    /// types. The shared module owns visible data fields and content hints;
+    /// AppKit still measures those strings with its local font metrics.
     private static func playlistProjection(
-        from catalogTracks: [CatalogTrack]
+        from projection: CatalogPlaylistPresentationProjection
     ) -> (tracks: [TrackItem], metadata: [String: TrackMetadata], widthHints: PlaylistColumnWidthHints) {
         var tracks: [TrackItem] = []
         var metadata: [String: TrackMetadata] = [:]
-        var widestFileText = ""
-        var widestTitleText = ""
-        var widestGameText = ""
-        var widestAuthorText = ""
-        var widestSystemText = ""
-        var widestLengthText = "—"
 
-        for catalogTrack in catalogTracks {
-            let track = track(from: catalogTrack)
+        for row in projection.rows {
+            let track = track(from: row)
             tracks.append(track)
             metadata[track.id] = TrackMetadata(
-                game: catalogTrack.game,
-                song: catalogTrack.title,
-                system: catalogTrack.system,
-                author: catalogTrack.author,
-                comment: catalogTrack.comment,
-                introLengthMs: catalogTrack.introLengthMilliseconds,
-                loopLengthMs: catalogTrack.loopLengthMilliseconds,
-                playLengthMs: catalogTrack.lengthMilliseconds,
-                fadeLengthMs: catalogTrack.fadeLengthMilliseconds
+                game: row.game,
+                song: row.title,
+                system: row.system,
+                author: row.author,
+                comment: row.comment,
+                introLengthMs: row.introLengthMilliseconds,
+                loopLengthMs: row.loopLengthMilliseconds,
+                playLengthMs: row.lengthMilliseconds,
+                fadeLengthMs: row.fadeLengthMilliseconds
             )
-
-            widestFileText = widerText(widestFileText, track.filename)
-            widestTitleText = widerText(widestTitleText, catalogTrack.title.isEmpty ? track.displayName : catalogTrack.title)
-            widestGameText = widerText(widestGameText, catalogTrack.game.isEmpty ? track.url.deletingLastPathComponent().lastPathComponent : catalogTrack.game)
-            widestAuthorText = widerText(widestAuthorText, catalogTrack.author.isEmpty ? "—" : catalogTrack.author)
-            widestSystemText = widerText(widestSystemText, catalogTrack.system.isEmpty ? "SNES" : catalogTrack.system)
-            widestLengthText = widerText(widestLengthText, formatLengthText(playLengthMs: catalogTrack.lengthMilliseconds))
         }
 
+        let hints = projection.columnContentHints
         return (
             tracks,
             metadata,
             PlaylistColumnWidthHints(
-                indexText: String(max(1, tracks.count)),
-                fileText: widestFileText,
-                titleText: widestTitleText,
-                gameText: widestGameText,
-                authorText: widestAuthorText,
-                systemText: widestSystemText,
-                lengthText: widestLengthText
+                indexText: hints.indexText,
+                fileText: hints.fileText,
+                titleText: hints.titleText,
+                gameText: hints.gameText,
+                authorText: hints.authorText,
+                systemText: hints.systemText,
+                lengthText: hints.lengthText
             )
         )
     }
 
-    private static func readTracksAndMetadata(
-        handle: OpaquePointer?,
-        sql: String,
-        bindings: [SQLiteValue]
-    ) throws -> (tracks: [TrackItem], metadata: [String: TrackMetadata], widthHints: PlaylistColumnWidthHints) {
-        var statement: OpaquePointer?
-        guard sqlite3_prepare_v2(handle, sql, -1, &statement, nil) == SQLITE_OK else {
-            throw databaseError(handle: handle)
-        }
-        defer { sqlite3_finalize(statement) }
-
-        for (index, binding) in bindings.enumerated() {
-            sqliteBind(binding, to: statement, at: Int32(index + 1))
-        }
-
-        var tracks: [TrackItem] = []
-        var metadata: [String: TrackMetadata] = [:]
-        var widestFileText = ""
-        var widestTitleText = ""
-        var widestGameText = ""
-        var widestAuthorText = ""
-        var widestSystemText = ""
-        var widestLengthText = "—"
-
-        var stepResult = sqlite3_step(statement)
-        while stepResult == SQLITE_ROW {
-            let track = track(from: statement, pathIndex: 0, archivePathIndex: 1, archiveEntryIndex: 2, trackIndex: 3, trackCount: 4)
-            let title = sqliteString(statement, index: 5)
-            let game = sqliteString(statement, index: 6)
-            let author = sqliteString(statement, index: 7)
-            let system = sqliteString(statement, index: 8)
-            let comment = sqliteString(statement, index: 9)
-            let introLengthMs = Int(sqlite3_column_int(statement, 10))
-            let loopLengthMs = Int(sqlite3_column_int(statement, 11))
-            let playLengthMs = Int(sqlite3_column_int(statement, 12))
-            let fadeLengthMs = Int(sqlite3_column_int(statement, 13))
-
-            tracks.append(track)
-            metadata[track.id] = TrackMetadata(
-                game: game,
-                song: title,
-                system: system,
-                author: author,
-                comment: comment,
-                introLengthMs: introLengthMs,
-                loopLengthMs: loopLengthMs,
-                playLengthMs: playLengthMs,
-                fadeLengthMs: fadeLengthMs
+    private static func track(from row: CatalogPlaylistPresentationRow) -> TrackItem {
+        if let archivePath = row.archivePath,
+           let archiveEntry = row.archiveEntry {
+            return TrackItem(
+                archiveURL: URL(fileURLWithPath: archivePath, isDirectory: false),
+                entryPath: archiveEntry,
+                trackIndex: row.trackIndex,
+                trackCount: row.trackCount
             )
-
-            widestFileText = widerText(widestFileText, track.filename)
-            widestTitleText = widerText(widestTitleText, title.isEmpty ? track.displayName : title)
-            widestGameText = widerText(widestGameText, game.isEmpty ? track.url.deletingLastPathComponent().lastPathComponent : game)
-            widestAuthorText = widerText(widestAuthorText, author.isEmpty ? "—" : author)
-            widestSystemText = widerText(widestSystemText, system.isEmpty ? "SNES" : system)
-            let lengthText = formatLengthText(playLengthMs: playLengthMs)
-            widestLengthText = widerText(widestLengthText, lengthText)
-            stepResult = sqlite3_step(statement)
         }
-        guard stepResult == SQLITE_DONE else { throw databaseError(handle: handle) }
-
-        let widthHints = PlaylistColumnWidthHints(
-            indexText: String(max(1, tracks.count)),
-            fileText: widestFileText,
-            titleText: widestTitleText,
-            gameText: widestGameText,
-            authorText: widestAuthorText,
-            systemText: widestSystemText,
-            lengthText: widestLengthText
+        return TrackItem(
+            url: URL(fileURLWithPath: row.sourcePath, isDirectory: false),
+            trackIndex: row.trackIndex,
+            trackCount: row.trackCount
         )
-        return (tracks, metadata, widthHints)
     }
 
     private static func track(
@@ -551,44 +439,6 @@ extension LibraryDatabase {
             trackCount: count
         )
     }
-
-    private static func track(from catalogTrack: CatalogPlaylistTrack) -> TrackItem {
-        if let archivePath = catalogTrack.archivePath,
-           let archiveEntry = catalogTrack.archiveEntry,
-           !archivePath.isEmpty,
-           !archiveEntry.isEmpty {
-            return TrackItem(
-                archiveURL: URL(fileURLWithPath: archivePath, isDirectory: false),
-                entryPath: archiveEntry,
-                trackIndex: catalogTrack.trackIndex,
-                trackCount: catalogTrack.trackCount
-            )
-        }
-        return TrackItem(
-            url: URL(fileURLWithPath: catalogTrack.sourcePath, isDirectory: false),
-            trackIndex: catalogTrack.trackIndex,
-            trackCount: catalogTrack.trackCount
-        )
-    }
-
-    private static func track(from catalogTrack: CatalogTrack) -> TrackItem {
-        if let archivePath = catalogTrack.archivePath,
-           let archiveEntry = catalogTrack.archiveEntry,
-           !archivePath.isEmpty,
-           !archiveEntry.isEmpty {
-            return TrackItem(
-                archiveURL: URL(fileURLWithPath: archivePath, isDirectory: false),
-                entryPath: archiveEntry,
-                trackIndex: catalogTrack.trackIndex,
-                trackCount: catalogTrack.trackCount
-            )
-        }
-        return TrackItem(
-            url: URL(fileURLWithPath: catalogTrack.sourcePath, isDirectory: false),
-            trackIndex: catalogTrack.trackIndex,
-            trackCount: catalogTrack.trackCount
-        )
-    }
 }
 
 private func displayContextPath(path: String, rootPath: String) -> String {
@@ -606,16 +456,4 @@ private func displayContextPath(path: String, rootPath: String) -> String {
         return rootName
     }
     return "\(rootName)/\(relative)"
-}
-
-private func widerText(_ lhs: String, _ rhs: String) -> String {
-    rhs.count > lhs.count ? rhs : lhs
-}
-
-private func formatLengthText(playLengthMs: Int) -> String {
-    let seconds = max(0, playLengthMs > 0 ? playLengthMs / 1000 : 0)
-    guard seconds > 0 else { return "—" }
-    let minutes = seconds / 60
-    let remainder = seconds % 60
-    return String(format: "%d:%02d", minutes, remainder)
 }

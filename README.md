@@ -60,8 +60,10 @@ CocoaSpice admits the formats registered by the bundled VGMBoy core. The authori
 plugin list, upstream revisions, and direct build dependencies are maintained in
 [VGMBoy’s README](../VGMBoy/README.md).
 
-Supported archive containers are ZIP, 7z, RSN, TAR+Zstandard (`.tar.zst`/`.tzst`). CocoaSpice
-owns archive materialization policy; VGMBoy receives a playable file path rather than an archive.
+Supported archive containers are ZIP, 7z, LHA, RSN, and TAR+Zstandard (`.tar.zst`/`.tzst`).
+CocoaSpice owns archive materialization policy; VGMBoy receives a playable file path rather than
+an archive. LHA-backed Amiga modules are materialized as a complete set because UADE modules
+identify their replayer in filename prefixes and may require sibling data files.
 
 ## Build and run
 

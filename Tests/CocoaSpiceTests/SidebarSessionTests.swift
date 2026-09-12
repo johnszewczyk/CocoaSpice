@@ -21,7 +21,19 @@ import Testing
     #expect(items[1].id != items[2].id)
     #expect(items[1].displayName == "Mega Man (Game Boy)")
     #expect(items[2].displayName == "Mega Man (NES)")
-    #expect(items[2].searchableName.contains("nes"))
+    var searchIndex = DatabaseGameSearchIndex(items: items)
+    #expect(searchIndex.items(matching: "game boy").map(\.displayName) == ["Mega Man (Game Boy)"])
+}
+
+@Test func databaseSidebarUsesTheSharedNaturalConsoleGroups() {
+    let groups = CatalogBrowser.databaseGameGroups(from: [
+        DatabaseGameItem(rootID: 1, rootPath: "/music/A", name: "Ten", systemName: "System 10", trackCount: 1),
+        DatabaseGameItem(rootID: 1, rootPath: "/music/A", name: "Two", systemName: "System 2", trackCount: 1),
+        DatabaseGameItem(rootID: 1, rootPath: "/music/A", name: "Mystery", systemName: "", trackCount: 1)
+    ])
+
+    #expect(groups.map(\.name) == ["System 2", "System 10", "Unknown Console"])
+    #expect(groups.map { $0.items.map(\.name) } == [["Two"], ["Ten"], ["Mystery"]])
 }
 
 @Test func displayNamesStripWholeCompressedTarSuffixes() {

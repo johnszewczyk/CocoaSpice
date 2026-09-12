@@ -291,6 +291,7 @@ private enum DatabaseSidebarTableChrome {
         doubleAction: Selector,
         activationHandler: @escaping () -> Void,
         rowMenuProvider: @escaping (Int) -> NSMenu?,
+        selectionColor: NSColor,
         supportsDragging: Bool = false
     ) -> (scrollView: NSScrollView, tableView: DatabaseSidebarNativeTableView) {
         let tableView = DatabaseSidebarNativeTableView(frame: .zero)
@@ -322,6 +323,7 @@ private enum DatabaseSidebarTableChrome {
         tableView.addTableColumn(column)
 
         let selectionHighlightView = AnimatedCapsuleSelectionHighlightView(frame: tableView.bounds)
+        selectionHighlightView.selectionColor = selectionColor
         selectionHighlightView.autoresizingMask = [.width, .height]
         tableView.addSubview(selectionHighlightView, positioned: .below, relativeTo: nil)
         tableView.selectionHighlightView = selectionHighlightView
@@ -376,15 +378,17 @@ private enum DatabaseSidebarTableChrome {
         )
     }
 
-    static func updateSelectionHighlight(in tableView: NSTableView, animated: Bool) {
+    static func updateSelectionHighlight(
+        in tableView: NSTableView,
+        animationMilliseconds: Int,
+        animated: Bool
+    ) {
         let selectedRows = tableView.selectedRowIndexes.filter {
             $0 >= 0 && $0 < tableView.numberOfRows
         }
         let rowRects = selectedRows.map(tableView.rect(ofRow:))
         let highlight = (tableView as? DatabaseSidebarNativeTableView)?.selectionHighlightView
-        let stored = UserDefaults.standard.object(forKey: AppDefaultsKey.selectionAnimationMilliseconds) as? NSNumber
-        let enabled = UserDefaults.standard.object(forKey: AppDefaultsKey.selectionAnimationEnabled) as? Bool ?? true
-        highlight?.animationDuration = enabled ? Double(stored?.intValue ?? 200) / 1_000 : 0
+        highlight?.animationDuration = Double(max(0, animationMilliseconds)) / 1_000
         highlight?.update(
             selectionRects: rowRects,
             primaryRect: selectedRows.count == 1 ? rowRects.first : nil,
@@ -419,7 +423,8 @@ private struct DatabaseGameListView: NSViewRepresentable {
             },
             rowMenuProvider: { [weak coordinator = context.coordinator] row in
                 coordinator?.makeRowMenu(clickedRow: row)
-            }
+            },
+            selectionColor: NSColor.controlAccentColor
         )
         context.coordinator.attach(tableView: chrome.tableView)
         return chrome.scrollView
@@ -427,6 +432,7 @@ private struct DatabaseGameListView: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         context.coordinator.model = model
+        context.coordinator.setSelectionColor(NSColor.controlAccentColor)
         context.coordinator.sidebarFontSize = sidebarFontSize
         context.coordinator.sidebarTextColor = sidebarTextColor
         context.coordinator.sidebarMonospace = sidebarMonospace
@@ -460,6 +466,10 @@ private struct DatabaseGameListView: NSViewRepresentable {
         private var lastFontSize: CGFloat?
         private var lastTextColor: PlayerViewModel.DatabaseSidebarTextColor?
         private var lastMonospace: Bool?
+
+        func setSelectionColor(_ color: NSColor) {
+            tableView?.selectionHighlightView?.selectionColor = color
+        }
 
         init(
             model: PlayerViewModel,
@@ -544,7 +554,11 @@ private struct DatabaseGameListView: NSViewRepresentable {
                 selectionChanged = true
             }
             if refreshHighlight || selectionChanged {
-                DatabaseSidebarTableChrome.updateSelectionHighlight(in: tableView, animated: false)
+                DatabaseSidebarTableChrome.updateSelectionHighlight(
+                    in: tableView,
+                    animationMilliseconds: model.effectiveSelectionAnimationMilliseconds,
+                    animated: false
+                )
             }
         }
 
@@ -597,7 +611,11 @@ private struct DatabaseGameListView: NSViewRepresentable {
             let primaryID = items.last?.id
             model.selectDatabaseGames(ids: ids, primaryID: primaryID)
             reloadVisibleRows()
-            DatabaseSidebarTableChrome.updateSelectionHighlight(in: tableView, animated: true)
+            DatabaseSidebarTableChrome.updateSelectionHighlight(
+                in: tableView,
+                animationMilliseconds: model.effectiveSelectionAnimationMilliseconds,
+                animated: true
+            )
         }
 
         @objc func handleDoubleAction(_ sender: Any?) {
@@ -683,12 +701,11 @@ private struct DatabaseGameListView: NSViewRepresentable {
             let items = model.visibleDatabaseGameItems
             guard model.sidebarSystemMode else { return items.map(SidebarRow.game) }
 
-            let grouped = Dictionary(grouping: items, by: model.sidebarSystemName(for:))
-            return grouped.keys.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
-                .flatMap { systemName in
-                    let isExpanded = model.expandedDatabaseSystems.contains(systemName)
-                    let children = isExpanded ? (grouped[systemName] ?? []).map(SidebarRow.game) : []
-                    return [.system(systemName, isExpanded: isExpanded)] + children
+            return CatalogBrowser.databaseGameGroups(from: items)
+                .flatMap { group in
+                    let isExpanded = model.expandedDatabaseSystems.contains(group.name)
+                    let children = isExpanded ? group.items.map(SidebarRow.game) : []
+                    return [.system(group.name, isExpanded: isExpanded)] + children
                 }
         }
     }
@@ -727,6 +744,7 @@ private struct DatabaseFileListView: NSViewRepresentable {
             rowMenuProvider: { [weak coordinator = context.coordinator] row in
                 coordinator?.makeRowMenu(clickedRow: row)
             },
+            selectionColor: NSColor.controlAccentColor,
             supportsDragging: true
         )
         context.coordinator.attach(tableView: chrome.tableView)
@@ -738,6 +756,7 @@ private struct DatabaseFileListView: NSViewRepresentable {
 
     func updateNSView(_ nsView: NSScrollView, context: Context) {
         context.coordinator.model = model
+        context.coordinator.setSelectionColor(NSColor.controlAccentColor)
         context.coordinator.sidebarFontSize = sidebarFontSize
         context.coordinator.sidebarTextColor = sidebarTextColor
         context.coordinator.sidebarMonospace = sidebarMonospace
@@ -770,6 +789,10 @@ private struct DatabaseFileListView: NSViewRepresentable {
         private var lastDisclosureGap: CGFloat?
         private var lastChildIndent: CGFloat?
         private var lastHideFileExtensions: Bool?
+
+        func setSelectionColor(_ color: NSColor) {
+            tableView?.selectionHighlightView?.selectionColor = color
+        }
 
         private final class ContextMenuAction: NSObject {
             let payload: DatabaseFileSidebarDragPayload
@@ -882,7 +905,11 @@ private struct DatabaseFileListView: NSViewRepresentable {
                 selectionChanged = true
             }
             if refreshHighlight || selectionChanged {
-                DatabaseSidebarTableChrome.updateSelectionHighlight(in: tableView, animated: false)
+                DatabaseSidebarTableChrome.updateSelectionHighlight(
+                    in: tableView,
+                    animationMilliseconds: model.effectiveSelectionAnimationMilliseconds,
+                    animated: false
+                )
             }
         }
 
@@ -966,7 +993,11 @@ private struct DatabaseFileListView: NSViewRepresentable {
                 model.activateDatabaseFile(item, replace: true)
             }
             reloadVisibleRows()
-            DatabaseSidebarTableChrome.updateSelectionHighlight(in: tableView, animated: true)
+            DatabaseSidebarTableChrome.updateSelectionHighlight(
+                in: tableView,
+                animationMilliseconds: model.effectiveSelectionAnimationMilliseconds,
+                animated: true
+            )
         }
 
         @objc func handleDoubleAction(_ sender: Any?) {

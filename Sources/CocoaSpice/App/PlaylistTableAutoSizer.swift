@@ -1,4 +1,5 @@
 import AppKit
+import FrontendPreferencesCore
 import SwiftUI
 
 struct PlaylistTableAutoSizer: NSViewRepresentable {
@@ -95,7 +96,8 @@ struct PlaylistTableAutoSizer: NSViewRepresentable {
                 tableColumn.width
             }
 
-            let padding = tableView.intercellSpacing.width + 20
+            let padding = tableView.intercellSpacing.width
+                + CGFloat(FrontendPlaylistColumnSizing.defaultHorizontalPaddingPerSide * 2)
             return max(headerWidth, contentWidth) + padding
         }
 

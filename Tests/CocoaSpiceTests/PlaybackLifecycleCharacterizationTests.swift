@@ -143,6 +143,38 @@ func residentEvil2ArchiveReplacesPlaybackThroughVGMBoy() async throws {
 
 @MainActor
 @Test(
+    "JoshW NES Toki archive reaches the shared VGMBoy transport",
+    .enabled(
+        if: ProcessInfo.processInfo.environment["COCOASPICE_TOKI_ARCHIVE"] != nil,
+        "Set COCOASPICE_TOKI_ARCHIVE to run the real Toki archive-to-transport check."
+    )
+)
+func joshWTokiArchiveReachesVGMBoy() async throws {
+    let archivePath = try #require(ProcessInfo.processInfo.environment["COCOASPICE_TOKI_ARCHIVE"])
+    let track = TrackItem(
+        archiveURL: URL(fileURLWithPath: archivePath),
+        entryPath: "Toki [JuJu Densetsu] (1991-07-19)(TAD)(Taito).nsf",
+        trackIndex: 10,
+        trackCount: 11
+    )
+    let engine = PlaybackEngine()
+    defer { ZipArchiveSupport.discardDisposablePlaybackMaterialization() }
+
+    try await engine.play(
+        track: track,
+        plan: PlaybackPlan(preFadeSeconds: 150, fadeSeconds: 0, usesNativeEnding: false, isLongPlay: false),
+        tempo: .defaultValue,
+        requestID: engine.reservePlaybackRequest()
+    )
+    let status = await engine.statusSnapshot()
+    #expect(engine.currentTrack?.id == track.id)
+    #expect(status.currentTrackID == track.id)
+    #expect(status.isPlaying)
+    await engine.stop()
+}
+
+@MainActor
+@Test(
     "AAC export renders an archive-backed RE2 track",
     .enabled(
         if: ProcessInfo.processInfo.environment["COCOASPICE_AAC_ARCHIVE"] != nil,

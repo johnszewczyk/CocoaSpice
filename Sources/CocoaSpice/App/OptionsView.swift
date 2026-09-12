@@ -156,7 +156,7 @@ struct OptionsView: View {
                 HStack(spacing: 12) {
                     Toggle(isOn: $model.longPlayEnabled) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Enable extended playback")
+                            Text("Extended playback")
                                 .foregroundStyle(.white)
                             Text("Set the target duration used when Long Play is enabled.")
                                 .font(.system(size: 11))
@@ -228,7 +228,7 @@ struct OptionsView: View {
                         set: { model.setEndFadeEnabled($0) }
                     )) {
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Enable Fade Out")
+                            Text("Fade Out")
                                 .foregroundStyle(.white)
                             Text("Applies to metadata-timed playback and Long Play. Turning it off lets tracks use their native ending.")
                                 .font(.system(size: 11))
@@ -257,7 +257,7 @@ struct OptionsView: View {
                     set: { model.setFadedSkipEnabled($0) }
                 )) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Enable Faded Skip")
+                        Text("Faded Skip")
                             .foregroundStyle(.white)
                         Text("Next and Previous fade the live track for the configured 6-second fade out before advancing. Press again to skip immediately.")
                             .font(.system(size: 11))
@@ -409,7 +409,7 @@ struct OptionsView: View {
                 set: { model.setMonoEnabled($0) }
             )) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Enable Mono")
+                    Text("Mono")
                     Text("Mix left and right channels, then play the same signal through both speakers.")
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
@@ -441,7 +441,7 @@ struct OptionsView: View {
                     set: { model.setColumnAutoSizeEnabled($0) }
                 )) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("Enable Column Auto-size")
+                        Text("Column Auto-size")
                         Text("Automatically resize columns for content width on selection.")
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
@@ -537,7 +537,7 @@ struct OptionsView: View {
 
     private var interfaceAppearanceCard: some View {
         sectionCard(title: "Interface Style") {
-            Text("Controls text in both the database sidebar and playlist.")
+            Text("Controls text, selection highlights, and active controls throughout both the database sidebar and playlist.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
 
@@ -606,7 +606,7 @@ struct OptionsView: View {
                         set: { model.setArchiveCacheEnabled($0) }
                     )) {
                         VStack(alignment: .leading, spacing: 3) {
-                            Text("Enable Cache")
+                            Text("Cache")
                             Text("Decompressed files can be retained to reduce load time.")
                                 .font(.system(size: 11))
                                 .foregroundStyle(.secondary)
@@ -779,7 +779,7 @@ struct OptionsView: View {
                 set: { model.setEqualizerEnabled($0) }
             )) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Enable Equalizer")
+                    Text("Equalizer")
                         .foregroundStyle(.white)
                     Text("Ten parametric bands apply to every playback format.")
                         .font(.system(size: 11))

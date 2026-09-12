@@ -7,6 +7,11 @@ import Foundation
 /// Playlist activation uses the shared CatalogReader projection so the native
 /// and WebKit frontends consume the same root/game/system selection semantics.
 enum CatalogBrowser {
+    struct DatabaseGameGroup: Equatable, Sendable {
+        let name: String
+        let items: [DatabaseGameItem]
+    }
+
     static func databaseGameItems(from buckets: [CatalogGameBucket]) -> [DatabaseGameItem] {
         CatalogBrowserProjection.games(from: buckets).map { game in
             DatabaseGameItem(
@@ -18,6 +23,39 @@ enum CatalogBrowser {
                 displayName: game.displayName
             )
         }
+    }
+
+    /// Keeps console grouping and its natural order inside CatalogBrowserCore.
+    /// CocoaSpice still adapts its AppKit-facing row type at this boundary.
+    static func databaseGameGroups(from items: [DatabaseGameItem]) -> [DatabaseGameGroup] {
+        var itemsByID: [String: DatabaseGameItem] = [:]
+        for item in items {
+            itemsByID[item.id] = item
+        }
+        let projected = items.map(catalogBrowserGame)
+        return CatalogBrowserProjection.groups(from: projected).map { group in
+            DatabaseGameGroup(
+                name: group.name,
+                items: group.games.compactMap { itemsByID[$0.id] }
+            )
+        }
+    }
+
+    static func consoleGroupName(for item: DatabaseGameItem) -> String {
+        catalogBrowserGame(item).consoleGroupName
+    }
+
+    private static func catalogBrowserGame(_ item: DatabaseGameItem) -> CatalogBrowserGame {
+        CatalogBrowserGame(
+            bucket: CatalogGameBucket(
+                rootID: item.rootID,
+                rootPath: item.rootPath,
+                game: item.name,
+                system: item.systemName,
+                trackCount: item.trackCount
+            ),
+            displayName: item.displayName
+        )
     }
 
     static func roots(databaseURL: URL) throws -> [CatalogRoot] {

@@ -7,7 +7,7 @@ import Foundation
 enum ZipArchiveSupport {
     static var cacheDirectoryURL: URL { cacheRootURL() }
 
-    static let supportedArchiveExtensions: Set<String> = ["zip", "7z", "rsn", "tzst", "zst", "zstd"]
+    static let supportedArchiveExtensions: Set<String> = ["zip", "7z", "lha", "rsn", "tzst", "zst", "zstd"]
     private static let archiveListingTimeout: TimeInterval = 30
     private static let archiveExtractionTimeout: TimeInterval = 600
     private static let archiveListingMaximumBytes = 64 * 1024 * 1024
@@ -211,7 +211,12 @@ enum ZipArchiveSupport {
                     return nil
                 }
                 let ext = URL(fileURLWithPath: normalized).pathExtension.lowercased()
-                guard supportedExtensions.contains(ext) else { return nil }
+                // UADE modules identify their replayer in a filename prefix
+                // (`mod.title`, `med.song`, `np2.track`) rather than in the
+                // final suffix. Keep the ordinary extension filter for every
+                // other format, but admit those prefix-led Amiga members.
+                let isAmigaMember = PlaybackFormatRegistry.admitsAmigaPrefix(path: normalized)
+                guard supportedExtensions.contains(ext) || isAmigaMember else { return nil }
                 return ArchiveEntry(archiveURL: archiveURL, entryPath: normalized)
             }
         return PlayableEntryListing(entries: entries, scanSignature: listing.scanSignature)
@@ -225,7 +230,7 @@ enum ZipArchiveSupport {
     static func scanSignature(for archiveURL: URL) throws -> String? {
         let archiveURL = archiveURL.standardizedFileURL
         switch archiveKind(for: archiveURL) {
-        case .zip, .sevenZip:
+        case .zip, .sevenZip, .lha:
             return try listEntries(in: archiveURL).scanSignature
         case .tar:
             return nil
@@ -450,15 +455,7 @@ enum ZipArchiveSupport {
 
     private static func listEntries(in archiveURL: URL) throws -> ArchiveListing {
         switch archiveKind(for: archiveURL) {
-        case .zip:
-            let data = try runProcess(
-                executable: try executable(named: "7zz"),
-                arguments: ["l", "-mmt=1", "-slt", "-ba", archiveURL.path]
-            )
-            return try parseListingErrors {
-                try ArchiveListingParser.parseSevenZipReport(data)
-            }
-        case .sevenZip:
+        case .zip, .sevenZip, .lha:
             let data = try runProcess(
                 executable: try executable(named: "7zz"),
                 arguments: ["l", "-mmt=1", "-slt", "-ba", archiveURL.path]

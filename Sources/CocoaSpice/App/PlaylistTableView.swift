@@ -1,7 +1,15 @@
 import AppKit
+import CatalogPlaylistPresentationCore
 import FrontendPreferencesCore
 import OSLog
 import SwiftUI
+
+private enum PlaylistHeaderMetrics {
+    static let horizontalPaddingPerSide = CGFloat(FrontendPlaylistColumnSizing.defaultHorizontalPaddingPerSide)
+    static let horizontalPadding = CGFloat(FrontendPlaylistColumnSizing.defaultHorizontalPaddingPerSide * 2)
+    static let sortIndicatorWidth: CGFloat = 8
+    static let sortIndicatorGap: CGFloat = 4
+}
 
 struct PlaylistTableView: NSViewRepresentable {
     @Bindable var model: PlayerViewModel
@@ -46,6 +54,7 @@ struct PlaylistTableView: NSViewRepresentable {
         }
 
         let selectionHighlightView = AnimatedCapsuleSelectionHighlightView(frame: tableView.bounds)
+        selectionHighlightView.selectionColor = NSColor.controlAccentColor
         selectionHighlightView.autoresizingMask = [.width, .height]
         tableView.addSubview(selectionHighlightView, positioned: .below, relativeTo: nil)
 
@@ -74,7 +83,7 @@ struct PlaylistTableView: NSViewRepresentable {
             subsystem: "com.local.cocoaspice",
             category: "playlist-load"
         )
-        private let columnResizeAnimationSteps = 10
+        private let columnResizeAnimationFrameIntervalNanoseconds: UInt64 = 1_000_000_000 / 60
         private let autoSizeSampleLimit = 200
         private let autoSizeDebounceNanoseconds: UInt64 = 120_000_000
 
@@ -113,34 +122,6 @@ struct PlaylistTableView: NSViewRepresentable {
                 }
             }
 
-            var defaultWidth: CGFloat {
-                switch self {
-                case .favorite: 32
-                case .index: 36
-                case .file: 220
-                case .title: 220
-                case .game: 220
-                case .author: 150
-                case .system: 80
-                case .path: 320
-                case .length: 70
-                case .fileSize: 80
-                }
-            }
-
-            var minWidth: CGFloat {
-                switch self {
-                case .favorite: 32
-                case .index: 32
-                case .file, .title, .game: 120
-                case .author: 90
-                case .system: 60
-                case .path: 160
-                case .length: 60
-                case .fileSize: 60
-                }
-            }
-
             var userConfigurable: Bool {
                 self != .favorite
             }
@@ -161,29 +142,8 @@ struct PlaylistTableView: NSViewRepresentable {
                 title
             }
 
-            var sortColumn: PlayerViewModel.PlaylistSortColumn? {
-                switch self {
-                case .favorite:
-                    nil
-                case .index:
-                    .index
-                case .file:
-                    .file
-                case .title:
-                    .title
-                case .game:
-                    .game
-                case .author:
-                    .author
-                case .system:
-                    .system
-                case .path:
-                    .path
-                case .length:
-                    .length
-                case .fileSize:
-                    nil
-                }
+            var sortColumn: CatalogPlaylistSortColumn? {
+                CatalogPlaylistSortColumn(frontendColumn: rawValue)
             }
         }
 
@@ -198,8 +158,8 @@ struct PlaylistTableView: NSViewRepresentable {
         private var lastPrimarySelectedTrackID: String?
         private var lastCurrentTrackID: String?
         private var lastIsPlaying = false
-        private var lastSortColumn: PlayerViewModel.PlaylistSortColumn?
-        private var lastSortDirection: PlayerViewModel.PlaylistSortDirection = .ascending
+        private var lastSortColumn: CatalogPlaylistSortColumn?
+        private var lastSortDirection: CatalogPlaylistSortDirection = .ascending
         private var lastFontSize: CGFloat?
         private var lastTextColor: PlayerViewModel.DatabaseSidebarTextColor?
         private var lastMonospaceFont: Bool?
@@ -228,9 +188,13 @@ struct PlaylistTableView: NSViewRepresentable {
 
             for column in resolvedColumnOrder() {
                 let tableColumn = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(column.rawValue))
-                tableColumn.headerCell = SortableTableHeaderCell(textCell: column.title)
-                tableColumn.minWidth = column.minWidth
-                tableColumn.width = storedWidth(for: column) ?? column.defaultWidth
+                let headerCell = SortableTableHeaderCell(textCell: column.title)
+                tableColumn.headerCell = headerCell
+                let minimumWidth = minimumColumnWidth(for: column, headerCell: headerCell)
+                tableColumn.minWidth = minimumWidth
+                tableColumn.width = model.columnAutoSizeEnabled
+                    ? minimumWidth
+                    : storedWidth(for: column) ?? minimumWidth
                 tableColumn.resizingMask = column.userConfigurable ? [.userResizingMask] : []
                 tableView.addTableColumn(tableColumn)
             }
@@ -241,6 +205,7 @@ struct PlaylistTableView: NSViewRepresentable {
 
         func reload() {
             guard let tableView else { return }
+            selectionHighlightView?.selectionColor = NSColor.controlAccentColor
             selectionHighlightView?.animationDuration = Double(model.effectiveSelectionAnimationMilliseconds) / 1_000
 
             applyVisibility(to: tableView)
@@ -418,15 +383,17 @@ struct PlaylistTableView: NSViewRepresentable {
                 switch column {
                 case .favorite:
                     let cell = makeFavoriteCell(in: tableView)
-                    favoriteButton(in: cell)?.tag = row
-                    favoriteButton(in: cell)?.image = NSImage(
-                        systemSymbolName: model.isFavorite(track) ? "star.fill" : "star",
-                        accessibilityDescription: "Favorite"
-                    )
-                    favoriteButton(in: cell)?.contentTintColor = switch model.playlistTextColor {
-                    case .primary: NSColor.labelColor
-                    case .secondary: NSColor.secondaryLabelColor
-                    case .tertiary: NSColor.tertiaryLabelColor
+                    if let button = favoriteButton(in: cell) {
+                        button.tag = row
+                        button.image = NSImage(
+                            systemSymbolName: model.isFavorite(track) ? "star.fill" : "star",
+                            accessibilityDescription: "Favorite"
+                        )
+                        button.contentTintColor = switch model.playlistTextColor {
+                        case .primary: NSColor.labelColor
+                        case .secondary: NSColor.secondaryLabelColor
+                        case .tertiary: NSColor.tertiaryLabelColor
+                        }
                     }
                     return cell
                 case .index:
@@ -458,9 +425,12 @@ struct PlaylistTableView: NSViewRepresentable {
                     return 0
                 }
 
-                let headerWidth = textWidth(playlistColumn.title, font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold))
+                let headerWidth = headerContentWidth(
+                    for: playlistColumn,
+                    headerCell: tableView.tableColumns[column].headerCell
+                )
                 let contentWidth = widestWidth(for: playlistColumn)
-                return max(headerWidth, contentWidth) + 20
+                return max(headerWidth, contentWidth) + PlaylistHeaderMetrics.horizontalPadding
             }
         }
 
@@ -546,6 +516,8 @@ struct PlaylistTableView: NSViewRepresentable {
             button.setButtonType(.momentaryChange)
             button.target = self
             button.action = #selector(handleFavoriteButton(_:))
+            button.alignment = .center
+            button.setAccessibilityLabel("Favorite")
             cell.addSubview(button)
             NSLayoutConstraint.activate([
                 button.centerXAnchor.constraint(equalTo: cell.centerXAnchor),
@@ -642,10 +614,6 @@ struct PlaylistTableView: NSViewRepresentable {
                     column.isHidden = isHidden
                 }
             }
-            if tableView.tableColumns.allSatisfy(\.isHidden),
-               let firstColumn = tableView.tableColumns.first {
-                firstColumn.isHidden = false
-            }
         }
 
         private func reloadVisibleRows(in tableView: NSTableView) {
@@ -697,6 +665,7 @@ struct PlaylistTableView: NSViewRepresentable {
                     headerCell.sortDirection = sortDirection
                     changed = true
                 }
+                tableColumn.minWidth = minimumColumnWidth(for: column, headerCell: headerCell)
             }
 
             if changed {
@@ -707,9 +676,7 @@ struct PlaylistTableView: NSViewRepresentable {
         private func resolvedColumnOrder() -> [Column] {
             let stored = model.pendingPlaylistColumnOrder ?? []
             let mapped = stored.compactMap(Column.init(rawValue:))
-            let configurable = mapped.filter { $0.isReorderable }
-            let missing = Column.allCases.filter { $0.isReorderable && !configurable.contains($0) }
-            return [.favorite] + configurable + missing
+            return mapped.count == Column.allCases.count ? mapped : Column.allCases
         }
 
         private func storedVisibility() -> [String: Bool] {
@@ -722,6 +689,22 @@ struct PlaylistTableView: NSViewRepresentable {
                 return nil
             }
             return CGFloat(width)
+        }
+
+        private func headerTextWidth(for headerCell: NSTableHeaderCell) -> CGFloat {
+            let font = headerCell.font ?? NSFont.systemFont(ofSize: NSFont.smallSystemFontSize, weight: .semibold)
+            return textWidth(headerCell.stringValue, font: font)
+        }
+
+        private func headerContentWidth(for column: Column, headerCell: NSTableHeaderCell) -> CGFloat {
+            let sortIndicatorWidth = (headerCell as? SortableTableHeaderCell)?.sortDirection == nil
+                ? 0
+                : PlaylistHeaderMetrics.sortIndicatorWidth + PlaylistHeaderMetrics.sortIndicatorGap
+            return headerTextWidth(for: headerCell) + sortIndicatorWidth
+        }
+
+        private func minimumColumnWidth(for column: Column, headerCell: NSTableHeaderCell) -> CGFloat {
+            headerContentWidth(for: column, headerCell: headerCell) + PlaylistHeaderMetrics.horizontalPadding
         }
 
         private func persistOrder() {
@@ -842,7 +825,6 @@ struct PlaylistTableView: NSViewRepresentable {
 
             columnResizeTask?.cancel()
             let startWidths = targets.map { $0.0.width }
-            let steps = columnResizeAnimationSteps
             let duration = model.effectiveAutoResizeAnimationMilliseconds
             suppressWidthPersistence = true
 
@@ -852,14 +834,18 @@ struct PlaylistTableView: NSViewRepresentable {
                 persistWidths()
                 return
             }
-            let intervalNanoseconds = UInt64(duration) * 1_000_000 / UInt64(steps)
+            let durationNanoseconds = UInt64(duration) * 1_000_000
+            let frameIntervalNanoseconds = columnResizeAnimationFrameIntervalNanoseconds
 
             columnResizeTask = Task { @MainActor [weak self] in
                 guard let self else { return }
-                for step in 1...steps {
-                    try? await Task.sleep(nanoseconds: intervalNanoseconds)
-                    guard !Task.isCancelled else { return }
-                    let linearProgress = CGFloat(step) / CGFloat(steps)
+                let startUptime = DispatchTime.now().uptimeNanoseconds
+                while true {
+                    let elapsedNanoseconds = DispatchTime.now().uptimeNanoseconds &- startUptime
+                    let linearProgress = min(
+                        1,
+                        CGFloat(Double(elapsedNanoseconds) / Double(durationNanoseconds))
+                    )
                     let progress = linearProgress < 0.5
                         ? 2 * linearProgress * linearProgress
                         : 1 - (pow(-2 * linearProgress + 2, 2) / 2)
@@ -867,6 +853,13 @@ struct PlaylistTableView: NSViewRepresentable {
                         let (tableColumn, finalWidth) = target
                         tableColumn.width = startWidths[index] + ((finalWidth - startWidths[index]) * progress)
                     }
+
+                    if linearProgress >= 1 {
+                        break
+                    }
+
+                    try? await Task.sleep(nanoseconds: frameIntervalNanoseconds)
+                    guard !Task.isCancelled else { return }
                 }
 
                 guard !Task.isCancelled else { return }
@@ -1159,6 +1152,7 @@ final class AnimatedCapsuleSelectionHighlightView: NSView {
     private let multipleSelectionLayer = CAShapeLayer()
     private let horizontalInset: CGFloat = 4
     var animationDuration: TimeInterval = 0.2
+    var selectionColor: NSColor = .selectedContentBackgroundColor
 
     override var isFlipped: Bool { true }
 
@@ -1181,9 +1175,9 @@ final class AnimatedCapsuleSelectionHighlightView: NSView {
     }
 
     func update(selectionRects: [NSRect], primaryRect: NSRect?, animated: Bool) {
-        let selectionColor = NSColor.selectedContentBackgroundColor.withAlphaComponent(0.9).cgColor
-        primarySelectionLayer.fillColor = selectionColor
-        multipleSelectionLayer.fillColor = selectionColor
+        let fillColor = selectionColor.withAlphaComponent(0.9).cgColor
+        primarySelectionLayer.fillColor = fillColor
+        multipleSelectionLayer.fillColor = fillColor
 
         guard let primaryRect, selectionRects.count == 1 else {
             primarySelectionLayer.removeAllAnimations()
@@ -1287,8 +1281,7 @@ private final class PlaylistNativeTableView: NSTableView {
 }
 
 private final class SortableTableHeaderCell: NSTableHeaderCell {
-    var sortDirection: PlayerViewModel.PlaylistSortDirection?
-
+    var sortDirection: CatalogPlaylistSortDirection?
     override func drawInterior(withFrame cellFrame: NSRect, in controlView: NSView) {
         let paragraphStyle = NSMutableParagraphStyle()
         paragraphStyle.alignment = .center
@@ -1301,14 +1294,26 @@ private final class SortableTableHeaderCell: NSTableHeaderCell {
 
         let attributedTitle = NSAttributedString(string: stringValue, attributes: attributes)
         let titleSize = attributedTitle.size()
-        let titleFrame = NSRect(
-            x: cellFrame.origin.x,
-            y: cellFrame.origin.y + floor((cellFrame.height - titleSize.height) / 2.0),
-            width: cellFrame.width,
-            height: titleSize.height
-        )
-
-        attributedTitle.draw(in: titleFrame)
+        let sortIndicatorReservation = sortDirection == nil
+            ? 0
+            : PlaylistHeaderMetrics.sortIndicatorWidth + PlaylistHeaderMetrics.sortIndicatorGap
+        let titleY = cellFrame.origin.y + floor((cellFrame.height - titleSize.height) / 2.0)
+        if sortIndicatorReservation == 0 {
+            attributedTitle.draw(in: NSRect(
+                x: cellFrame.origin.x,
+                y: titleY,
+                width: cellFrame.width,
+                height: titleSize.height
+            ))
+        } else {
+            let titleFrame = NSRect(
+                x: cellFrame.origin.x + sortIndicatorReservation,
+                y: titleY,
+                width: max(0, cellFrame.width - sortIndicatorReservation),
+                height: titleSize.height
+            )
+            attributedTitle.draw(in: titleFrame)
+        }
 
         guard let sortDirection,
               let image = NSImage(
@@ -1319,9 +1324,9 @@ private final class SortableTableHeaderCell: NSTableHeaderCell {
         }
 
         let indicatorRect = NSRect(
-            x: cellFrame.minX + 6,
+            x: cellFrame.minX + PlaylistHeaderMetrics.horizontalPaddingPerSide,
             y: cellFrame.minY + floor((cellFrame.height - 8) / 2.0),
-            width: 8,
+            width: PlaylistHeaderMetrics.sortIndicatorWidth,
             height: 8
         )
         image.draw(in: indicatorRect)

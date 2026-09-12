@@ -184,7 +184,6 @@ struct DatabaseGameItem: Identifiable, Hashable, Sendable {
     let systemName: String
     let trackCount: Int
     let displayName: String
-    let searchableName: String
 
     var id: String { "\(rootID)\u{1F}\(name)\u{1F}\(systemName)" }
     var rootDisplayName: String {
@@ -198,8 +197,6 @@ struct DatabaseGameItem: Identifiable, Hashable, Sendable {
         self.systemName = systemName.trimmingCharacters(in: .whitespacesAndNewlines)
         self.trackCount = trackCount
         self.displayName = (displayName ?? self.name).trimmingCharacters(in: .whitespacesAndNewlines)
-        let rootName = URL(fileURLWithPath: rootPath, isDirectory: true).lastPathComponent
-        self.searchableName = "\(self.name) \(self.systemName) \(rootName)".lowercased()
     }
 }
 

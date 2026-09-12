@@ -11,11 +11,16 @@
 - Current columns are favorite, index, file, title, game, author, system, path, and length. Favorite is fixed immediately before index, uses a star header, and is user-hideable but not reorderable. The obsolete Play/Stop transport column is not part of the table.
 - Metadata-backed columns fall back to filename or parent-folder text when metadata is absent.
 - The Path column uses `TrackItem.fullPathText`: a full filesystem path for ordinary files and `archive-path#member-path` for archive members.
-- Column visibility, order, and width are persisted in `UserDefaults`.
+- Column visibility, order, and width are persisted in `UserDefaults`. The
+  native adapter runs the shared `FrontendPlaylistColumnSchema` before storing
+  or applying order/visibility; only point widths remain AppKit-local. The
+  shared `FrontendPlaylistColumnSizing` contract supplies four points of
+  eight points of horizontal padding on each side of a header-only minimum.
 - Playlist font size, text color, and monospaced styling are persisted with playback preferences. The native table reloads cells, adjusts row height, and remeasures columns when its font size or family changes.
 - Sort column and sort direction are persisted separately from column layout state.
-- User-reorderable columns exclude the fixed-position favorite column; every column, including favorite, can be hidden, and at least one column remains visible.
+- User-reorderable columns exclude the fixed-position favorite column; every column, including favorite, can be hidden, and the shared schema retains at least one visible column.
 - Visible columns automatically size after queue population and again when final metadata width hints change. The resize is coalesced, defaults to ten ease-in-out updates over 200 ms, follows the Interface animation preference, and does not reload rows or change selection.
+- Auto-size mode starts columns at the shared header-only minimum while content is loading; it does not restore obsolete wide persisted widths before measuring the current playlist. Manual mode retains saved widths.
 - Double-clicking a header divider autosizes that column to current content.
 - The header context menu exposes both per-column and all-visible-column autosizing.
 

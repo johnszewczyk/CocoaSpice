@@ -9,7 +9,15 @@ enum PlaybackFormatRegistry {
     static let supportedExtensions: Set<String> = FormatRegistry.playbackExtensions
 
     static func admits(fileURL: URL) -> Bool {
-        admits(pathExtension: fileURL.pathExtension)
+        admits(path: fileURL.path)
+    }
+
+    static func admits(path: String) -> Bool {
+        FormatRegistry.descriptor(for: path) != nil
+    }
+
+    static func admitsAmigaPrefix(path: String) -> Bool {
+        FormatRegistry.descriptor(for: path)?.id == "amiga-uade"
     }
 
     static func admits(pathExtension: String) -> Bool {
@@ -22,7 +30,7 @@ enum PlaybackFormatRegistry {
 
     static func archiveMaterialization(for entryPaths: [String]) -> VGMArchiveMaterializationRequirement? {
         guard !entryPaths.isEmpty else { return nil }
-        guard entryPaths.allSatisfy({ admits(pathExtension: URL(fileURLWithPath: $0).pathExtension) }) else {
+        guard entryPaths.allSatisfy({ admits(path: $0) }) else {
             return nil
         }
         return FormatRegistry.archiveMaterializationRequirement(for: entryPaths)

@@ -14,6 +14,29 @@ import VGMBoyKit
     #expect(PlaybackFormatRegistry.archiveMaterialization(for: ["track.unknown"]) == nil)
 }
 
+@Test func amigaArchiveUsesPrefixAdmissionAndCompleteSetMaterialization() throws {
+    let archiveURL = URL(fileURLWithPath: "/tmp/music.lha")
+    #expect(ZipArchiveSupport.canHandle(archiveURL))
+    #expect(PlaybackFormatRegistry.admits(fileURL: URL(fileURLWithPath: "/tmp/Xpose/mod.xpose-end")))
+    #expect(PlaybackFormatRegistry.archiveMaterialization(for: ["Xpose/mod.xpose-end"]) == .completeSet)
+    #expect(!PlaybackFormatRegistry.admits(fileURL: URL(fileURLWithPath: "/tmp/stage.p4x")))
+}
+
+@Test(
+    "Real Amiga LHA archive lists its prefix-led module",
+    .enabled(
+        if: ProcessInfo.processInfo.environment["COCOASPICE_AMIGA_ARCHIVE"] != nil,
+        "Set COCOASPICE_AMIGA_ARCHIVE to run the real Amiga LHA listing check."
+    )
+)
+func realAmigaLHAArchiveListsPrefixLedModule() async throws {
+    let archivePath = try #require(ProcessInfo.processInfo.environment["COCOASPICE_AMIGA_ARCHIVE"])
+    let loaded = await PlaylistQueueLoader.loadDroppedTracks(from: [URL(fileURLWithPath: archivePath)])
+
+    #expect(loaded.tracks.count == 1)
+    #expect(loaded.tracks.first?.archiveEntryPath == "Xpose/mod.xpose-end")
+}
+
 @Test func standaloneZstandardListingUsesItsImplicitPlayableMember() throws {
     let archiveURL = URL(fileURLWithPath: "/tmp/track.vgm.zst")
     let listing = try ZipArchiveSupport.listPlayableEntries(
@@ -81,6 +104,32 @@ import VGMBoyKit
     #expect(loaded.tracks[0].isArchiveEntry)
     #expect(loaded.tracks[0].archiveEntryPath == "test.spc")
 
+}
+
+@Test func droppedAmigaPrefixModuleCreatesArchiveTrack() async throws {
+    let sevenZipPath = "/opt/homebrew/bin/7zz"
+    guard FileManager.default.isExecutableFile(atPath: sevenZipPath) else { return }
+
+    let temporaryDirectory = FileManager.default.temporaryDirectory
+        .appendingPathComponent(UUID().uuidString, isDirectory: true)
+    let moduleDirectory = temporaryDirectory.appendingPathComponent("Xpose", isDirectory: true)
+    try FileManager.default.createDirectory(at: moduleDirectory, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: temporaryDirectory) }
+
+    let moduleURL = moduleDirectory.appendingPathComponent("mod.xpose-end")
+    try Data("not-a-real-amiga-module".utf8).write(to: moduleURL)
+    let archiveURL = temporaryDirectory.appendingPathComponent("Xpose.7z")
+
+    try runProcess(
+        executable: sevenZipPath,
+        arguments: ["a", "-bd", "-y", archiveURL.path, "Xpose/mod.xpose-end"],
+        workingDirectory: temporaryDirectory
+    )
+
+    let loaded = await PlaylistQueueLoader.loadDroppedTracks(from: [archiveURL])
+    #expect(loaded.tracks.count == 1)
+    #expect(loaded.tracks[0].isArchiveEntry)
+    #expect(loaded.tracks[0].archiveEntryPath == "Xpose/mod.xpose-end")
 }
 
 @Test func folderQueueIncludesArchiveMembers() async throws {

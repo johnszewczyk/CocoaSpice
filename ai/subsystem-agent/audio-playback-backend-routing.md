@@ -42,10 +42,10 @@
 - `PlaybackRequestCore.PlaybackRequestLifecycle` owns newest-request
   invalidation for CocoaSpice's frontend playback request. Its
   `PlaybackRequestState` adapter retains only the pending `TrackItem` and
-  presentation-facing end state. Queue/UI identity remains frontend state until
-  the queue-state extraction slice; native transport request invalidation is
-  shared and occurs before a stop or replacement can race a start. Completion
-  claiming and repeat/advance policy live in the shared transport/queue core.
+  presentation-facing end state. Queue identity and completion target policy
+  live in `PlaybackQueueCore`; CocoaSpice retains only native model mapping and
+  presentation state. Native transport request invalidation is shared and occurs
+  before a stop or replacement can race a start.
 - `PlaybackControlSurface` is read by the shared coordinator and is the
   capability gate for frontend Audio-panel mappings. Volume, Mono, EQ, timing,
   and transport commands all reach VGMBoy through that one mapping point; no
@@ -79,9 +79,10 @@
   executables are built and handed off by VGMBoy; CocoaSpice only provides the shared upstream
   source/build inputs used by the app family.
 - Core status updates CocoaSpice display state, while the coordinator's
-  one-shot natural-end event triggers CocoaSpice's queue policy. CocoaSpice
-  still alone chooses the following queue item; the shared core prevents
-  duplicate or stale completion delivery.
+  one-shot natural-end event returns the shared completion target. CocoaSpice
+  maps that stable ID into its native queue model and retains only frontend-local
+  random choice and presentation handoff; the shared core prevents duplicate or
+  stale completion delivery.
 - VGMBoy retains one silent initialized macOS output endpoint for the host lifetime. CocoaSpice
   must express pause, replacement, seek, and completion only through the typed core controls; it
   must not stop/recreate a separate device path around those transitions.

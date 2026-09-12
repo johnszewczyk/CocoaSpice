@@ -1,3 +1,4 @@
+import CatalogPlaylistPresentationCore
 import Foundation
 
 enum PlaylistPresentation {
@@ -84,31 +85,15 @@ enum PlaylistPresentation {
     static func compareTracks(
         _ lhs: TrackItem,
         _ rhs: TrackItem,
-        by column: PlayerViewModel.PlaylistSortColumn,
+        by column: CatalogPlaylistSortColumn,
         manualOrder: [String: Int],
         metadata: [String: TrackMetadata]
     ) -> ComparisonResult {
-        let lhsMetadata = metadata[lhs.id]
-        let rhsMetadata = metadata[rhs.id]
-
-        switch column {
-        case .index:
-            return compare(manualOrder[lhs.id] ?? .max, manualOrder[rhs.id] ?? .max)
-        case .file:
-            return compare(lhs.filename, rhs.filename)
-        case .title:
-            return compare(titleText(for: lhs, metadata: lhsMetadata), titleText(for: rhs, metadata: rhsMetadata))
-        case .game:
-            return compare(gameText(for: lhs, metadata: lhsMetadata), gameText(for: rhs, metadata: rhsMetadata))
-        case .author:
-            return compare(authorText(for: lhsMetadata), authorText(for: rhsMetadata))
-        case .system:
-            return compare(systemText(for: lhsMetadata), systemText(for: rhsMetadata))
-        case .path:
-            return compare(lhs.fullPathText, rhs.fullPathText)
-        case .length:
-            return compare(lhsMetadata?.playLengthMs ?? 0, rhsMetadata?.playLengthMs ?? 0)
-        }
+        CatalogPlaylistSorting.compare(
+            sortRecord(for: lhs, manualOrder: manualOrder, metadata: metadata[lhs.id]),
+            sortRecord(for: rhs, manualOrder: manualOrder, metadata: metadata[rhs.id]),
+            by: column
+        )
     }
 
     static func formatTime(_ totalSeconds: Int) -> String {
@@ -117,13 +102,22 @@ enum PlaylistPresentation {
         return String(format: "%d:%02d", minutes, seconds)
     }
 
-    private static func compare(_ lhs: String, _ rhs: String) -> ComparisonResult {
-        lhs.localizedStandardCompare(rhs)
-    }
-
-    private static func compare(_ lhs: Int, _ rhs: Int) -> ComparisonResult {
-        if lhs == rhs { return .orderedSame }
-        return lhs < rhs ? .orderedAscending : .orderedDescending
+    private static func sortRecord(
+        for track: TrackItem,
+        manualOrder: [String: Int],
+        metadata: TrackMetadata?
+    ) -> CatalogPlaylistSortRecord {
+        CatalogPlaylistSortRecord(
+            id: track.id,
+            naturalOrder: manualOrder[track.id] ?? .max,
+            fileText: track.filename,
+            titleText: titleText(for: track, metadata: metadata),
+            gameText: gameText(for: track, metadata: metadata),
+            authorText: authorText(for: metadata),
+            systemText: systemText(for: metadata),
+            pathText: track.fullPathText,
+            lengthMilliseconds: metadata?.playLengthMs ?? 0
+        )
     }
 
     private static func longerText(_ lhs: String, _ rhs: String) -> String {

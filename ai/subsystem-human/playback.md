@@ -16,7 +16,7 @@
 - Track changes: starting or skipping to another track makes a short clean output transition before
   the new track begins. The bundled audio endpoint stays ready between tracks, so CocoaSpice does
   not reopen the macOS device for each selection or pause.
-- Archives: supported game-music files can play from ZIP, 7z, RSN, and TAR+Zstandard (`.tar.zst`/`.tzst`) containers; the selected member is materialized into the cache.
+- Archives: supported game-music files can play from ZIP, 7z, LHA, RSN, and TAR+Zstandard (`.tar.zst`/`.tzst`) containers; the selected member is materialized into the cache. LHA Amiga entries use complete-set materialization so UADE sees prefix-led modules and their sibling data files.
 - Natural completion: the shared transport claims and retires the finished native session first; archive lease release precedes any next-member materialization, then the shared transport starts the resolved target.
 - Database playlists: choosing an item in the sidebar immediately publishes its stored source, archive-member, subtrack, and cached metadata rows. The shared CatalogReader performs the exact Games, source, folder, and path SQLite projections; CocoaSpice does not rescan, inspect, extract, or write the catalog while hydrating that playlist.
 - Format-specific decoding, dependency handling, subtrack behavior, and timing are owned by VGMBoyKit. CocoaSpice passes a materialized playable path and catalog subtrack index; it does not inspect decoder headers or tags.

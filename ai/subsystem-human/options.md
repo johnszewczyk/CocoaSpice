@@ -6,7 +6,7 @@
 
 - CocoaSpice reads the selected ScanSong catalog but never modifies it. Scan paths, scanning, link checks, cleanup, and console-tag maintenance exist only in ScanSong.
 - Database displays the configured shared `Library.sqlite` path in a full-width selectable path bar with a native folder button. Reload Library, Use Default, and Show in Finder are equal-width standard system buttons filling the bottom of the panel, in that order. Reload Library invalidates CocoaSpice's read-only browser snapshots and loads the catalog ScanSong has just published; it does not affect the current playlist or playback. Browse accepts only an existing ScanSong canonical schema-23 catalog and reports its track count; changing the location is persisted for the next launch and never swaps a live SQLite connection. The default is CocoaSpice's Application Support database.
-- Cache: defaults to on with a 2 GB limit; choose 2 GB, 4 GB, 8 GB, or 16 GB from the right side of the Enable Cache row. The row explains that decompressed files can be retained to reduce load time and reports `Usage: ...` on one subtext line. Cached archive material is pruned least-recently-used after a successful materialization. When disabled, playback uses disposable storage that is removed when playback stops. At launch, CocoaSpice removes only its own disposable playback material, incomplete extraction staging, and obsolete cache-layout entries. Every archive materialization reserves 1 GB of free disk space and refuses material that cannot fit its active storage limit. Clear Cache stops playback and removes cached or disposable archive material; Show in Finder opens the managed cache folder.
+- Cache: defaults to on with a 2 GB limit; choose 2 GB, 4 GB, 8 GB, or 16 GB from the right side of the Cache row. The row explains that decompressed files can be retained to reduce load time and reports `Usage: ...` on one subtext line. Cached archive material is pruned least-recently-used after a successful materialization. When disabled, playback uses disposable storage that is removed when playback stops. At launch, CocoaSpice removes only its own disposable playback material, incomplete extraction staging, and obsolete cache-layout entries. Every archive materialization reserves 1 GB of free disk space and refuses material that cannot fit its active storage limit. Clear Cache stops playback and removes cached or disposable archive material; Show in Finder opens the managed cache folder.
 
 ## Audio and Interface
 
@@ -38,7 +38,7 @@
 
 - Random playback: the main toolbar cycles between Off, Library random, and current Playlist-view random modes.
 - About: the macOS application menu opens the external-component inventory with source and license links.
-- Interface Style: one font size, color, and monospace setting applies consistently to both the database sidebar and playlist.
+- Interface Style: font size, text color, and monospace settings apply consistently to both the database sidebar and playlist. Selection highlights use `NSColor.controlAccentColor`, so CocoaSpice follows the user's macOS accent and has no app-specific accent-color preference. CocoaSpice's standard macOS buttons and labels keep their native system styling.
 - Each appearance card Reset restores its own default primary 12pt appearance.
 - Sidebar Options: Group by Console sorts the Database game list into consoles. Prefer Folders over Metadatas chooses the scanned archive or file's parent console folder before embedded console metadata; disabling it reverses that preference. It is a read-only sidebar reload, not a scan or database rewrite. Files Disclosure Gap sets 0–16 pt spacing between folder triangles and names in Files view. Files Child Indent is a numeric 0–32 pt field that offsets every Files-view child level; its default 8 pt is about one character at the default font size. Hide File Extensions changes only Files-view labels, never filenames stored by the database or passed to playback.
 - Library Behavior belongs to Interface: Playlist Follows Cursor applies to the
@@ -46,7 +46,7 @@
   playlist on selection; single-track files queue only on double-click or
   Return. Double-Click Enqueues remains a browser behavior control for Games.
 - Every Options panel places a horizontal rule below its heading. Checkbox options use a leading checkbox with any explanatory text aligned beneath its label.
-- Playlist Options: Enable Column Auto-size defaults on and automatically resizes columns for content width on selection.
+- Playlist Options: Column Auto-size defaults on and automatically resizes columns for content width on selection.
 - Animations: Auto-Resize and Selection Bar are independently checkbox-enabled (both default on) and retain their configured 0–1000 ms values when disabled; disabling one makes its effective duration 0 ms.
 - Shared ownership: preference persistence and cache policy come from FrontendCore; playback timing and AAC conversion come from VGMBoyKit. CocoaSpice supplies only its native controls, destination-folder choice, and archive materialization adapter.
 

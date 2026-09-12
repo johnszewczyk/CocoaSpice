@@ -14,7 +14,11 @@ are maintained in [VGMBoy's README](../../../VGMBoy/README.md).
 
 ## Archives
 
-- ZIP, 7z, RSN, TAR+Zstandard (`.tar.zst` and `.tzst`) containers can contribute
-  playable members to a queue.
+- ZIP, 7z, LHA, RSN, and TAR+Zstandard (`.tar.zst` and `.tzst`) containers can
+  contribute playable members to a queue.
 - CocoaSpice owns archive materialization for a selected member. VGMBoyKit receives
   a naked playable path and never receives an archive or catalog connection.
+- LHA members use the same 7zz extraction route as 7z members. Amiga UADE files
+  are admitted by their path prefix (for example `mod.title` or `med.song`),
+  not by the final filename suffix, and their archive is expanded as a complete
+  set so sibling data files remain available to the decoder.

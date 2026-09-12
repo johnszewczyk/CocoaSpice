@@ -17,7 +17,12 @@ struct DatabaseGameSearchIndex {
     init(items: [DatabaseGameItem] = []) {
         self.items = items
         self.sharedIndex = CatalogSearchIndex(searchValues: items.map {
-            "\($0.name) \($0.systemName) \($0.rootDisplayName) \($0.displayName)"
+            CatalogBrowserSearchText.game(
+                name: $0.name,
+                system: $0.systemName,
+                rootDisplayName: $0.rootDisplayName,
+                displayName: $0.displayName
+            )
         })
     }
 
